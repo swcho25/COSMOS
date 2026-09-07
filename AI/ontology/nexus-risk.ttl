@@ -1,0 +1,49 @@
+@prefix nr: <https://nexus-risk.dev/ontology#> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+
+nr:NexusRiskOntology a owl:Ontology ;
+  rdfs:label "NEXUS RISK Financial Supply Chain Ontology"@en .
+
+nr:Company a owl:Class .
+nr:Shareholder a owl:Class .
+nr:Industry a owl:Class .
+nr:Material a owl:Class .
+nr:Event a owl:Class .
+
+nr:OWNS_STAKE a owl:ObjectProperty ;
+  rdfs:domain [ a owl:Class ; owl:unionOf (nr:Company nr:Shareholder) ] ;
+  rdfs:range nr:Company .
+
+nr:SUPPLIES_TO a owl:ObjectProperty ;
+  rdfs:domain nr:Company ;
+  rdfs:range nr:Company .
+
+nr:BELONGS_TO a owl:ObjectProperty ;
+  rdfs:domain nr:Company ;
+  rdfs:range nr:Industry .
+
+nr:USES_MATERIAL a owl:ObjectProperty ;
+  rdfs:domain nr:Company ;
+  rdfs:range nr:Material .
+
+nr:SHORTAGE_RISK a owl:ObjectProperty ;
+  rdfs:domain nr:Material ;
+  rdfs:range nr:Company .
+
+nr:CONTROLLING_ENTITY a owl:ObjectProperty ;
+  rdfs:domain [ a owl:Class ; owl:unionOf (nr:Company nr:Shareholder) ] ;
+  rdfs:range nr:Company .
+
+nr:ticker a owl:DatatypeProperty ; rdfs:domain nr:Company ; rdfs:range xsd:string .
+nr:marketCapKRW a owl:DatatypeProperty ; rdfs:domain nr:Company ; rdfs:range xsd:decimal .
+nr:creditRating a owl:DatatypeProperty ; rdfs:domain nr:Company ; rdfs:range xsd:string .
+nr:per a owl:DatatypeProperty ; rdfs:domain nr:Company ; rdfs:range xsd:decimal .
+nr:pbr a owl:DatatypeProperty ; rdfs:domain nr:Company ; rdfs:range xsd:decimal .
+nr:weight a owl:DatatypeProperty ; rdfs:range xsd:decimal .
+nr:stakeRatio a owl:DatatypeProperty ; rdfs:range xsd:decimal .
+nr:revenueShare a owl:DatatypeProperty ; rdfs:range xsd:decimal .
+nr:evidenceText a owl:DatatypeProperty ; rdfs:range xsd:string .
+nr:observedAt a owl:DatatypeProperty ; rdfs:range xsd:dateTime .

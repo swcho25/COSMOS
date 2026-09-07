@@ -1,0 +1,3 @@
+[submodule "FrontEnd/overseas-news-crawler"]
+	path = FrontEnd/overseas-news-crawler
+	url = https://github.com/wildyoung/overseas-news-crawler.git
