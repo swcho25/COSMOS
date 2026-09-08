@@ -1,0 +1,162 @@
+import { create } from "zustand";
+import type { MetricWindow, PricePeriod, RelationshipType } from "@/api/types";
+import { RELATIONSHIP_ORDER } from "@/lib/meta";
+
+export type PanelTab = "news" | "price" | "board";
+export type Phase = "galaxy" | "warp" | "system";
+
+interface GalaxyState {
+  /* ---- 뷰 상태 ---- */
+  phase: Phase;
+  focusId: string | null; // system 뷰의 중심 기업
+  warpTarget: string | null; // 워프가 끝나면 focus 가 될 기업 (null = 은하 복귀)
+  warpStartedAt: number;
+  warpCommitted: boolean;
+
+  hoveredId: string | null;
+  hoveredEdgeId: string | null;
+  selectedEdgeId: string | null;
+
+  /* ---- 필터 ---- */
+  industryId: string | null;
+  minScore: number;
+  activeTypes: Set<RelationshipType>;
+  showLabels: boolean;
+
+  /* ---- 패널 ---- */
+  panelTab: PanelTab;
+  window: MetricWindow;
+  pricePeriod: PricePeriod;
+  searchOpen: boolean;
+  /** 우측 인텔리전스 패널 펼침 여부 (접으면 오른쪽 가장자리에 꼬리표) */
+  panelOpen: boolean;
+  /** 우하단 관계 유형·최소 점수 카드 펼침 여부 */
+  legendOpen: boolean;
+  /** 기업 중심 뷰의 최신 뉴스 콜아웃 닫힘 여부 (기업이 바뀌면 다시 열림) */
+  calloutHidden: boolean;
+
+  /* ---- 액션 ---- */
+  warpTo(companyId: string | null): void;
+  commitWarp(): void;
+  completeWarp(): void;
+  backToGalaxy(): void;
+  setHovered(id: string | null): void;
+  setHoveredEdge(id: string | null): void;
+  selectEdge(id: string | null): void;
+  clearSelection(): void;
+  setIndustry(id: string | null): void;
+  setMinScore(v: number): void;
+  toggleType(t: RelationshipType): void;
+  toggleLabels(): void;
+  setPanelTab(t: PanelTab): void;
+  setWindow(w: MetricWindow): void;
+  setPricePeriod(p: PricePeriod): void;
+  setSearchOpen(v: boolean): void;
+  setPanelOpen(v: boolean): void;
+  toggleLegend(): void;
+  hideCallout(): void;
+}
+
+export const useGalaxy = create<GalaxyState>((set, get) => ({
+  phase: "galaxy",
+  focusId: null,
+  warpTarget: null,
+  warpStartedAt: 0,
+  warpCommitted: false,
+
+  hoveredId: null,
+  hoveredEdgeId: null,
+  selectedEdgeId: null,
+
+  industryId: null,
+  minScore: 0,
+  activeTypes: new Set(RELATIONSHIP_ORDER),
+  showLabels: true,
+
+  panelTab: "news",
+  window: "30D",
+  pricePeriod: "1M",
+  searchOpen: false,
+  panelOpen: true,
+  legendOpen: true,
+  calloutHidden: false,
+
+  warpTo(companyId) {
+    const s = get();
+    if (s.phase === "warp") return;
+    if (companyId !== null && companyId === s.focusId) return;
+    if (companyId === null && s.focusId === null) return;
+    set({
+      phase: "warp",
+      warpStartedAt: performance.now(),
+      warpTarget: companyId,
+      warpCommitted: false,
+      selectedEdgeId: null,
+      hoveredId: null,
+      hoveredEdgeId: null,
+      panelOpen: true,
+      calloutHidden: false,
+    });
+  },
+  commitWarp() {
+    set((s) => ({ warpCommitted: true, focusId: s.warpTarget }));
+  },
+  completeWarp() {
+    set((s) => ({ phase: s.warpTarget ? "system" : "galaxy" }));
+  },
+  backToGalaxy() {
+    get().warpTo(null);
+  },
+
+  setHovered(id) {
+    if (get().hoveredId !== id) set({ hoveredId: id });
+  },
+  setHoveredEdge(id) {
+    if (get().hoveredEdgeId !== id) set({ hoveredEdgeId: id });
+  },
+  selectEdge(id) {
+    set((s) => ({ selectedEdgeId: s.selectedEdgeId === id ? null : id, panelOpen: true }));
+  },
+  clearSelection() {
+    set({ selectedEdgeId: null, hoveredId: null, hoveredEdgeId: null });
+  },
+
+  setIndustry(id) {
+    set({ industryId: id, selectedEdgeId: null });
+  },
+  setMinScore(v) {
+    set({ minScore: Math.max(0, Math.min(100, v)) });
+  },
+  toggleType(t) {
+    set((s) => {
+      const next = new Set(s.activeTypes);
+      if (next.has(t)) next.delete(t);
+      else next.add(t);
+      return { activeTypes: next };
+    });
+  },
+  toggleLabels() {
+    set((s) => ({ showLabels: !s.showLabels }));
+  },
+  setPanelTab(t) {
+    set({ panelTab: t });
+  },
+  setWindow(w) {
+    set({ window: w });
+  },
+  setPricePeriod(p) {
+    set({ pricePeriod: p });
+  },
+  setSearchOpen(v) {
+    set({ searchOpen: v });
+  },
+  setPanelOpen(v) {
+    set({ panelOpen: v });
+  },
+  toggleLegend() {
+    set((s) => ({ legendOpen: !s.legendOpen }));
+  },
+  hideCallout() {
+    set({ calloutHidden: true });
+  },
+}));

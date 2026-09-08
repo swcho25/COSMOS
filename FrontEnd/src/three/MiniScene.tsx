@@ -1,0 +1,68 @@
+import { useMemo, useState } from "react";
+import { Canvas } from "@react-three/fiber";
+import { OrbitControls } from "@react-three/drei";
+import { Bloom, EffectComposer, Vignette } from "@react-three/postprocessing";
+import * as THREE from "three";
+import type { SceneModel } from "@/lib/graph";
+import CompanyNodes from "./CompanyNodes";
+import Labels from "./Labels";
+import RelationLines from "./RelationLines";
+import Starfield from "./Starfield";
+import { computeEmphasis } from "./emphasis";
+
+interface Props {
+  model: SceneModel | null;
+  onPickCompany?: (id: string) => void;
+  onPickEdge?: (id: string) => void;
+  highlightId?: string | null;
+  autoRotate?: boolean;
+}
+
+/**
+ * 뉴스·기업 페이지용 소형 관계 지도. 전역 은하 스토어와 분리된 로컬 상태로 동작한다.
+ */
+export default function MiniScene({ model, onPickCompany, onPickEdge, highlightId = null, autoRotate = true }: Props) {
+  const [hovered, setHovered] = useState<string | null>(null);
+  const [hoveredEdge, setHoveredEdge] = useState<string | null>(null);
+  const emphasis = useMemo(
+    () => (model ? computeEmphasis(model, { hoveredId: hovered ?? highlightId, hoveredEdgeId: hoveredEdge, selectedEdgeId: null, minScore: 0, activeTypes: new Set(["SUPPLY", "INVEST", "PARTNER", "COMPETE"]) }) : null),
+    [model, hovered, hoveredEdge, highlightId],
+  );
+  const radius = useMemo(() => {
+    if (!model) return 60;
+    let r = 10;
+    model.nodes.forEach((n) => {
+      r = Math.max(r, Math.hypot(n.pos[0], n.pos[2]));
+    });
+    return r;
+  }, [model]);
+
+  return (
+    <Canvas
+      dpr={[1, 1.5]}
+      gl={{ antialias: false, powerPreference: "high-performance" }}
+      camera={{ fov: 48, near: 0.5, far: 2000, position: [0, radius * 0.9, radius * 2.1] }}
+      raycaster={{ params: { Line: { threshold: 1.2 }, Points: { threshold: 1 }, Mesh: {}, LOD: {}, Sprite: {} } }}
+      onCreated={({ gl }) => {
+        gl.toneMapping = THREE.ACESFilmicToneMapping;
+        gl.setClearColor("#05070f", 1);
+      }}
+      style={{ cursor: hovered || hoveredEdge ? "pointer" : "grab" }}
+    >
+      <color attach="background" args={["#05070f"]} />
+      <OrbitControls makeDefault enablePan={false} enableDamping dampingFactor={0.08} autoRotate={autoRotate && !hovered} autoRotateSpeed={0.6} minDistance={14} maxDistance={radius * 4 + 40} maxPolarAngle={Math.PI * 0.6} />
+      <Starfield count={1800} />
+      {model && emphasis && (
+        <group key={model.centerId ?? "m"}>
+          <RelationLines edges={model.edges} emphasis={emphasis} onHover={setHoveredEdge} onSelect={(id) => onPickEdge?.(id)} />
+          <CompanyNodes model={model} emphasis={emphasis} hoveredId={hovered ?? highlightId} onHover={setHovered} onClick={(id) => onPickCompany?.(id)} />
+          <Labels model={model} emphasis={emphasis} visible />
+        </group>
+      )}
+      <EffectComposer multisampling={0}>
+        <Bloom mipmapBlur intensity={0.8} luminanceThreshold={0.6} luminanceSmoothing={0.3} radius={0.6} />
+        <Vignette eskil={false} offset={0.2} darkness={0.7} />
+      </EffectComposer>
+    </Canvas>
+  );
+}
