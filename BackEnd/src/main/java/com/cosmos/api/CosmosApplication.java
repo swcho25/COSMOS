@@ -1,13 +1,13 @@
-package com.galaxy.api;
+package com.cosmos.api;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 
 @SpringBootApplication
-public class GalaxyApiApplication {
+public class CosmosApplication {
 
 	public static void main(String[] args) {
-		SpringApplication.run(GalaxyApiApplication.class, args);
+		SpringApplication.run(CosmosApplication.class, args);
 	}
 
 }

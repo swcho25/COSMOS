@@ -1,4 +1,4 @@
--- galaxy 스키마 정의 (매 기동마다 실행되므로 전부 IF NOT EXISTS로 멱등하게 작성)
+-- cosmos 스키마 정의 (매 기동마다 실행되므로 전부 IF NOT EXISTS로 멱등하게 작성)
 -- 이미 존재하는 테이블은 건너뛰므로, 기존 테이블 변경 시에는
 -- 이 파일을 고친 뒤 로컬 DB를 리셋(docker compose down -v && up -d)하거나 직접 ALTER 할 것.
 

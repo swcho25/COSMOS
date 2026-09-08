@@ -1,4 +1,4 @@
-package com.galaxy.api.user.entity;
+package com.cosmos.api.user.entity;
 
 public enum Role {
     ROLE_USER,

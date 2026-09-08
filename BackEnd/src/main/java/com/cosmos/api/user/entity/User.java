@@ -1,4 +1,4 @@
-package com.galaxy.api.user.entity;
+package com.cosmos.api.user.entity;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;

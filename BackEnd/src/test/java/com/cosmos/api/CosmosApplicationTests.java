@@ -1,10 +1,10 @@
-package com.galaxy.api;
+package com.cosmos.api;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
 
 @SpringBootTest
-class GalaxyApiApplicationTests {
+class CosmosApplicationTests {
 
 	@Test
 	void contextLoads() {
