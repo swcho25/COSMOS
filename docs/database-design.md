@@ -2,7 +2,6 @@
 
 이 문서는 COSMOS 서비스의 데이터 저장 구조와 PostgreSQL 논리 ERD를 정의한다. 실제 자료형, `NOT NULL`, 기본값, 인덱스와 제약조건은 이 문서를 기준으로 DDL 작성 단계에서 확정한다.
 
-- 기준 문서: [Notion Data 모델링](https://app.notion.com/p/a38261aa2d6f827a98a48148aac56381)
 - 대상 범위: PostgreSQL, HDFS, Redis의 역할과 연결 기준
 - 제외 범위: 물리 DDL, 배포 환경별 접속 정보, 비밀번호와 인증키
 
