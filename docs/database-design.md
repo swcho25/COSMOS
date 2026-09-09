@@ -215,39 +215,41 @@ erDiagram
         BIGINT trading_volume
     }
 
-    APP_USER {
-        UUID user_id PK
+    USERS {
+        BIGINT user_id PK
         VARCHAR email UK
         VARCHAR password
         VARCHAR nickname
         VARCHAR role
+        TIMESTAMP email_verified_at
         TIMESTAMP created_at
         TIMESTAMP updated_at
+        TIMESTAMP deleted_at
     }
 
     COMPANY_COMMUNITY_COMMENT {
         UUID comment_id PK
         UUID company_id FK
-        UUID user_id FK
+        BIGINT user_id FK
         TEXT content
         TIMESTAMP created_at
         TIMESTAMP updated_at
     }
 
     USER_WATCH_COMPANY {
-        UUID user_id PK, FK
+        BIGINT user_id PK, FK
         UUID company_id PK, FK
         TIMESTAMP created_at
     }
 
     USER_SCRAP {
-        UUID user_id PK, FK
+        BIGINT user_id PK, FK
         UUID document_id PK, FK
         TIMESTAMP created_at
     }
 
     USER_WEIGHT_SETTING {
-        UUID user_id PK, FK
+        BIGINT user_id PK, FK
         DECIMAL news_weight
         TIMESTAMP updated_at
     }
@@ -339,12 +341,12 @@ erDiagram
     COMPANY ||--o{ STOCK_PRICE_HISTORY : price_history
 
     COMPANY ||--o{ COMPANY_COMMUNITY_COMMENT : community
-    APP_USER ||--o{ COMPANY_COMMUNITY_COMMENT : writes
-    APP_USER ||--o{ USER_WATCH_COMPANY : watches
+    USERS ||--o{ COMPANY_COMMUNITY_COMMENT : writes
+    USERS ||--o{ USER_WATCH_COMPANY : watches
     COMPANY ||--o{ USER_WATCH_COMPANY : watched_by
-    APP_USER ||--o{ USER_SCRAP : scraps
-    SOURCE_DOCUMENT ||--o{ USER_SCRAP : scrap_target
-    APP_USER ||--o| USER_WEIGHT_SETTING : configures
+    USERS ||--o{ USER_SCRAP : scraps
+    NEWS_ARTICLE ||--o{ USER_SCRAP : scrap_target
+    USERS ||--o| USER_WEIGHT_SETTING : configures
 
     COLLECTION_RUN ||--o{ FAILURE_RECORD : failures
     SOURCE_DOCUMENT o|--o{ FAILURE_RECORD : failed_document
@@ -391,7 +393,7 @@ erDiagram
 
 | 테이블 | 역할 |
 | --- | --- |
-| `APP_USER` | 이메일 로그인 사용자 정보와 권한 저장 |
+| `USERS` | 이메일 로그인 사용자 정보와 권한 저장 |
 | `COMPANY_COMMUNITY_COMMENT` | 기업별 커뮤니티의 단일 계층 댓글 저장 |
 | `USER_WATCH_COMPANY` | 사용자 관심 기업 저장 |
 | `USER_SCRAP` | 사용자가 스크랩한 뉴스 저장 |
