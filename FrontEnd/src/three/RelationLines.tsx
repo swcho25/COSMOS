@@ -1,17 +1,21 @@
-import { useEffect, useMemo, useRef } from "react";
-import { useFrame, useThree, type ThreeEvent } from "@react-three/fiber";
+import { useEffect, useMemo } from "react";
+import { useFrame, type ThreeEvent } from "@react-three/fiber";
 import * as THREE from "three";
 import type { SceneEdge, Vec3 } from "@/lib/graph";
 import type { Emphasis } from "./emphasis";
 import { LAB } from "./toon";
 
-const SEGS = 24;
+/** 튜브 길이 방향 분할, 둘레 분할, 간선당 빛 구슬 수 */
+const SEGS = 22;
+const RADIAL = 6;
+const PULSES = 2;
 const PICK_SEGS = 8;
 const BOW = 0.16;
 
 const A = new THREE.Vector3();
 const B = new THREE.Vector3();
 const OUT = new THREE.Vector3();
+const P = new THREE.Vector3();
 
 /** 두 노드를 잇는 2차 베지어 아크의 제어점 — 원점 바깥으로 살짝 부풀린다 */
 function controlPoint(from: Vec3, to: Vec3, out: THREE.Vector3) {
@@ -34,165 +38,186 @@ function bezier(from: Vec3, to: Vec3, ctrl: THREE.Vector3, t: number, out: THREE
   out.addScaledVector(B.fromArray(to), t * t);
   return out;
 }
+/** 점수(0~1) → 튜브 반지름(월드 단위). 가까이 가면 굵어지고 멀면 가늘어진다 */
+function radiusOf(s: number) {
+  return 0.09 + s * s * 0.4;
+}
 
 interface Props {
   edges: SceneEdge[];
   emphasis: Emphasis;
   onHover?: (id: string | null) => void;
   onSelect?: (id: string) => void;
-  /** 전체 밝기·폭 배율 (은하 뷰처럼 간선이 많을 때 낮춰 노드·성단이 묻히지 않게) */
+  /** 전체 밝기 배율 (은하 뷰처럼 간선이 많을 때 낮춰 노드·성단이 묻히지 않게) */
   intensity?: number;
 }
 
 /**
- * 관계 간선 전체를 메시 하나로 그린다.
- * - 2차 베지어 아크를 카메라를 향해 빌보드된 리본으로 확장 → 화면 기준 두께 (점수에 비례)
- * - 프래그먼트에서 간선을 따라 흐르는 펄스 → 방향(공급·투자)과 생동감. 무방향 관계는 양쪽에서 흐른다.
- * - 강조(emphasis) 값은 지오메트리를 다시 만들지 않고 속성 하나만 갱신한다.
+ * 관계 빔 — 아트 디렉션 랩의 튜브 빔을 은하 전체에 적용한 것.
+ * - 모든 간선을 3D 튜브 하나(드로우콜 1회)로 병합해 그린다. 굵기는 점수, 색은 주황 한 가지
+ * - 같은 지오메트리를 법선 방향으로 부풀린 두 번째 패스가 부드러운 헤일로가 된다
+ * - 빛 구슬(펄스)은 포인트 레이어 하나로 그리고, 매 프레임 베지어 위를 따라 움직인다.
+ *   방향 있는 관계는 source → target 으로, 무방향 관계는 양방향으로 흐르며 점선 튜브를 쓴다
+ * - 강조(emphasis) 값은 지오메트리를 다시 만들지 않고 속성 하나만 갱신한다
  */
 export default function RelationLines({ edges, emphasis, onHover, onSelect, intensity = 1 }: Props) {
-  const mat = useRef<THREE.ShaderMaterial>(null);
-  const size = useThree((s) => s.size);
-  const camera = useThree((s) => s.camera);
-
-  const { geometry, emphAttr, pick } = useMemo(() => {
+  const built = useMemo(() => {
     const n = edges.length;
-    const pts = SEGS + 1;
-    const vCount = n * pts * 2;
-    const position = new Float32Array(vCount * 3);
-    const aDir = new Float32Array(vCount * 3);
-    const aColor = new Float32Array(vCount * 3);
-    const aT = new Float32Array(vCount);
-    const aSide = new Float32Array(vCount);
-    const aSeed = new Float32Array(vCount);
-    const aWidth = new Float32Array(vCount);
-    const aAlpha = new Float32Array(vCount);
-    const aSpeed = new Float32Array(vCount);
-    const aFlow = new Float32Array(vCount);
-    const aNeg = new Float32Array(vCount);
-    const aEmph = new Float32Array(vCount).fill(1);
-    const index = new Uint32Array(n * SEGS * 6);
+    const ctrls: THREE.Vector3[] = [];
+    const radii = new Float32Array(n);
+    const speeds = new Float32Array(n);
+    const seeds = new Float32Array(n);
+
+    // 튜브 병합 버퍼
+    const vPer = (SEGS + 1) * (RADIAL + 1);
+    const iPer = SEGS * RADIAL * 6;
+    const position = new Float32Array(n * vPer * 3);
+    const normal = new Float32Array(n * vPer * 3);
+    const aT = new Float32Array(n * vPer);
+    const aScore = new Float32Array(n * vPer);
+    const aRadius = new Float32Array(n * vPer);
+    const aFlow = new Float32Array(n * vPer);
+    const aNeg = new Float32Array(n * vPer);
+    const aEmph = new Float32Array(n * vPer).fill(1);
+    const index = new Uint32Array(n * iPer);
     const pickPos = new Float32Array(n * PICK_SEGS * 2 * 3);
 
-    const col = new THREE.Color();
-    const ctrl = new THREE.Vector3();
-    const p = new THREE.Vector3();
-    const prev = new THREE.Vector3();
-    const next = new THREE.Vector3();
-    let vi = 0;
-    let ii = 0;
-
     edges.forEach((e, ei) => {
+      const ctrl = new THREE.Vector3();
       controlPoint(e.from, e.to, ctrl);
-      // 관계 빔은 한 가지 주황 — 유형은 색이 아니라 흐름(방향)·점선(무방향)으로 구분한다
-      col.set(LAB.beam);
+      ctrls.push(ctrl);
       const s = e.score / 100;
-      const seed = (ei * 0.6180339887) % 1;
-      const width = 1.1 + s * s * 4.2; // px
-      const alpha = 0.16 + s * s * 0.7;
-      const speed = 0.06 + s * 0.2;
-      const base = vi;
-      for (let k = 0; k <= SEGS; k += 1) {
-        const t = k / SEGS;
-        bezier(e.from, e.to, ctrl, t, p);
-        bezier(e.from, e.to, ctrl, Math.max(0, t - 1 / SEGS), prev);
-        bezier(e.from, e.to, ctrl, Math.min(1, t + 1 / SEGS), next);
-        const dx = next.x - prev.x;
-        const dy = next.y - prev.y;
-        const dz = next.z - prev.z;
-        const len = Math.hypot(dx, dy, dz) || 1;
-        for (let side = 0; side < 2; side += 1) {
-          position[vi * 3] = p.x;
-          position[vi * 3 + 1] = p.y;
-          position[vi * 3 + 2] = p.z;
-          aDir[vi * 3] = dx / len;
-          aDir[vi * 3 + 1] = dy / len;
-          aDir[vi * 3 + 2] = dz / len;
-          aColor[vi * 3] = col.r;
-          aColor[vi * 3 + 1] = col.g;
-          aColor[vi * 3 + 2] = col.b;
-          aT[vi] = t;
-          aSide[vi] = side === 0 ? 1 : -1;
-          aSeed[vi] = seed;
-          aWidth[vi] = width;
-          aAlpha[vi] = alpha;
-          aSpeed[vi] = speed;
-          aFlow[vi] = e.directed ? 1 : 0;
-          aNeg[vi] = e.impact === "NEGATIVE" ? 1 : 0;
-          vi += 1;
-        }
+      const r = radiusOf(s);
+      radii[ei] = r;
+      speeds[ei] = 0.05 + s * 0.14;
+      seeds[ei] = (ei * 0.6180339887) % 1;
+
+      const curve = new THREE.QuadraticBezierCurve3(new THREE.Vector3().fromArray(e.from), ctrl, new THREE.Vector3().fromArray(e.to));
+      const tube = new THREE.TubeGeometry(curve, SEGS, r, RADIAL, false);
+      const tp = tube.attributes.position.array as Float32Array;
+      const tn = tube.attributes.normal.array as Float32Array;
+      const tuv = tube.attributes.uv.array as Float32Array;
+      const ti = tube.index!.array;
+      const vBase = ei * vPer;
+      position.set(tp, vBase * 3);
+      normal.set(tn, vBase * 3);
+      for (let v = 0; v < vPer; v += 1) {
+        aT[vBase + v] = tuv[v * 2]; // u = 길이 방향 0~1
+        aScore[vBase + v] = s;
+        aRadius[vBase + v] = r;
+        aFlow[vBase + v] = e.directed ? 1 : 0;
+        aNeg[vBase + v] = e.impact === "NEGATIVE" ? 1 : 0;
       }
-      for (let k = 0; k < SEGS; k += 1) {
-        const a = base + k * 2;
-        index[ii++] = a;
-        index[ii++] = a + 1;
-        index[ii++] = a + 2;
-        index[ii++] = a + 1;
-        index[ii++] = a + 3;
-        index[ii++] = a + 2;
-      }
+      const iBase = ei * iPer;
+      for (let k = 0; k < iPer; k += 1) index[iBase + k] = ti[k] + vBase;
+      tube.dispose();
+
       // 피킹용 폴리라인
       for (let k = 0; k < PICK_SEGS; k += 1) {
         const o = (ei * PICK_SEGS + k) * 6;
-        bezier(e.from, e.to, ctrl, k / PICK_SEGS, p);
-        pickPos[o] = p.x;
-        pickPos[o + 1] = p.y;
-        pickPos[o + 2] = p.z;
-        bezier(e.from, e.to, ctrl, (k + 1) / PICK_SEGS, p);
-        pickPos[o + 3] = p.x;
-        pickPos[o + 4] = p.y;
-        pickPos[o + 5] = p.z;
+        bezier(e.from, e.to, ctrl, k / PICK_SEGS, P);
+        pickPos[o] = P.x;
+        pickPos[o + 1] = P.y;
+        pickPos[o + 2] = P.z;
+        bezier(e.from, e.to, ctrl, (k + 1) / PICK_SEGS, P);
+        pickPos[o + 3] = P.x;
+        pickPos[o + 4] = P.y;
+        pickPos[o + 5] = P.z;
       }
     });
 
-    const g = new THREE.BufferGeometry();
-    g.setAttribute("position", new THREE.BufferAttribute(position, 3));
-    g.setAttribute("aDir", new THREE.BufferAttribute(aDir, 3));
-    g.setAttribute("aColor", new THREE.BufferAttribute(aColor, 3));
-    g.setAttribute("aT", new THREE.BufferAttribute(aT, 1));
-    g.setAttribute("aSide", new THREE.BufferAttribute(aSide, 1));
-    g.setAttribute("aSeed", new THREE.BufferAttribute(aSeed, 1));
-    g.setAttribute("aWidth", new THREE.BufferAttribute(aWidth, 1));
-    g.setAttribute("aAlpha", new THREE.BufferAttribute(aAlpha, 1));
-    g.setAttribute("aSpeed", new THREE.BufferAttribute(aSpeed, 1));
-    g.setAttribute("aFlow", new THREE.BufferAttribute(aFlow, 1));
-    g.setAttribute("aNeg", new THREE.BufferAttribute(aNeg, 1));
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute("position", new THREE.BufferAttribute(position, 3));
+    geo.setAttribute("normal", new THREE.BufferAttribute(normal, 3));
+    geo.setAttribute("aT", new THREE.BufferAttribute(aT, 1));
+    geo.setAttribute("aScore", new THREE.BufferAttribute(aScore, 1));
+    geo.setAttribute("aRadius", new THREE.BufferAttribute(aRadius, 1));
+    geo.setAttribute("aFlow", new THREE.BufferAttribute(aFlow, 1));
+    geo.setAttribute("aNeg", new THREE.BufferAttribute(aNeg, 1));
     const emphAttr = new THREE.BufferAttribute(aEmph, 1);
     emphAttr.setUsage(THREE.DynamicDrawUsage);
-    g.setAttribute("aEmph", emphAttr);
-    g.setIndex(new THREE.BufferAttribute(index, 1));
-    g.computeBoundingSphere();
+    geo.setAttribute("aEmph", emphAttr);
+    geo.setIndex(new THREE.BufferAttribute(index, 1));
+    geo.computeBoundingSphere();
 
     const pick = new THREE.BufferGeometry();
     pick.setAttribute("position", new THREE.BufferAttribute(pickPos, 3));
-    return { geometry: g, emphAttr, pick };
+
+    // 빛 구슬
+    const pn = n * PULSES;
+    const pulseGeo = new THREE.BufferGeometry();
+    const pPos = new THREE.BufferAttribute(new Float32Array(pn * 3), 3);
+    pPos.setUsage(THREE.DynamicDrawUsage);
+    const pSize = new THREE.BufferAttribute(new Float32Array(pn), 1);
+    pSize.setUsage(THREE.DynamicDrawUsage);
+    const pAlpha = new THREE.BufferAttribute(new Float32Array(pn), 1);
+    pAlpha.setUsage(THREE.DynamicDrawUsage);
+    const pNeg = new Float32Array(pn);
+    edges.forEach((e, ei) => {
+      for (let j = 0; j < PULSES; j += 1) pNeg[ei * PULSES + j] = e.impact === "NEGATIVE" ? 1 : 0;
+    });
+    pulseGeo.setAttribute("position", pPos);
+    pulseGeo.setAttribute("aSize", pSize);
+    pulseGeo.setAttribute("aAlpha", pAlpha);
+    pulseGeo.setAttribute("aNeg", new THREE.BufferAttribute(pNeg, 1));
+
+    return { geo, emphAttr, pick, ctrls, radii, speeds, seeds, pulseGeo, pPos, pSize, pAlpha, vPer };
   }, [edges]);
 
-  useEffect(() => () => {
-    geometry.dispose();
-    pick.dispose();
-  }, [geometry, pick]);
+  useEffect(
+    () => () => {
+      built.geo.dispose();
+      built.pick.dispose();
+      built.pulseGeo.dispose();
+    },
+    [built],
+  );
 
   // 강조 값만 갱신 (지오메트리 재생성 없음)
   useEffect(() => {
-    const arr = emphAttr.array as Float32Array;
-    const pts = (SEGS + 1) * 2;
+    const arr = built.emphAttr.array as Float32Array;
     edges.forEach((e, ei) => {
       const v = emphasis.edge.get(e.id) ?? 1;
-      arr.fill(v, ei * pts, (ei + 1) * pts);
+      arr.fill(v, ei * built.vPer, (ei + 1) * built.vPer);
     });
-    emphAttr.needsUpdate = true;
-  }, [edges, emphasis, emphAttr]);
+    built.emphAttr.needsUpdate = true;
+  }, [edges, emphasis, built]);
 
-  const uniforms = useMemo(() => ({ uTime: { value: 0 }, uPixel: { value: 0.002 }, uDim: { value: 1 } }), []);
+  const tubeUniforms = useMemo(() => ({ uColor: { value: new THREE.Color(LAB.beam) }, uDim: { value: 1 }, uInflate: { value: 0 }, uHalo: { value: 0 } }), []);
+  const haloUniforms = useMemo(() => ({ uColor: { value: new THREE.Color(LAB.beamGlow) }, uDim: { value: 1 }, uInflate: { value: 1.7 }, uHalo: { value: 1 } }), []);
+  const pulseUniforms = useMemo(() => ({ uDim: { value: 1 }, uScale: { value: 600 } }), []);
 
   useFrame((state) => {
-    if (!mat.current) return;
-    mat.current.uniforms.uTime.value = state.clock.elapsedTime;
-    mat.current.uniforms.uDim.value = intensity;
-    const cam = camera as THREE.PerspectiveCamera;
-    const fov = (cam.fov * Math.PI) / 180;
-    mat.current.uniforms.uPixel.value = (2 * Math.tan(fov / 2)) / Math.max(1, size.height);
+    const t = state.clock.elapsedTime;
+    tubeUniforms.uDim.value = intensity;
+    haloUniforms.uDim.value = intensity;
+    pulseUniforms.uDim.value = intensity;
+    // 포인트 크기를 화면 높이에 맞춘다 (fov 고정 가정)
+    pulseUniforms.uScale.value = state.size.height * 0.62;
+
+    const pos = built.pPos.array as Float32Array;
+    const size = built.pSize.array as Float32Array;
+    const alpha = built.pAlpha.array as Float32Array;
+    edges.forEach((e, ei) => {
+      const emph = emphasis.edge.get(e.id) ?? 1;
+      const ctrl = built.ctrls[ei];
+      for (let j = 0; j < PULSES; j += 1) {
+        const k = ei * PULSES + j;
+        let u = (t * built.speeds[ei] + built.seeds[ei] + j / PULSES) % 1;
+        // 무방향 관계는 구슬이 양쪽으로 오간다
+        if (!e.directed && j % 2 === 1) u = 1 - u;
+        bezier(e.from, e.to, ctrl, u, P);
+        pos[k * 3] = P.x;
+        pos[k * 3 + 1] = P.y;
+        pos[k * 3 + 2] = P.z;
+        const fade = Math.sin(u * Math.PI);
+        size[k] = built.radii[ei] * (6.0 + fade * 3.6);
+        alpha[k] = emph <= 0.003 ? 0 : (0.35 + 0.65 * fade) * Math.min(1, emph * 1.4);
+      }
+    });
+    built.pPos.needsUpdate = true;
+    built.pSize.needsUpdate = true;
+    built.pAlpha.needsUpdate = true;
   });
 
   const edgeIndexOf = (e: ThreeEvent<PointerEvent | MouseEvent>) => {
@@ -200,96 +225,27 @@ export default function RelationLines({ edges, emphasis, onHover, onSelect, inte
     const ei = Math.floor(idx / (PICK_SEGS * 2));
     return edges[ei];
   };
-  /** 같은 광선에 기업 노드가 걸려 있으면 간선은 뒤로 물러난다 — 간선이 촘촘해도 기업을 먼저 고를 수 있게 */
-  // 노드(행성 또는 이름표 원판 안쪽)가 앞에 있으면 간선은 양보한다 — 이름표 쿼드의 모서리는 노드로 치지 않는다
+  /** 같은 광선에 기업 노드(행성 또는 이름표 원판 안쪽)가 걸려 있으면 간선은 뒤로 물러난다 */
   const nodeAhead = (e: ThreeEvent<PointerEvent | MouseEvent>) =>
     e.intersections.some((i) => i.object.userData?.pick === "node" && (!i.object.userData?.disc || !i.uv || Math.hypot(i.uv.x - 0.5, i.uv.y - 0.5) <= 0.5));
 
   return (
     <group>
-      <mesh geometry={geometry} frustumCulled={false} raycast={() => null} renderOrder={2}>
-        <shaderMaterial
-          ref={mat}
-          uniforms={uniforms}
-          transparent
-          depthWrite={false}
-          side={THREE.DoubleSide}
-          blending={THREE.NormalBlending}
-          toneMapped={false}
-          vertexShader={/* glsl */ `
-            attribute vec3 aDir;
-            attribute vec3 aColor;
-            attribute float aT;
-            attribute float aSide;
-            attribute float aSeed;
-            attribute float aWidth;
-            attribute float aAlpha;
-            attribute float aSpeed;
-            attribute float aFlow;
-            attribute float aNeg;
-            attribute float aEmph;
-            uniform float uPixel;
-            uniform float uDim;
-            varying vec3 vColor;
-            varying float vT;
-            varying float vSide;
-            varying float vSeed;
-            varying float vAlpha;
-            varying float vSpeed;
-            varying float vFlow;
-            varying float vNeg;
-            varying float vEmph;
-            void main(){
-              vColor = aColor; vT = aT; vSide = aSide; vSeed = aSeed; vAlpha = aAlpha;
-              vSpeed = aSpeed; vFlow = aFlow; vNeg = aNeg; vEmph = aEmph;
-              vec4 mv = modelViewMatrix * vec4(position, 1.0);
-              vec3 tan = normalize((modelViewMatrix * vec4(aDir, 0.0)).xyz);
-              vec3 viewDir = normalize(-mv.xyz);
-              vec3 side = cross(tan, viewDir);
-              float l = length(side);
-              side = l > 0.0001 ? side / l : vec3(1.0, 0.0, 0.0);
-              float w = aWidth * mix(0.75, 1.7, aEmph) * mix(0.55, 1.0, uDim);
-              mv.xyz += side * aSide * w * 0.5 * uPixel * (-mv.z);
-              gl_Position = projectionMatrix * mv;
-            }
-          `}
-          fragmentShader={/* glsl */ `
-            uniform float uTime;
-            uniform float uDim;
-            varying vec3 vColor;
-            varying float vT;
-            varying float vSide;
-            varying float vSeed;
-            varying float vAlpha;
-            varying float vSpeed;
-            varying float vFlow;
-            varying float vNeg;
-            varying float vEmph;
-            void main(){
-              if (vEmph <= 0.003) discard;
-              float edge = 1.0 - abs(vSide);
-              float soft = smoothstep(0.0, 0.6, edge) * 0.6 + 0.4;
-              float head = fract(uTime * vSpeed + vSeed);
-              float d1 = abs(fract(vT - head + 0.5) - 0.5);
-              float d2 = abs(fract((1.0 - vT) - head + 0.5) - 0.5);
-              float pulse = vFlow > 0.5 ? exp(-d1 * d1 * 170.0) : max(exp(-d1 * d1 * 260.0), exp(-d2 * d2 * 260.0)) * 0.85;
-              // 펄스는 크림색, 부정 영향은 붉게
-              vec3 hot = mix(vec3(1.0, 0.95, 0.86), vec3(1.0, 0.42, 0.46), vNeg * 0.8);
-              vec3 col = mix(vColor, hot, pulse);
-              col *= mix(0.45, 1.0, vEmph);
-              // 무방향 관계는 점선 — 흐름 없이도 방향이 없다는 것이 읽힌다
-              float dash = vFlow > 0.5 ? 1.0 : mix(0.45, 1.0, step(0.5, fract(vT * 16.0)));
-              // 끝점은 노드에 묻히도록 살짝 페이드
-              float ends = smoothstep(0.0, 0.06, vT) * smoothstep(1.0, 0.94, vT);
-              float a = vAlpha * vEmph * soft * dash * (0.75 + 0.25 * pulse) * (0.7 + 0.3 * ends) * uDim;
-              gl_FragColor = vec4(col, a);
-            }
-          `}
-        />
+      {/* 튜브 본체 */}
+      <mesh geometry={built.geo} frustumCulled={false} raycast={() => null} renderOrder={2}>
+        <shaderMaterial uniforms={tubeUniforms} vertexShader={TUBE_VERTEX} fragmentShader={TUBE_FRAGMENT} transparent depthWrite={false} toneMapped={false} />
       </mesh>
+      {/* 헤일로 — 같은 지오메트리를 부풀려 가산 합성 */}
+      <mesh geometry={built.geo} frustumCulled={false} raycast={() => null} renderOrder={1}>
+        <shaderMaterial uniforms={haloUniforms} vertexShader={TUBE_VERTEX} fragmentShader={TUBE_FRAGMENT} transparent depthWrite={false} blending={THREE.AdditiveBlending} toneMapped={false} />
+      </mesh>
+      {/* 빛 구슬 */}
+      <points geometry={built.pulseGeo} frustumCulled={false} raycast={() => null} renderOrder={3}>
+        <shaderMaterial uniforms={pulseUniforms} transparent depthWrite={false} blending={THREE.AdditiveBlending} toneMapped={false} vertexShader={PULSE_VERTEX} fragmentShader={PULSE_FRAGMENT} />
+      </points>
       {/* 피킹 전용 — 보이지 않는 선분 */}
       <lineSegments
-        geometry={pick}
+        geometry={built.pick}
         frustumCulled={false}
         onPointerMove={(e) => {
           if (nodeAhead(e)) {
@@ -313,3 +269,87 @@ export default function RelationLines({ edges, emphasis, onHover, onSelect, inte
     </group>
   );
 }
+
+const TUBE_VERTEX = /* glsl */ `
+  attribute float aT;
+  attribute float aScore;
+  attribute float aRadius;
+  attribute float aFlow;
+  attribute float aNeg;
+  attribute float aEmph;
+  uniform float uInflate;
+  varying float vT;
+  varying float vScore;
+  varying float vFlow;
+  varying float vNeg;
+  varying float vEmph;
+  varying vec3 vNormalV;
+  void main(){
+    vT = aT; vScore = aScore; vFlow = aFlow; vNeg = aNeg; vEmph = aEmph;
+    // 헤일로 패스는 법선 방향으로 부풀린다
+    vec3 p = position + normal * aRadius * uInflate;
+    vNormalV = normalize(normalMatrix * normal);
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(p, 1.0);
+  }
+`;
+const TUBE_FRAGMENT = /* glsl */ `
+  uniform vec3 uColor;
+  uniform float uDim;
+  uniform float uHalo;
+  varying float vT;
+  varying float vScore;
+  varying float vFlow;
+  varying float vNeg;
+  varying float vEmph;
+  varying vec3 vNormalV;
+  void main(){
+    if (vEmph <= 0.003) discard;
+    // 무방향 관계는 점선
+    float dash = vFlow > 0.5 ? 1.0 : mix(0.3, 1.0, step(0.5, fract(vT * 18.0)));
+    // 끝점은 행성에 묻히도록 살짝 페이드
+    float ends = smoothstep(0.0, 0.05, vT) * smoothstep(1.0, 0.95, vT);
+    vec3 col = mix(uColor, vec3(1.0, 0.42, 0.46), vNeg * 0.55);
+    if (uHalo > 0.5) {
+      float a = 0.14 * (0.5 + 0.5 * vScore) * vEmph * vEmph * dash * ends * uDim;
+      gl_FragColor = vec4(col, a);
+      return;
+    }
+    // 플랫 컬러 + 살짝의 원통 음영 (툰 느낌)
+    float shade = 0.8 + 0.2 * max(0.0, dot(normalize(vNormalV), normalize(vec3(-0.45, 0.75, 0.6))));
+    col *= shade;
+    // 흐린 간선은 색을 탁하게 하지 않고 투명도만 낮춘다 (갈색 띠 방지)
+    col *= mix(0.85, 1.0, vEmph);
+    float a = (0.55 + 0.45 * vScore) * vEmph * vEmph * dash * ends * mix(0.55, 1.0, uDim);
+    gl_FragColor = vec4(col, a);
+  }
+`;
+const PULSE_VERTEX = /* glsl */ `
+  attribute float aSize;
+  attribute float aAlpha;
+  attribute float aNeg;
+  uniform float uScale;
+  varying float vAlpha;
+  varying float vNeg;
+  void main(){
+    vAlpha = aAlpha; vNeg = aNeg;
+    vec4 mv = modelViewMatrix * vec4(position, 1.0);
+    gl_PointSize = aSize * (uScale / -mv.z);
+    gl_Position = projectionMatrix * mv;
+  }
+`;
+const PULSE_FRAGMENT = /* glsl */ `
+  uniform float uDim;
+  varying float vAlpha;
+  varying float vNeg;
+  void main(){
+    if (vAlpha <= 0.002) discard;
+    float d = length(gl_PointCoord - 0.5) * 2.0;
+    if (d > 1.0) discard;
+    // 밝은 크림색 심 + 주황 글로우
+    float core = smoothstep(0.36, 0.18, d);
+    float glow = exp(-d * d * 3.2) * 0.55;
+    vec3 warm = mix(vec3(1.0, 0.64, 0.3), vec3(1.0, 0.4, 0.45), vNeg);
+    vec3 col = mix(warm, vec3(1.0, 0.95, 0.86), core);
+    gl_FragColor = vec4(col * (core + glow), (core + glow) * vAlpha * uDim);
+  }
+`;

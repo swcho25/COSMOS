@@ -244,7 +244,7 @@ function Content({ galaxy, system, callout, warpRef }: ContentProps) {
       <group onPointerMissed={(e) => e.button === 0 && clearSelection()}>
         {model && emphasis && (
           <group key={model.kind + (model.centerId ?? "")}>
-            <RelationLines edges={model.edges} emphasis={emphasis} onHover={setHoveredEdge} onSelect={selectEdge} intensity={model.kind === "galaxy" ? 0.45 : 1} />
+            <RelationLines edges={model.edges} emphasis={emphasis} onHover={setHoveredEdge} onSelect={selectEdge} intensity={model.kind === "galaxy" ? 0.85 : 1} />
             <CompanyNodes model={model} emphasis={emphasis} hoveredId={hoveredId} onHover={setHovered} onClick={warpTo} />
             <Labels model={model} emphasis={emphasis} visible={showLabels} />
             {callout && calloutNode && (
