@@ -8,6 +8,7 @@ import GalaxyPage from "@/features/galaxy/GalaxyPage";
 import NewsPage from "@/features/news/NewsPage";
 import CompaniesPage from "@/features/companies/CompaniesPage";
 import MePage from "@/features/profile/MePage";
+import ArtLabPage from "@/features/lab/ArtLabPage";
 import { useSession } from "@/store/session";
 
 const queryClient = new QueryClient({
@@ -41,6 +42,8 @@ export default function App() {
             <Route path="/news" element={<NewsPage />} />
             <Route path="/companies" element={<CompaniesPage />} />
             <Route path="/me" element={<MePage />} />
+            {/* 아트 디렉션 실험 페이지 — 내비게이션 미노출 */}
+            <Route path="/lab/art" element={<ArtLabPage />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </div>
