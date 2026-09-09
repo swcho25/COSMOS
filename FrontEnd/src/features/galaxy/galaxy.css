@@ -154,6 +154,33 @@
   color: var(--text-4);
 }
 
+/* 하단 중앙 위: 카메라 모드 전환 */
+.hud-nav {
+  left: 50%;
+  bottom: 62px;
+  transform: translateX(-50%);
+}
+.nav-toggle {
+  pointer-events: auto;
+}
+.nav-toggle .nav-icon {
+  font-size: 14px;
+  line-height: 1;
+}
+.nav-toggle kbd {
+  font: 600 11px/1 "JetBrains Mono", ui-monospace, monospace;
+  padding: 3px 6px;
+  border-radius: 6px;
+  color: var(--text-3);
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--border);
+}
+.nav-toggle.on {
+  color: var(--text);
+  background: rgba(109, 140, 255, 0.22);
+  border-color: rgba(109, 140, 255, 0.6);
+}
+
 /* 우하단: 범례 */
 .hud-legend {
   right: 24px;
@@ -594,7 +621,8 @@
     scrollbar-width: none;
   }
   .hud-legend,
-  .hud-help {
+  .hud-help,
+  .hud-nav {
     display: none;
   }
   .hud-panel-tag {

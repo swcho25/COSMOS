@@ -41,6 +41,8 @@ export default function GalaxyPage() {
   const toggleLegend = useGalaxy((s) => s.toggleLegend);
   const calloutHidden = useGalaxy((s) => s.calloutHidden);
   const hideCallout = useGalaxy((s) => s.hideCallout);
+  const navMode = useGalaxy((s) => s.navMode);
+  const toggleNavMode = useGalaxy((s) => s.toggleNavMode);
 
   const industries = useIndustries();
   const universe = useLatestGraph(null); // 전체 우주 — 색·시장 조회용
@@ -201,10 +203,21 @@ export default function GalaxyPage() {
         </div>
       </div>
 
-      {/* 하단 중앙: 도움말 */}
-      {!focusId && !selectedEdgeId && (
+      {/* 하단 중앙: 카메라 모드 전환 + 도움말 */}
+      <div className="hud hud-nav">
+        <button type="button" className={`hud-tag nav-toggle ${navMode === "fly" ? "on" : ""}`} onClick={toggleNavMode} title="F 키로도 전환됩니다">
+          <span className="nav-icon" aria-hidden>
+            {navMode === "fly" ? "🚀" : "◎"}
+          </span>
+          {navMode === "fly" ? "탐색 모드" : "궤도 모드"}
+          <kbd>F</kbd>
+        </button>
+      </div>
+      {(navMode === "fly" || (!focusId && !selectedEdgeId)) && (
         <div className="hud hud-help">
-          드래그로 회전 · 휠로 확대 · 기업을 누르면 워프, 관계선을 누르면 근거를 봅니다
+          {navMode === "fly"
+            ? "W A S D 이동 · Q E 위아래 · Shift 가속 · 드래그로 시선 · 휠로 전진 · 기업을 누르면 워프"
+            : "드래그로 회전 · 휠로 확대 · 기업을 누르면 워프, 관계선을 누르면 근거를 봅니다"}
         </div>
       )}
 

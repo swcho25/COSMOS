@@ -7,11 +7,13 @@ import * as THREE from "three";
 import type { SceneModel } from "@/lib/graph";
 import { useGalaxy } from "@/store/galaxy";
 import CompanyNodes from "./CompanyNodes";
+import FlyControls from "./FlyControls";
 import Labels from "./Labels";
 import Nebula from "./Nebula";
 import RelationLines from "./RelationLines";
 import Starfield from "./Starfield";
 import Warp from "./Warp";
+import { cameraBusy } from "./cameraState";
 import { computeEmphasis } from "./emphasis";
 
 type Pose = { pos: [number, number, number]; tgt: [number, number, number] };
@@ -131,13 +133,13 @@ function Director({ warpRef, galaxy, system }: { warpRef: MutableRefObject<numbe
       }
     } else {
       rig.speed = 0;
-      if (rig.lastPhase !== s.phase && rig.lastPhase !== "warp-committed") {
+      if (rig.lastPhase !== s.phase && rig.lastPhase !== "warp-committed" && s.navMode !== "fly") {
         startAnim(s.phase === "system" ? poseFor(system, "system", (camera as THREE.PerspectiveCamera).aspect) : poseFor(galaxy, "galaxy", (camera as THREE.PerspectiveCamera).aspect), 1.4);
       }
       if (rig.lastPhase !== s.phase) rig.lastPhase = s.phase;
       // 워프 중에 그래프가 도착했거나 필터로 모델이 바뀐 경우: 진행 중인 애니메이션이 끝난 뒤 현재 모델에 다시 맞춘다
       const model = s.phase === "system" ? system : galaxy;
-      if (model && fitted.current !== model && !rig.anim && introDone.current) {
+      if (model && fitted.current !== model && !rig.anim && introDone.current && s.navMode !== "fly") {
         fitted.current = model;
         startAnim(poseFor(model, s.phase === "system" ? "system" : "galaxy", (camera as THREE.PerspectiveCamera).aspect), 1.0);
       }
@@ -156,8 +158,9 @@ function Director({ warpRef, galaxy, system }: { warpRef: MutableRefObject<numbe
       if (a.t >= a.dur) rig.anim = null;
     }
 
+    cameraBusy.anim = !!rig.anim || s.phase === "warp";
     if (controls) {
-      const free = s.phase !== "warp" && !rig.anim;
+      const free = s.phase !== "warp" && !rig.anim && s.navMode !== "fly";
       if (controls.enabled !== free) controls.enabled = free;
     }
   });
@@ -218,18 +221,20 @@ function Content({ galaxy, system, callout, warpRef }: ContentProps) {
     [model, hoveredId, hoveredEdgeId, selectedEdgeId, minScore, activeTypes],
   );
 
+  const navMode = useGalaxy((s) => s.navMode);
   useEffect(() => {
-    document.body.style.cursor = hoveredId || hoveredEdgeId ? "pointer" : "";
+    document.body.style.cursor = hoveredId || hoveredEdgeId ? "pointer" : navMode === "fly" ? "crosshair" : "";
     return () => {
       document.body.style.cursor = "";
     };
-  }, [hoveredId, hoveredEdgeId]);
+  }, [hoveredId, hoveredEdgeId, navMode]);
 
   const calloutNode = callout && model ? model.nodeById.get(callout.companyId) : undefined;
 
   return (
     <>
       <Director warpRef={warpRef} galaxy={galaxy} system={system} />
+      <FlyControls />
       <OrbitControls makeDefault enablePan={false} enableDamping dampingFactor={0.07} rotateSpeed={0.45} zoomSpeed={0.7} minDistance={22} maxDistance={900} maxPolarAngle={Math.PI * 0.62} />
       <fog attach="fog" args={["#05070f", 480, 1500]} />
       <Nebula />

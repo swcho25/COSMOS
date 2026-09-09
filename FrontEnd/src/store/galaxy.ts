@@ -4,6 +4,7 @@ import { RELATIONSHIP_ORDER } from "@/lib/meta";
 
 export type PanelTab = "news" | "price" | "board";
 export type Phase = "galaxy" | "warp" | "system";
+export type NavMode = "orbit" | "fly";
 
 interface GalaxyState {
   /* ---- 뷰 상태 ---- */
@@ -34,6 +35,8 @@ interface GalaxyState {
   legendOpen: boolean;
   /** 기업 중심 뷰의 최신 뉴스 콜아웃 닫힘 여부 (기업이 바뀌면 다시 열림) */
   calloutHidden: boolean;
+  /** 카메라 조작 방식: orbit = 중심을 도는 궤도 카메라, fly = WASD 로 직접 날아다니는 탐색 카메라 */
+  navMode: NavMode;
 
   /* ---- 액션 ---- */
   warpTo(companyId: string | null): void;
@@ -55,6 +58,8 @@ interface GalaxyState {
   setPanelOpen(v: boolean): void;
   toggleLegend(): void;
   hideCallout(): void;
+  setNavMode(m: NavMode): void;
+  toggleNavMode(): void;
 }
 
 export const useGalaxy = create<GalaxyState>((set, get) => ({
@@ -80,6 +85,7 @@ export const useGalaxy = create<GalaxyState>((set, get) => ({
   panelOpen: true,
   legendOpen: true,
   calloutHidden: false,
+  navMode: "orbit",
 
   warpTo(companyId) {
     const s = get();
@@ -152,6 +158,12 @@ export const useGalaxy = create<GalaxyState>((set, get) => ({
   },
   setPanelOpen(v) {
     set({ panelOpen: v });
+  },
+  setNavMode(m) {
+    set({ navMode: m });
+  },
+  toggleNavMode() {
+    set((s) => ({ navMode: s.navMode === "fly" ? "orbit" : "fly" }));
   },
   toggleLegend() {
     set((s) => ({ legendOpen: !s.legendOpen }));
