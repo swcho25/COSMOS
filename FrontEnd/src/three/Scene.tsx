@@ -1,20 +1,19 @@
 import { useEffect, useMemo, useRef, type MutableRefObject } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { AdaptiveDpr, Html, OrbitControls } from "@react-three/drei";
-import { Bloom, ChromaticAberration, EffectComposer, Noise, Vignette } from "@react-three/postprocessing";
-import { BlendFunction } from "postprocessing";
+import { Bloom, ChromaticAberration, EffectComposer, Vignette } from "@react-three/postprocessing";
 import * as THREE from "three";
 import type { SceneModel } from "@/lib/graph";
 import { useGalaxy } from "@/store/galaxy";
+import Backdrop from "./Backdrop";
 import CompanyNodes from "./CompanyNodes";
 import FlyControls from "./FlyControls";
 import Labels from "./Labels";
-import Nebula from "./Nebula";
 import RelationLines from "./RelationLines";
-import Starfield from "./Starfield";
 import Warp from "./Warp";
 import { cameraBusy } from "./cameraState";
 import { computeEmphasis } from "./emphasis";
+import { LAB } from "./toon";
 
 type Pose = { pos: [number, number, number]; tgt: [number, number, number] };
 const FALLBACK_POSE: Record<"galaxy" | "system", Pose> = {
@@ -177,10 +176,9 @@ function Effects({ warpRef }: { warpRef: MutableRefObject<number> }) {
   });
   return (
     <EffectComposer multisampling={0}>
-      <Bloom mipmapBlur intensity={0.95} luminanceThreshold={0.62} luminanceSmoothing={0.25} radius={0.65} />
+      <Bloom mipmapBlur intensity={0.35} luminanceThreshold={0.88} luminanceSmoothing={0.2} radius={0.5} />
       {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
       <ChromaticAberration ref={ca as any} offset={offset} radialModulation modulationOffset={0.35} />
-      <Noise opacity={0.03} blendFunction={BlendFunction.OVERLAY} />
       <Vignette eskil={false} offset={0.22} darkness={0.82} />
     </EffectComposer>
   );
@@ -236,13 +234,16 @@ function Content({ galaxy, system, callout, warpRef }: ContentProps) {
       <Director warpRef={warpRef} galaxy={galaxy} system={system} />
       <FlyControls />
       <OrbitControls makeDefault enablePan={false} enableDamping dampingFactor={0.07} rotateSpeed={0.45} zoomSpeed={0.7} minDistance={22} maxDistance={900} maxPolarAngle={Math.PI * 0.62} />
-      <fog attach="fog" args={["#05070f", 480, 1500]} />
-      <Nebula />
-      <Starfield />
+      <fog attach="fog" args={[LAB.bg, 520, 1600]} />
+      <Backdrop radius={1700} stars={900} />
+      {/* 장난감 우주 조명 — 랩과 동일한 구성 */}
+      <ambientLight intensity={0.55} color="#c9d4ff" />
+      <hemisphereLight args={["#9ab3ff", "#3a1f5c", 0.6]} />
+      <directionalLight position={[-60, 80, 70]} intensity={2.4} color="#fff3e0" />
       <group onPointerMissed={(e) => e.button === 0 && clearSelection()}>
         {model && emphasis && (
           <group key={model.kind + (model.centerId ?? "")}>
-            <RelationLines edges={model.edges} emphasis={emphasis} onHover={setHoveredEdge} onSelect={selectEdge} intensity={model.kind === "galaxy" ? 0.5 : 1} />
+            <RelationLines edges={model.edges} emphasis={emphasis} onHover={setHoveredEdge} onSelect={selectEdge} intensity={model.kind === "galaxy" ? 0.45 : 1} />
             <CompanyNodes model={model} emphasis={emphasis} hoveredId={hoveredId} onHover={setHovered} onClick={warpTo} />
             <Labels model={model} emphasis={emphasis} visible={showLabels} />
             {callout && calloutNode && (
@@ -278,9 +279,9 @@ export default function Scene(props: Omit<ContentProps, "warpRef">) {
       camera={{ fov: 52, near: 0.5, far: 3000, position: FALLBACK_POSE.galaxy.pos }}
       raycaster={{ params: { Line: { threshold: 1.0 }, Points: { threshold: 1 }, Mesh: {}, LOD: {}, Sprite: {} } }}
       onCreated={(state) => {
-        state.gl.toneMapping = THREE.ACESFilmicToneMapping;
-        state.gl.toneMappingExposure = 1.0;
-        state.gl.setClearColor("#05070f", 1);
+        // 플랫 컬러가 그대로 나오도록 톤매핑은 끈다 (랩과 동일)
+        state.gl.toneMapping = THREE.NoToneMapping;
+        state.gl.setClearColor(LAB.bg, 1);
       }}
     >
       <Content {...props} warpRef={warpRef} />

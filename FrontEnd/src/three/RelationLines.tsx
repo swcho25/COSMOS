@@ -3,6 +3,7 @@ import { useFrame, useThree, type ThreeEvent } from "@react-three/fiber";
 import * as THREE from "three";
 import type { SceneEdge, Vec3 } from "@/lib/graph";
 import type { Emphasis } from "./emphasis";
+import { LAB } from "./toon";
 
 const SEGS = 24;
 const PICK_SEGS = 8;
@@ -83,11 +84,12 @@ export default function RelationLines({ edges, emphasis, onHover, onSelect, inte
 
     edges.forEach((e, ei) => {
       controlPoint(e.from, e.to, ctrl);
-      col.set(e.color);
+      // 관계 빔은 한 가지 주황 — 유형은 색이 아니라 흐름(방향)·점선(무방향)으로 구분한다
+      col.set(LAB.beam);
       const s = e.score / 100;
       const seed = (ei * 0.6180339887) % 1;
-      const width = 0.8 + s * s * 3.6; // px
-      const alpha = 0.07 + s * s * 0.5;
+      const width = 1.1 + s * s * 4.2; // px
+      const alpha = 0.16 + s * s * 0.7;
       const speed = 0.06 + s * 0.2;
       const base = vi;
       for (let k = 0; k <= SEGS; k += 1) {
@@ -199,9 +201,9 @@ export default function RelationLines({ edges, emphasis, onHover, onSelect, inte
     return edges[ei];
   };
   /** 같은 광선에 기업 노드가 걸려 있으면 간선은 뒤로 물러난다 — 간선이 촘촘해도 기업을 먼저 고를 수 있게 */
-  // 노드 디스크(원 안쪽)가 앞에 있으면 간선은 양보한다 — 쿼드 모서리는 노드로 치지 않는다
+  // 노드(행성 또는 이름표 원판 안쪽)가 앞에 있으면 간선은 양보한다 — 이름표 쿼드의 모서리는 노드로 치지 않는다
   const nodeAhead = (e: ThreeEvent<PointerEvent | MouseEvent>) =>
-    e.intersections.some((i) => i.object.userData?.pick === "node" && (!i.uv || Math.hypot(i.uv.x - 0.5, i.uv.y - 0.5) <= 0.5));
+    e.intersections.some((i) => i.object.userData?.pick === "node" && (!i.object.userData?.disc || !i.uv || Math.hypot(i.uv.x - 0.5, i.uv.y - 0.5) <= 0.5));
 
   return (
     <group>
@@ -212,7 +214,7 @@ export default function RelationLines({ edges, emphasis, onHover, onSelect, inte
           transparent
           depthWrite={false}
           side={THREE.DoubleSide}
-          blending={THREE.AdditiveBlending}
+          blending={THREE.NormalBlending}
           toneMapped={false}
           vertexShader={/* glsl */ `
             attribute vec3 aDir;
@@ -271,15 +273,16 @@ export default function RelationLines({ edges, emphasis, onHover, onSelect, inte
               float d1 = abs(fract(vT - head + 0.5) - 0.5);
               float d2 = abs(fract((1.0 - vT) - head + 0.5) - 0.5);
               float pulse = vFlow > 0.5 ? exp(-d1 * d1 * 170.0) : max(exp(-d1 * d1 * 260.0), exp(-d2 * d2 * 260.0)) * 0.85;
-              vec3 hot = mix(vColor, vec3(1.0), 0.55);
-              vec3 neg = vec3(1.0, 0.36, 0.42);
-              hot = mix(hot, neg, vNeg * 0.65);
-              vec3 col = mix(vColor * 0.75, hot * mix(1.3, 2.4, uDim), pulse);
-              col *= mix(0.4, 1.0, vEmph);
+              // 펄스는 크림색, 부정 영향은 붉게
+              vec3 hot = mix(vec3(1.0, 0.95, 0.86), vec3(1.0, 0.42, 0.46), vNeg * 0.8);
+              vec3 col = mix(vColor, hot, pulse);
+              col *= mix(0.45, 1.0, vEmph);
+              // 무방향 관계는 점선 — 흐름 없이도 방향이 없다는 것이 읽힌다
+              float dash = vFlow > 0.5 ? 1.0 : mix(0.45, 1.0, step(0.5, fract(vT * 16.0)));
               // 끝점은 노드에 묻히도록 살짝 페이드
               float ends = smoothstep(0.0, 0.06, vT) * smoothstep(1.0, 0.94, vT);
-              float a = vAlpha * vEmph * soft * (0.5 + 0.5 * pulse) * (0.7 + 0.3 * ends) * uDim;
-              gl_FragColor = vec4(col * soft, a);
+              float a = vAlpha * vEmph * soft * dash * (0.75 + 0.25 * pulse) * (0.7 + 0.3 * ends) * uDim;
+              gl_FragColor = vec4(col, a);
             }
           `}
         />

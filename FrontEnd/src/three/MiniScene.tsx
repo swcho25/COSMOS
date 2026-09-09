@@ -7,7 +7,8 @@ import type { SceneModel } from "@/lib/graph";
 import CompanyNodes from "./CompanyNodes";
 import Labels from "./Labels";
 import RelationLines from "./RelationLines";
-import Starfield from "./Starfield";
+import Backdrop from "./Backdrop";
+import { LAB } from "./toon";
 import { computeEmphasis } from "./emphasis";
 
 interface Props {
@@ -44,14 +45,17 @@ export default function MiniScene({ model, onPickCompany, onPickEdge, highlightI
       camera={{ fov: 48, near: 0.5, far: 2000, position: [0, radius * 0.9, radius * 2.1] }}
       raycaster={{ params: { Line: { threshold: 1.2 }, Points: { threshold: 1 }, Mesh: {}, LOD: {}, Sprite: {} } }}
       onCreated={({ gl }) => {
-        gl.toneMapping = THREE.ACESFilmicToneMapping;
-        gl.setClearColor("#05070f", 1);
+        gl.toneMapping = THREE.NoToneMapping;
+        gl.setClearColor(LAB.bg, 1);
       }}
       style={{ cursor: hovered || hoveredEdge ? "pointer" : "grab" }}
     >
       <color attach="background" args={["#05070f"]} />
       <OrbitControls makeDefault enablePan={false} enableDamping dampingFactor={0.08} autoRotate={autoRotate && !hovered} autoRotateSpeed={0.6} minDistance={14} maxDistance={radius * 4 + 40} maxPolarAngle={Math.PI * 0.6} />
-      <Starfield count={1800} />
+      <Backdrop radius={600} stars={400} />
+      <ambientLight intensity={0.55} color="#c9d4ff" />
+      <hemisphereLight args={["#9ab3ff", "#3a1f5c", 0.6]} />
+      <directionalLight position={[-40, 60, 50]} intensity={2.4} color="#fff3e0" />
       {model && emphasis && (
         <group key={model.centerId ?? "m"}>
           <RelationLines edges={model.edges} emphasis={emphasis} onHover={setHoveredEdge} onSelect={(id) => onPickEdge?.(id)} />
@@ -60,7 +64,7 @@ export default function MiniScene({ model, onPickCompany, onPickEdge, highlightI
         </group>
       )}
       <EffectComposer multisampling={0}>
-        <Bloom mipmapBlur intensity={0.8} luminanceThreshold={0.6} luminanceSmoothing={0.3} radius={0.6} />
+        <Bloom mipmapBlur intensity={0.35} luminanceThreshold={0.88} luminanceSmoothing={0.2} radius={0.5} />
         <Vignette eskil={false} offset={0.2} darkness={0.7} />
       </EffectComposer>
     </Canvas>

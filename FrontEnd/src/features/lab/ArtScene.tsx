@@ -3,72 +3,13 @@ import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { OrbitControls } from "@react-three/drei";
 import { Bloom, EffectComposer } from "@react-three/postprocessing";
 import * as THREE from "three";
-import { dotTexture } from "@/three/textures";
+import Backdrop from "@/three/Backdrop";
 import { LAB, glowTexture, logoTagTexture, planetGeometry, toonGradient, type PlanetPalette } from "./toon";
 
 export interface LabOptions {
   steps: number;
   glow: boolean;
   spin: boolean;
-}
-
-/* ------------------------------ 배경 ------------------------------ */
-function Backdrop() {
-  // 위가 조금 밝은 네이비 그라디언트 + 성운 두 덩이 + 플랫한 별
-  const stars = useMemo(() => {
-    const n = 260;
-    const pos = new Float32Array(n * 3);
-    const size = new Float32Array(n);
-    let s = 7;
-    const rnd = () => {
-      s = (s * 16807) % 2147483647;
-      return s / 2147483647;
-    };
-    for (let i = 0; i < n; i += 1) {
-      const r = 70 + rnd() * 40;
-      const th = rnd() * Math.PI * 2;
-      const ph = Math.acos(2 * rnd() - 1);
-      pos[i * 3] = r * Math.sin(ph) * Math.cos(th);
-      pos[i * 3 + 1] = r * Math.cos(ph) * 0.8;
-      pos[i * 3 + 2] = r * Math.sin(ph) * Math.sin(th);
-      size[i] = 0.8 + rnd() * rnd() * 3.2;
-    }
-    const g = new THREE.BufferGeometry();
-    g.setAttribute("position", new THREE.BufferAttribute(pos, 3));
-    g.setAttribute("aSize", new THREE.BufferAttribute(size, 1));
-    return g;
-  }, []);
-  const uniforms = useMemo(() => ({ uMap: { value: dotTexture() } }), []);
-  return (
-    <group>
-      <mesh scale={[150, 150, 150]}>
-        <sphereGeometry args={[1, 24, 16]} />
-        <shaderMaterial
-          side={THREE.BackSide}
-          depthWrite={false}
-          uniforms={{ uTop: { value: new THREE.Color(LAB.bgTop) }, uBottom: { value: new THREE.Color(LAB.bg) } }}
-          vertexShader={/* glsl */ `varying vec3 vP; void main(){ vP = position; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }`}
-          fragmentShader={/* glsl */ `uniform vec3 uTop; uniform vec3 uBottom; varying vec3 vP;
-            void main(){ float t = smoothstep(-0.6, 0.8, vP.y); gl_FragColor = vec4(mix(uBottom, uTop, t), 1.0); }`}
-        />
-      </mesh>
-      <sprite position={[-18, 6, -40]} scale={[70, 46, 1]}>
-        <spriteMaterial map={glowTexture()} color={LAB.nebulaA} transparent opacity={0.22} depthWrite={false} blending={THREE.AdditiveBlending} />
-      </sprite>
-      <sprite position={[22, -8, -45]} scale={[64, 40, 1]}>
-        <spriteMaterial map={glowTexture()} color={LAB.nebulaB} transparent opacity={0.16} depthWrite={false} blending={THREE.AdditiveBlending} />
-      </sprite>
-      <points geometry={stars} frustumCulled={false}>
-        <shaderMaterial
-          transparent
-          depthWrite={false}
-          uniforms={uniforms}
-          vertexShader={/* glsl */ `attribute float aSize; void main(){ vec4 mv = modelViewMatrix * vec4(position,1.0); gl_PointSize = aSize * (600.0 / -mv.z); gl_Position = projectionMatrix * mv; }`}
-          fragmentShader={/* glsl */ `uniform sampler2D uMap; void main(){ vec4 t = texture2D(uMap, gl_PointCoord); gl_FragColor = vec4(vec3(1.0), t.a * 0.9); }`}
-        />
-      </points>
-    </group>
-  );
 }
 
 /* ------------------------------ 항성 ------------------------------ */
