@@ -5,7 +5,8 @@
 - 기본 경로: `/api`
 - 응답 형식: JSON
 - 필드명: camelCase
-- 주요 식별자: UUID 문자열
+- 주요 도메인 식별자: UUID 문자열
+- 사용자 식별자(`userId`): 64비트 정수
 - 날짜·시각: ISO 8601 UTC
 
 ## 1. 공통 규칙
@@ -48,13 +49,30 @@
 }
 ```
 
+입력값 검증에 실패하면 `fieldErrors`에 문제가 발생한 필드와 사유를 반환한다.
+
+```json
+{
+  "code": "VALIDATION_FAILED",
+  "message": "요청값이 올바르지 않습니다.",
+  "fieldErrors": [
+    {
+      "field": "email",
+      "message": "올바른 형식의 이메일 주소여야 합니다."
+    }
+  ]
+}
+```
+
 | 상태 | 용도 |
 | --- | --- |
 | `400 Bad Request` | 입력값 또는 커서 검증 실패 |
 | `401 Unauthorized` | 인증 실패 또는 토큰 만료 |
 | `403 Forbidden` | 리소스 접근 권한 부족 |
 | `404 Not Found` | 요청한 리소스 없음 |
+| `405 Method Not Allowed` | 허용되지 않은 HTTP 메서드 |
 | `409 Conflict` | 이메일·닉네임·스크랩 등 중복 등록 |
+| `415 Unsupported Media Type` | 지원하지 않는 요청 미디어 타입 |
 | `500 Internal Server Error` | 서버 내부 오류 |
 
 ### 서비스 범위
@@ -300,7 +318,7 @@ refresh token은 httpOnly 쿠키(`Set-Cookie`)로 전달
 #### Response — 201 Created
 ```json
 {
-  "userId": "550e8400-e29b-41d4-a716-446655440041",
+  "userId": 1,
   "email": "kim@example.com",
   "nickname": "우주탐험가"
 }
@@ -338,7 +356,7 @@ refresh token은 httpOnly 쿠키(`Set-Cookie`)로 전달
 #### Response — 200 OK
 ```json
 {
-  "userId": "550e8400-e29b-41d4-a716-446655440041",
+  "userId": 1,
   "email": "kim@example.com",
   "nickname": "우주탐험가"
 }
@@ -387,7 +405,7 @@ refresh token은 httpOnly 쿠키(`Set-Cookie`)로 전달
 #### Response — 200 OK
 ```json
 {
-  "userId": "550e8400-e29b-41d4-a716-446655440041",
+  "userId": 1,
   "email": "kim@example.com",
   "nickname": "새로운닉네임"
 }
@@ -1751,7 +1769,7 @@ HDFS의 기사 본문 전체는 제공하지 않으며 사용자는 `originalUrl
       "commentId": "550e8400-e29b-41d4-a716-446655440040",
       "content": "최근 공급망 뉴스가 인상적이네요.",
       "author": {
-        "userId": "550e8400-e29b-41d4-a716-446655440041",
+        "userId": 1,
         "nickname": "우주탐험가"
       },
       "company": {
@@ -1805,7 +1823,7 @@ HDFS의 기사 본문 전체는 제공하지 않으며 사용자는 `originalUrl
       "commentId": "550e8400-e29b-41d4-a716-446655440040",
       "content": "최근 공급망 뉴스가 인상적이네요.",
       "author": {
-        "userId": "550e8400-e29b-41d4-a716-446655440041",
+        "userId": 1,
         "nickname": "우주탐험가"
       },
       "companyId": "550e8400-e29b-41d4-a716-446655440010",
