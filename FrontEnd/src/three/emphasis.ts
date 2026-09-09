@@ -1,4 +1,6 @@
 import type { SceneModel } from "@/lib/graph";
+import type { PathResult } from "@/lib/path";
+import { roleOf, type RoleKey } from "@/lib/roles";
 
 export interface Emphasis {
   node: Map<string, number>;
@@ -23,6 +25,10 @@ export interface EmphasisInput {
    * 나머지는 노드를 호버했을 때만 나타난다. 관계가 많아도 화면이 읽히게 한다.
    */
   budget?: boolean;
+  /** 경로 기준 → 호버 노드의 최단 경로 (Scene 이 계산). 있으면 호버 강조보다 우선한다 */
+  path?: PathResult | null;
+  /** 기업 중심 뷰 1홉 요약에서 고른 역할 — 중심의 그 역할 이웃·간선만 남긴다 (centerId 가 있을 때만 의미) */
+  roleFilter?: RoleKey | null;
 }
 
 const DEPTH_DIM = [1, 1, 0.74, 0.56];
@@ -53,7 +59,7 @@ function budgetSet(model: SceneModel, visible: Set<string>, on: boolean) {
 
 /**
  * 어떤 노드·간선을 얼마나 밝게 그릴지 계산한다.
- * 우선순위: 호버 노드 > 선택 간선 > 호버 간선 > 기업 중심 뷰의 depth 흐림 > 기본.
+ * 우선순위: 경로 > 호버 노드 > 선택 간선 > 호버 간선 > 역할 필터 > 기업 중심 뷰의 depth 흐림 > 기본.
  * 필터(최소 점수·관계 유형)에 걸린 간선은 0 으로 숨기고, 간선 예산 밖의 간선은 호버 노드에 붙은 것만 보인다.
  */
 export function computeEmphasis(model: SceneModel, input: EmphasisInput): Emphasis {
@@ -73,6 +79,21 @@ export function computeEmphasis(model: SceneModel, input: EmphasisInput): Emphas
     const n = model.nodeById.get(id);
     return n ? DEPTH_DIM[Math.min(n.depth, 3)] : 1;
   };
+
+  // 경로: 경로 위 노드·간선만 밝고, 호버 노드의 1홉 이웃은 중간 밝기로 남겨 다음 갈 곳이 보이게 한다.
+  // 경로 간선은 예산과 무관하게 나타나야 하므로 visible 만 본다
+  const path = input.path;
+  if (path && path.nodes.length >= 2) {
+    const onPath = new Set(path.nodes);
+    const onEdges = new Set(path.edges);
+    const nb = input.hoveredId ? (model.neighbors.get(input.hoveredId) ?? new Set<string>()) : new Set<string>();
+    model.nodes.forEach((n) => node.set(n.id, onPath.has(n.id) ? 1 : nb.has(n.id) ? 0.45 : 0.12));
+    model.edges.forEach((e) => edge.set(e.id, onEdges.has(e.id) ? (visible.has(e.id) ? 1 : 0) : shown.has(e.id) ? 0.05 : 0));
+    onPath.forEach((id) => pinned.add(id));
+    badges.add(path.nodes[0]);
+    badges.add(path.nodes[path.nodes.length - 1]);
+    return { node, edge, pinned, badges };
+  }
 
   if (input.hoveredId && model.nodeById.has(input.hoveredId)) {
     const h = input.hoveredId;
@@ -99,6 +120,24 @@ export function computeEmphasis(model: SceneModel, input: EmphasisInput): Emphas
       badges.add(sel.target);
       return { node, edge, pinned, badges };
     }
+  }
+
+  // 역할 필터: 중심의 인접 간선 중 그 역할인 것과 이웃만 남긴다. 예산은 무시하되 필터(visible)는 지킨다
+  if (input.roleFilter && model.centerId && model.nodeById.has(model.centerId)) {
+    const c = model.centerId;
+    const keepEdges = new Set<string>();
+    const keepNodes = new Set<string>([c]);
+    model.incident.get(c)?.forEach((eid) => {
+      const e = model.edgeById.get(eid);
+      if (!e || !visible.has(e.id) || roleOf(e, c) !== input.roleFilter) return;
+      keepEdges.add(e.id);
+      keepNodes.add(e.source === c ? e.target : e.source);
+    });
+    model.nodes.forEach((n) => node.set(n.id, keepNodes.has(n.id) ? 1 : 0.2));
+    model.edges.forEach((e) => edge.set(e.id, keepEdges.has(e.id) ? 1 : shown.has(e.id) ? 0.05 : 0));
+    keepNodes.forEach((id) => pinned.add(id));
+    badges.add(c);
+    return { node, edge, pinned, badges };
   }
 
   model.nodes.forEach((n) => node.set(n.id, base(n.id)));

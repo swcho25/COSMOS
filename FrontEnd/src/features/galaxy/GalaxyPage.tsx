@@ -9,7 +9,9 @@ import { useCompanyGraph, useIndustries, useLatestGraph, useNewsFeed } from "@/l
 import { useGalaxy } from "@/store/galaxy";
 import { Icon, TypeLegend } from "@/components/ui";
 import CompanyPanel from "./CompanyPanel";
+import HopSummary from "./HopSummary";
 import RelationshipPanel from "./RelationshipPanel";
+import SceneTip, { type PointerPos } from "./SceneTip";
 import SearchPalette from "./SearchPalette";
 import "./galaxy.css";
 
@@ -58,6 +60,8 @@ export default function GalaxyPage() {
     return (id: string) => m.get(id);
   }, [universe.data]);
   const systemModel = useMemo(() => (companyGraph.data ? layoutSystem(companyGraph.data, lookup) : null), [companyGraph.data, lookup]);
+  // 씬 툴팁이 따라갈 포인터 위치 — ref 에만 써서 포인터 이동이 리렌더를 만들지 않는다
+  const pointer = useRef<PointerPos>({ x: -1000, y: -1000 });
 
   /* URL ?company= 와 포커스 동기화 — 진입 시 딥링크를 먼저 소비한 뒤에만 URL 을 상태에 맞춘다 */
   const pendingDeepLink = useRef(params.get("company"));
@@ -79,12 +83,14 @@ export default function GalaxyPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [focusId]);
 
-  /* 키보드: ESC 은하 복귀 */
+  /* 키보드: ESC — 역할 필터 → 경로 기준 핀 → 선택 간선 → 은하 복귀 순으로 한 겹씩 벗긴다 */
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const s = useGalaxy.getState();
       if (e.key === "Escape" && !s.searchOpen) {
-        if (s.selectedEdgeId) selectEdge(null);
+        if (s.roleFilter) s.setRoleFilter(null);
+        else if (s.pinnedId) s.togglePin(s.pinnedId);
+        else if (s.selectedEdgeId) selectEdge(null);
         else if (s.focusId && s.phase !== "warp") s.backToGalaxy();
       }
     };
@@ -114,10 +120,18 @@ export default function GalaxyPage() {
   const loading = latest.isLoading || (Boolean(focusId) && companyGraph.isLoading && !systemModel);
 
   return (
-    <div className="galaxy">
+    <div
+      className="galaxy"
+      onPointerMove={(e) => {
+        pointer.current.x = e.clientX;
+        pointer.current.y = e.clientY;
+      }}
+    >
       <div className="stage">
         <Scene galaxy={galaxyModel} system={systemModel} callout={callout} />
       </div>
+      {/* 빔·기업 호버 툴팁 — 포인터를 따라가는 DOM, 클릭은 통과시킨다 */}
+      <SceneTip model={focusId ? systemModel : galaxyModel} pointer={pointer} />
 
       {loading && (
         <div className="stage-loading" aria-live="polite">
@@ -185,6 +199,8 @@ export default function GalaxyPage() {
           </button>
         </div>
       )}
+      {/* 브레드크럼 아래: 중심 기업의 1홉 역할 요약 (칩을 누르면 그 역할만 남긴다) */}
+      <HopSummary model={systemModel} />
 
       {/* 좌하단: 상태 */}
       <div className="hud hud-status">

@@ -21,7 +21,12 @@ interface Props {
   onSelect?: (id: string) => void;
   /** 전체 밝기 배율 (은하 뷰처럼 간선이 많을 때 낮춰 노드·성단이 묻히지 않게) */
   intensity?: number;
+  /** 호버 중인 간선 — 그 빔의 구슬이 2.2 배 빨리 흐르고 1.4 배 커져 방향이 한눈에 읽힌다 */
+  hoveredEdgeId?: string | null;
 }
+/** 호버 빔의 구슬 속도·크기 배율 */
+const HOVER_SPEED = 2.2;
+const HOVER_SIZE = 1.4;
 
 /**
  * 관계 빔 — 아트 디렉션 랩의 튜브 빔을 은하 전체에 적용한 것.
@@ -31,13 +36,14 @@ interface Props {
  *   방향 있는 관계는 source → target 으로, 무방향 관계는 양방향으로 흐르며 점선 튜브를 쓴다
  * - 강조(emphasis) 값은 지오메트리를 다시 만들지 않고 속성 하나만 갱신한다
  */
-export default function RelationLines({ edges, emphasis, onHover, onSelect, intensity = 1 }: Props) {
+export default function RelationLines({ edges, emphasis, onHover, onSelect, intensity = 1, hoveredEdgeId = null }: Props) {
   const built = useMemo(() => {
     const n = edges.length;
     const ctrls: THREE.Vector3[] = [];
     const radii = new Float32Array(n);
     const speeds = new Float32Array(n);
-    const seeds = new Float32Array(n);
+    // 구슬 위상 — 시각(t)×속도 대신 프레임마다 누적해, 호버로 속도가 바뀌어도 구슬이 점프하지 않는다
+    const phases = new Float32Array(n);
 
     // 튜브 병합 버퍼
     const vPer = (SEGS + 1) * (RADIAL + 1);
@@ -61,7 +67,7 @@ export default function RelationLines({ edges, emphasis, onHover, onSelect, inte
       const r = radiusOf(s);
       radii[ei] = r;
       speeds[ei] = 0.05 + s * 0.14;
-      seeds[ei] = (ei * 0.6180339887) % 1;
+      phases[ei] = (ei * 0.6180339887) % 1;
 
       const curve = new THREE.QuadraticBezierCurve3(new THREE.Vector3().fromArray(e.from), ctrl, new THREE.Vector3().fromArray(e.to));
       const tube = new THREE.TubeGeometry(curve, SEGS, r, RADIAL, false);
@@ -132,7 +138,7 @@ export default function RelationLines({ edges, emphasis, onHover, onSelect, inte
     pulseGeo.setAttribute("aAlpha", pAlpha);
     pulseGeo.setAttribute("aNeg", new THREE.BufferAttribute(pNeg, 1));
 
-    return { geo, emphAttr, pick, ctrls, radii, speeds, seeds, pulseGeo, pPos, pSize, pAlpha, vPer };
+    return { geo, emphAttr, pick, ctrls, radii, speeds, phases, pulseGeo, pPos, pSize, pAlpha, vPer };
   }, [edges]);
 
   useEffect(
@@ -158,8 +164,8 @@ export default function RelationLines({ edges, emphasis, onHover, onSelect, inte
   const haloUniforms = useMemo(() => ({ uColor: { value: new THREE.Color(LAB.beamGlow) }, uDim: { value: 1 }, uInflate: { value: 1.7 }, uHalo: { value: 1 } }), []);
   const pulseUniforms = useMemo(() => ({ uDim: { value: 1 }, uScale: { value: 600 } }), []);
 
-  useFrame((state) => {
-    const t = state.clock.elapsedTime;
+  useFrame((state, delta) => {
+    const dt = Math.min(delta, 0.05);
     tubeUniforms.uDim.value = intensity;
     haloUniforms.uDim.value = intensity;
     pulseUniforms.uDim.value = intensity;
@@ -172,9 +178,11 @@ export default function RelationLines({ edges, emphasis, onHover, onSelect, inte
     edges.forEach((e, ei) => {
       const emph = emphasis.edge.get(e.id) ?? 1;
       const ctrl = built.ctrls[ei];
+      const hot = e.id === hoveredEdgeId;
+      const phase = (built.phases[ei] = (built.phases[ei] + dt * built.speeds[ei] * (hot ? HOVER_SPEED : 1)) % 1);
       for (let j = 0; j < PULSES; j += 1) {
         const k = ei * PULSES + j;
-        let u = (t * built.speeds[ei] + built.seeds[ei] + j / PULSES) % 1;
+        let u = (phase + j / PULSES) % 1;
         // 무방향 관계는 구슬이 양쪽으로 오간다
         if (!e.directed && j % 2 === 1) u = 1 - u;
         bezier(e.from, e.to, ctrl, u, P);
@@ -182,7 +190,7 @@ export default function RelationLines({ edges, emphasis, onHover, onSelect, inte
         pos[k * 3 + 1] = P.y;
         pos[k * 3 + 2] = P.z;
         const fade = Math.sin(u * Math.PI);
-        size[k] = built.radii[ei] * (6.0 + fade * 3.6);
+        size[k] = built.radii[ei] * (6.0 + fade * 3.6) * (hot ? HOVER_SIZE : 1);
         alpha[k] = emph <= 0.003 ? 0 : (0.35 + 0.65 * fade) * Math.min(1, emph * 1.4);
       }
     });

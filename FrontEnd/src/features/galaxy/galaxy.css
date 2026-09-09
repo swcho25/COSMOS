@@ -108,6 +108,117 @@
   color: var(--text);
 }
 
+/* 브레드크럼 아래: 1홉 역할 요약 스트립 */
+.hud-hop {
+  left: 24px;
+  top: 74px;
+  max-width: min(720px, calc(100vw - 460px));
+}
+.hop-strip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  padding: 6px 8px;
+  border-radius: 12px;
+  background: rgba(10, 14, 24, 0.55);
+  border: 1px solid var(--border);
+  backdrop-filter: blur(8px);
+}
+.hop-strip .role-badge {
+  backdrop-filter: none;
+  transition: background 0.15s, border-color 0.15s, opacity 0.15s;
+}
+.hop-strip .role-badge b {
+  color: var(--text-3);
+}
+.hop-strip .role-badge.on b {
+  color: var(--text);
+}
+.hop-total {
+  padding: 0 6px 0 8px;
+  white-space: nowrap;
+}
+
+/* 씬 툴팁 — 포인터 옆 어두운 카드. 클릭·호버를 가로채지 않는다 */
+.scene-tip {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 260px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: rgba(16, 22, 34, 0.92);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-card);
+  font-size: 12px;
+  color: var(--text-2);
+  pointer-events: none;
+  z-index: 6;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  will-change: transform;
+}
+.scene-tip .tip-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.scene-tip .tip-head b {
+  font-size: 14px;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.scene-tip .tip-roles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+}
+.scene-tip .tip-role {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  white-space: nowrap;
+}
+.scene-tip .tip-pair {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+.scene-tip .tip-pair span:first-child {
+  text-align: right;
+}
+.scene-tip .tip-pair .arrow {
+  color: var(--text-3);
+  font-size: 15px;
+}
+.scene-tip .tip-score {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.scene-tip .tip-score b {
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: -1px;
+  line-height: 1;
+  color: var(--text);
+}
+/* 지연 필드 — 스켈레톤과 텍스트가 같은 높이를 차지해 도착해도 카드가 튀지 않는다 */
+.scene-tip .tip-ev {
+  min-height: 14px;
+  display: flex;
+  align-items: center;
+}
+
 /* 좌하단: 상태 카드 */
 .hud-status {
   left: 24px;
@@ -675,6 +786,14 @@
   .hud-crumb {
     left: 16px;
     top: 74px;
+  }
+  .hud-hop {
+    left: 16px;
+    top: 126px;
+    max-width: calc(100vw - 32px);
+  }
+  .scene-tip {
+    display: none;
   }
   .hud-panel {
     left: 0;

@@ -5,6 +5,8 @@ import type { SceneModel, SceneNode } from "@/lib/graph";
 import { initials } from "@/lib/format";
 import { logoUrl } from "@/lib/logos";
 import { hashString } from "@/lib/rng";
+import { ROLE_META, roleColor, type RoleKey } from "@/lib/roles";
+import { touch } from "./bufferUtil";
 import { CHIP_H, CHIP_PILL, CHIP_STEM, chipFragment, chipHit, chipVertex } from "./chipShader";
 import type { Emphasis } from "./emphasis";
 import { ATLAS_CELL_UV, cellUv, ensureLogoCell, logoAtlasTexture } from "./logoAtlas";
@@ -25,6 +27,8 @@ interface Props {
   showLabels?: boolean;
   /** Shift+클릭 — 경로 기준 고정. 없으면 Shift 여부와 무관하게 onClick */
   onPin?: (id: string) => void;
+  /** 호버 노드의 이웃 → 역할. 그 이웃 칩의 로고 원과 이름 사이에 유형색 역할 태그(공급사·고객…)가 붙는다 */
+  roleTags?: Map<string, RoleKey> | null;
 }
 
 type Variant = "land" | "ring" | "moon";
@@ -90,7 +94,7 @@ function filteredRaycast(accept: (instanceId: number, uv: THREE.Vector2) => bool
  * - 정면 배지(흰 로고 원판)는 emphasis.badges — 호버·중심·선택 간선 양끝 — 에서만 카메라→행성 시선 위에 떠오른다
  * - 멀리서도 위치가 보이도록 아주 약한 헤일로 점광을 함께 둔다
  */
-export default function CompanyNodes({ model, emphasis, hoveredId, onHover, onClick, showLabels = true, onPin }: Props) {
+export default function CompanyNodes({ model, emphasis, hoveredId, onHover, onClick, showLabels = true, onPin, roleTags = null }: Props) {
   const tags = useRef<THREE.InstancedMesh>(null);
   const chips = useRef<THREE.InstancedMesh>(null);
   const ring = useRef<THREE.Sprite>(null);
@@ -229,7 +233,7 @@ export default function CompanyNodes({ model, emphasis, hoveredId, onHover, onCl
     haloAlpha.setUsage(THREE.DynamicDrawUsage);
     haloGeo.setAttribute("aSize", haloSize);
     haloGeo.setAttribute("aAlpha", haloAlpha);
-    return { geo, brightAttr, emphAttr, alphaAttr, chipGeo, chipAspect, chipState, chipRole, aspectArr, nameCells, bounds, haloGeo, haloPos, haloSize, haloAlpha };
+    return { geo, brightAttr, emphAttr, alphaAttr, chipGeo, chipAspect, chipState, chipRole, chipRoleColor, aspectArr, nameCells, bounds, haloGeo, haloPos, haloSize, haloAlpha };
   }, [model, n]);
   useEffect(
     () => () => {
@@ -239,6 +243,31 @@ export default function CompanyNodes({ model, emphasis, hoveredId, onHover, onCl
     },
     [built],
   );
+
+  // 역할 태그 — 호버가 바뀔 때만 이웃 칩의 aRole(이름 아틀라스의 역할 라벨 셀)·aRoleColor 를 쓴다. 폭(roleW)은 프레임 루프가 aRole 에서 읽는다
+  useEffect(() => {
+    const roleArr = built.chipRole.array as Float32Array;
+    const colArr = built.chipRoleColor.array as Float32Array;
+    roleArr.fill(0);
+    if (roleTags) {
+      const c = new THREE.Color();
+      model.nodes.forEach((node, i) => {
+        const role = roleTags.get(node.id);
+        if (!role) return;
+        const cell = ensureNameCell(ROLE_META[role].label);
+        if (!cell) return;
+        roleArr[i * 4] = cell.u;
+        roleArr[i * 4 + 1] = cell.v;
+        roleArr[i * 4 + 2] = cell.w;
+        roleArr[i * 4 + 3] = cell.h;
+        c.set(roleColor(role));
+        colArr[i * 3] = c.r;
+        colArr[i * 3 + 1] = c.g;
+        colArr[i * 3 + 2] = c.b;
+      });
+    }
+    touch(built.chipRole, built.chipRoleColor);
+  }, [roleTags, model, built]);
 
   // 프레임 스크래치 — 칩 높이·목표 알파 (버킷 판정이 끝난 뒤 두 번째 루프에서 쓴다)
   const scratch = useMemo(() => ({ h: new Float32Array(n), target: new Float32Array(n) }), [n]);

@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import type { MetricWindow, PricePeriod, RelationshipType } from "@/api/types";
 import { RELATIONSHIP_ORDER } from "@/lib/meta";
+import type { RoleKey } from "@/lib/roles";
 
 export type PanelTab = "news" | "price" | "board";
 export type Phase = "galaxy" | "warp" | "system";
@@ -17,6 +18,10 @@ interface GalaxyState {
   hoveredId: string | null;
   hoveredEdgeId: string | null;
   selectedEdgeId: string | null;
+  /** 경로 기준 기업 (Shift+클릭). 다른 기업을 호버하면 여기까지의 최단 경로가 강조된다. 파생값(경로)은 스토어에 두지 않는다 */
+  pinnedId: string | null;
+  /** 기업 중심 뷰 1홉 요약에서 고른 역할 — 그 역할의 이웃·간선만 남긴다 */
+  roleFilter: RoleKey | null;
 
   /* ---- 필터 ---- */
   industryId: string | null;
@@ -49,6 +54,8 @@ interface GalaxyState {
   setHoveredEdge(id: string | null): void;
   selectEdge(id: string | null): void;
   clearSelection(): void;
+  togglePin(id: string): void;
+  setRoleFilter(r: RoleKey | null): void;
   setIndustry(id: string | null): void;
   setMinScore(v: number): void;
   toggleType(t: RelationshipType): void;
@@ -75,6 +82,8 @@ export const useGalaxy = create<GalaxyState>((set, get) => ({
   hoveredId: null,
   hoveredEdgeId: null,
   selectedEdgeId: null,
+  pinnedId: null,
+  roleFilter: null,
 
   industryId: null,
   minScore: 0,
@@ -104,6 +113,8 @@ export const useGalaxy = create<GalaxyState>((set, get) => ({
       selectedEdgeId: null,
       hoveredId: null,
       hoveredEdgeId: null,
+      pinnedId: null,
+      roleFilter: null,
       panelOpen: true,
       calloutHidden: false,
     });
@@ -128,7 +139,13 @@ export const useGalaxy = create<GalaxyState>((set, get) => ({
     set((s) => ({ selectedEdgeId: s.selectedEdgeId === id ? null : id, panelOpen: true }));
   },
   clearSelection() {
-    set({ selectedEdgeId: null, hoveredId: null, hoveredEdgeId: null });
+    set({ selectedEdgeId: null, hoveredId: null, hoveredEdgeId: null, pinnedId: null, roleFilter: null });
+  },
+  togglePin(id) {
+    set((s) => ({ pinnedId: s.pinnedId === id ? null : id }));
+  },
+  setRoleFilter(r) {
+    set((s) => ({ roleFilter: s.roleFilter === r ? null : r }));
   },
 
   setIndustry(id) {

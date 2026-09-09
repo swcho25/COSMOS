@@ -3,6 +3,7 @@ import type { ImpactDirection, Market, RelationshipType, Sentiment } from "@/api
 import { IMPACT_META, RELATIONSHIP_ORDER, SENTIMENT_META, industryColor, relationshipMeta } from "@/lib/meta";
 import { initials } from "@/lib/format";
 import { logoUrl } from "@/lib/logos";
+import { ROLE_META, roleColor, type RoleKey } from "@/lib/roles";
 
 /* ------------------------------ 로고 아바타 ------------------------------ */
 
@@ -59,6 +60,20 @@ export function IndustryBadge({ name }: { name: string }) {
     </span>
   );
 }
+/**
+ * 관계 역할 칩 — 유형색 점 + 역할 라벨 + 개수. 1홉 요약 스트립에서 누르면 그 역할만 남긴다(on).
+ * 유형 필터에서 꺼진 역할은 흐리게 두고 title 로 이유를 알린다
+ */
+export function RoleBadge({ role, count, on = false, dimmed = false, title, onClick }: { role: RoleKey; count: number; on?: boolean; dimmed?: boolean; title?: string; onClick?: () => void }) {
+  const color = roleColor(role);
+  return (
+    <button type="button" className={`chip chip-sm role-badge ${on ? "on" : ""}`} onClick={onClick} title={title} aria-pressed={on} style={{ opacity: dimmed ? 0.4 : 1, borderColor: on ? `${color}99` : undefined, background: on ? `${color}22` : undefined }}>
+      <i className="dot" style={{ background: color }} />
+      {ROLE_META[role].label}
+      <b className="num">{count}</b>
+    </button>
+  );
+}
 export function MarketTag({ market }: { market: Market }) {
   return (
     <span className="meta num" style={{ fontFamily: "var(--mono)", fontSize: 11, letterSpacing: "0.04em" }}>
@@ -77,7 +92,10 @@ export function ScoreBar({ score, color }: { score: number; color?: string }) {
 }
 
 /* ------------------------------ 관계 유형 범례 ------------------------------ */
-/** 간선은 한 가지 주황 빔이므로 색 대신 선 모양으로 구분한다: 방향 있음 = 실선 + 화살, 방향 없음 = 점선 */
+/**
+ * 간선은 한 가지 주황 빔이므로 선 모양으로 구분한다: 방향 있음 = 실선 + 화살, 방향 없음 = 점선.
+ * 유형색은 빔이 아니라 기업을 호버했을 때 이웃 행성의 링·칩 태그에 나타나므로, 범례 칩 앞의 색 점이 그 대응을 알려 준다
+ */
 function EdgeGlyph({ directed }: { directed: boolean }) {
   return (
     <svg className="edge-glyph" width="22" height="10" viewBox="0 0 22 10" aria-hidden>
@@ -94,7 +112,8 @@ export function TypeLegend({ active, onToggle }: { active?: Set<RelationshipType
         const m = relationshipMeta(t);
         const on = active ? active.has(t) : true;
         return (
-          <button key={t} type="button" className={`chip chip-sm ${on ? "on" : ""}`} onClick={() => onToggle?.(t)} title={`${m.description} · ${m.directed ? "방향 있음 (펄스가 한쪽으로 흐름)" : "방향 없음 (점선)"}`} style={{ opacity: on ? 1 : 0.55 }}>
+          <button key={t} type="button" className={`chip chip-sm ${on ? "on" : ""}`} onClick={() => onToggle?.(t)} title={`${m.description} · ${m.directed ? "방향 있음 (펄스가 한쪽으로 흐름)" : "방향 없음 (점선)"} · 기업을 호버하면 이 색 링으로 표시`} style={{ opacity: on ? 1 : 0.55 }}>
+            <i className="dot" style={{ background: m.color }} />
             <EdgeGlyph directed={m.directed} />
             {m.label}
           </button>
