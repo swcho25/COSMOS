@@ -27,8 +27,8 @@ export default function ArtLabPage() {
   const set = (patch: Partial<LabOptions>) => setOptions((o) => ({ ...o, ...patch }));
 
   return (
-    <div className="lab">
-      <div className="lab-canvas">
+    <div className="art-lab">
+      <div className="art-lab-canvas">
         <ArtScene options={options} />
       </div>
       <aside className="lab-panel card">

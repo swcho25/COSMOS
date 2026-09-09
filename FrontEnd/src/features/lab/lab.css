@@ -1,10 +1,10 @@
-.lab {
+.art-lab {
   position: relative;
   height: calc(100vh - var(--header-h));
   overflow: hidden;
   background: #0b1030;
 }
-.lab-canvas {
+.art-lab-canvas {
   position: absolute;
   inset: 0;
 }
@@ -44,21 +44,21 @@
   font-size: 13px;
   line-height: 1.55;
 }
-.seg {
+.lab-panel .seg {
   display: inline-flex;
   padding: 3px;
   border-radius: 10px;
   background: rgba(255, 255, 255, 0.05);
   border: 1px solid var(--border);
 }
-.seg button {
+.lab-panel .seg button {
   padding: 6px 12px;
   border-radius: 8px;
   font-size: 12px;
   font-weight: 700;
   color: var(--text-3);
 }
-.seg button.on {
+.lab-panel .seg button.on {
   background: rgba(109, 140, 255, 0.22);
   color: var(--text);
 }
