@@ -6,7 +6,7 @@ import { initials } from "@/lib/format";
 import { logoUrl } from "@/lib/logos";
 import type { Emphasis } from "./emphasis";
 import { ATLAS_CELL_UV, cellUv, ensureLogoCell, logoAtlasTexture } from "./logoAtlas";
-import { planetFragment, planetVertex } from "./planetShader";
+import { discFragment, discVertex } from "./logoDiscShader";
 import { dotTexture, ringTexture } from "./textures";
 
 interface Props {
@@ -18,13 +18,13 @@ interface Props {
 }
 
 const tmpObj = new THREE.Object3D();
-const LIGHT_DIR = new THREE.Vector3(0.45, 0.75, 0.55).normalize();
 
 /**
- * 기업 노드 = 광택 있는 홀로그램 행성.
- * - InstancedMesh 하나(드로우콜 1회)로 모든 행성을 그리고, 로고는 아틀라스에서 읽어 표면에 인쇄한다
+ * 기업 노드 = 카메라를 바라보는 원형 로고 디스크.
+ * - InstancedMesh 하나(드로우콜 1회)로 모든 노드를 그리고, 로고는 아틀라스에서 읽는다
+ * - 인스턴스 행렬을 매 프레임 카메라 회전으로 맞춰 빌보드로 만든다 (레이캐스트도 같은 행렬을 쓴다)
  * - 호버/중심 시 크기·밝기를 프레임마다 목표값으로 lerp
- * - 멀리서도 위치가 보이도록 아주 약한 헤일로 점광을 함께 둔다
+ * - 멀리서도 위치가 보이도록 약한 헤일로 점광을 함께 둔다
  */
 export default function CompanyNodes({ model, emphasis, hoveredId, onHover, onClick }: Props) {
   const mesh = useRef<THREE.InstancedMesh>(null);
@@ -35,11 +35,9 @@ export default function CompanyNodes({ model, emphasis, hoveredId, onHover, onCl
 
   const built = useMemo(() => {
     const color = new Float32Array(n * 3);
-    const seed = new Float32Array(n);
     const bright = new Float32Array(n).fill(1);
     const emph = new Float32Array(n).fill(1);
     const cell = new Float32Array(n * 2);
-    const hasLogo = new Float32Array(n);
     const pos = new Float32Array(n * 3);
     const size = new Float32Array(n);
     const alpha = new Float32Array(n).fill(1);
@@ -49,7 +47,6 @@ export default function CompanyNodes({ model, emphasis, hoveredId, onHover, onCl
       color[i * 3] = c.r;
       color[i * 3 + 1] = c.g;
       color[i * 3 + 2] = c.b;
-      seed[i] = ((i * 0.6180339887) % 1) * 0.9 + 0.05;
       pos[i * 3] = node.pos[0];
       pos[i * 3 + 1] = node.pos[1];
       pos[i * 3 + 2] = node.pos[2];
@@ -58,14 +55,10 @@ export default function CompanyNodes({ model, emphasis, hoveredId, onHover, onCl
       const [u, v] = cellUv(idx);
       cell[i * 2] = u;
       cell[i * 2 + 1] = v;
-      hasLogo[i] = idx >= 0 ? 1 : 0;
     });
 
-    const geo = new THREE.IcosahedronGeometry(1, 5);
-    geo.setAttribute("aColor", new THREE.InstancedBufferAttribute(color, 3));
-    geo.setAttribute("aSeed", new THREE.InstancedBufferAttribute(seed, 1));
+    const geo = new THREE.PlaneGeometry(2, 2);
     geo.setAttribute("aCell", new THREE.InstancedBufferAttribute(cell, 2));
-    geo.setAttribute("aHasLogo", new THREE.InstancedBufferAttribute(hasLogo, 1));
     const brightAttr = new THREE.InstancedBufferAttribute(bright, 1);
     brightAttr.setUsage(THREE.DynamicDrawUsage);
     geo.setAttribute("aBright", brightAttr);
@@ -75,7 +68,7 @@ export default function CompanyNodes({ model, emphasis, hoveredId, onHover, onCl
 
     const haloGeo = new THREE.BufferGeometry();
     haloGeo.setAttribute("position", new THREE.BufferAttribute(pos, 3));
-    haloGeo.setAttribute("color", new THREE.BufferAttribute(color.slice(), 3));
+    haloGeo.setAttribute("color", new THREE.BufferAttribute(color, 3));
     const haloSize = new THREE.BufferAttribute(size, 1);
     haloSize.setUsage(THREE.DynamicDrawUsage);
     const haloAlpha = new THREE.BufferAttribute(alpha, 1);
@@ -108,15 +101,7 @@ export default function CompanyNodes({ model, emphasis, hoveredId, onHover, onCl
     m.computeBoundingSphere();
   }, [model]);
 
-  const planetUniforms = useMemo(
-    () => ({
-      uAtlas: { value: logoAtlasTexture() },
-      uCell: { value: ATLAS_CELL_UV },
-      uLight: { value: LIGHT_DIR.clone() },
-      uTime: { value: 0 },
-    }),
-    [],
-  );
+  const discUniforms = useMemo(() => ({ uAtlas: { value: logoAtlasTexture() }, uCell: { value: ATLAS_CELL_UV } }), []);
   const haloUniforms = useMemo(() => ({ uMap: { value: dotTexture() } }), []);
 
   useFrame((state, dt) => {
@@ -124,26 +109,25 @@ export default function CompanyNodes({ model, emphasis, hoveredId, onHover, onCl
     if (!m) return;
     const k = 1 - Math.pow(0.001, dt);
     const t = state.clock.elapsedTime;
-    planetUniforms.uTime.value = t;
+    // 모든 디스크를 카메라 회전에 맞춘다 — 화면 어디서나 정면 원으로 보인다
+    tmpObj.quaternion.copy(state.camera.quaternion);
 
     model.nodes.forEach((node, i) => {
       const emph = emphasis.node.get(node.id) ?? 1;
       const isHover = node.id === hoveredId;
       const isCenter = node.id === model.centerId;
-      const targetScale = node.size * 1.3 * (isHover ? 1.22 : 1) * (isCenter ? 1.1 : 1) * (0.6 + 0.4 * emph);
-      const targetBright = (isHover ? 1.15 : isCenter ? 1.05 : 1.0) * (0.35 + 0.65 * emph);
+      const targetScale = node.size * 1.3 * (isHover ? 1.18 : 1) * (isCenter ? 1.1 : 1) * (0.6 + 0.4 * emph);
+      const targetBright = (isHover ? 1.12 : isCenter ? 1.04 : 1.0) * (0.4 + 0.6 * emph);
       const s = (anim.scale[i] += (targetScale - anim.scale[i]) * k);
       const br = (anim.bright[i] += (targetBright - anim.bright[i]) * k);
       tmpObj.position.set(node.pos[0], node.pos[1], node.pos[2]);
-      // 아주 느린 자전 — 표면 결이 살아 움직이되 로고(카메라 기준 투영)는 흔들리지 않는다
-      tmpObj.quaternion.setFromAxisAngle(tmpObj.up, t * 0.08 * (0.5 + (i % 7) * 0.1));
       tmpObj.scale.setScalar(s);
       tmpObj.updateMatrix();
       m.setMatrixAt(i, tmpObj.matrix);
       (built.brightAttr.array as Float32Array)[i] = br;
       (built.emphAttr.array as Float32Array)[i] = emph;
-      (built.haloSize.array as Float32Array)[i] = s * 4.2 * (0.5 + 0.5 * emph);
-      (built.haloAlpha.array as Float32Array)[i] = (0.15 + 0.85 * emph) * 0.4;
+      (built.haloSize.array as Float32Array)[i] = s * 3.6 * (0.5 + 0.5 * emph);
+      (built.haloAlpha.array as Float32Array)[i] = (0.15 + 0.85 * emph) * 0.32;
     });
     m.instanceMatrix.needsUpdate = true;
     built.brightAttr.needsUpdate = true;
@@ -158,16 +142,21 @@ export default function CompanyNodes({ model, emphasis, hoveredId, onHover, onCl
         const i = model.nodes.indexOf(target);
         r.visible = true;
         r.position.set(target.pos[0], target.pos[1], target.pos[2]);
-        r.scale.setScalar(anim.scale[i] * 2.6);
+        r.scale.setScalar(anim.scale[i] * 2.5);
         const mat = r.material as THREE.SpriteMaterial;
-        mat.opacity = 0.28 + Math.sin(t * 3) * 0.08;
+        mat.opacity = 0.3 + Math.sin(t * 3) * 0.08;
         mat.color.set(target.color);
         mat.rotation = t * 0.4;
       } else r.visible = false;
     }
   });
 
-  const idOf = (e: ThreeEvent<PointerEvent | MouseEvent>) => (e.instanceId !== undefined ? model.nodes[e.instanceId]?.id ?? null : null);
+  /** 사각 쿼드 중 원 안쪽을 맞췼을 때만 해당 노드 id 를 돌려준다 */
+  const idOf = (e: ThreeEvent<PointerEvent | MouseEvent>) => {
+    if (e.instanceId === undefined) return null;
+    if (e.uv && Math.hypot(e.uv.x - 0.5, e.uv.y - 0.5) > 0.5) return null;
+    return model.nodes[e.instanceId]?.id ?? null;
+  };
 
   return (
     <group>
@@ -176,18 +165,20 @@ export default function CompanyNodes({ model, emphasis, hoveredId, onHover, onCl
         args={[built.geo, undefined, n]}
         frustumCulled={false}
         onPointerMove={(e) => {
-          e.stopPropagation();
           const id = idOf(e);
-          if (id && (emphasis.node.get(id) ?? 1) > 0.05) onHover(id);
+          if (!id) return;
+          e.stopPropagation();
+          if ((emphasis.node.get(id) ?? 1) > 0.05) onHover(id);
         }}
         onPointerOut={() => onHover(null)}
         onClick={(e) => {
-          e.stopPropagation();
           const id = idOf(e);
-          if (id) onClick(id);
+          if (!id) return;
+          e.stopPropagation();
+          onClick(id);
         }}
       >
-        <shaderMaterial vertexShader={planetVertex} fragmentShader={planetFragment} uniforms={planetUniforms} toneMapped={false} />
+        <shaderMaterial vertexShader={discVertex} fragmentShader={discFragment} uniforms={discUniforms} transparent toneMapped={false} />
       </instancedMesh>
 
       <points geometry={built.haloGeo} frustumCulled={false} raycast={() => null} renderOrder={1}>

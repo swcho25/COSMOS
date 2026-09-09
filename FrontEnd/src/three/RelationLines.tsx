@@ -196,7 +196,9 @@ export default function RelationLines({ edges, emphasis, onHover, onSelect }: Pr
     return edges[ei];
   };
   /** 같은 광선에 기업 노드가 걸려 있으면 간선은 뒤로 물러난다 — 간선이 촘촘해도 기업을 먼저 고를 수 있게 */
-  const nodeAhead = (e: ThreeEvent<PointerEvent | MouseEvent>) => e.intersections.some((i) => i.object.userData?.pick === "node");
+  // 노드 디스크(원 안쪽)가 앞에 있으면 간선은 양보한다 — 쿼드 모서리는 노드로 치지 않는다
+  const nodeAhead = (e: ThreeEvent<PointerEvent | MouseEvent>) =>
+    e.intersections.some((i) => i.object.userData?.pick === "node" && (!i.uv || Math.hypot(i.uv.x - 0.5, i.uv.y - 0.5) <= 0.5));
 
   return (
     <group>
