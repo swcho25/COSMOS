@@ -440,6 +440,15 @@ erDiagram
 - `USER_SCRAP.document_id`는 `NEWS_ARTICLE`이 존재하는 뉴스 문서만 허용한다. 공시는 스크랩 대상이 아니다.
 - 커뮤니티 댓글은 대댓글과 좋아요 없이 기업과 사용자에 직접 연결한다.
 
+### 날짜와 시각
+
+- 시스템 사이에서 전달하고 저장하는 절대 시각은 UTC를 기준으로 한다.
+- PostgreSQL에는 `TIMESTAMPTZ`, Spring Boot에는 `Instant`, API에는 ISO 8601 UTC(`Z`) 형식을 사용한다.
+- Python 수집·분석 서버와 Kafka 메시지도 시간대가 포함된 값을 UTC로 정규화해 전달한다.
+- 원문에 표시된 현지 시각은 원본 데이터에 보존할 수 있지만, 정규화된 처리 시각과 혼용하지 않는다.
+- 출처의 현지 시각을 변환할 때는 한국 시장에 `Asia/Seoul`, 미국 시장에 `America/New_York`처럼 IANA 시간대를 사용한다. 미국 시장 시각에 고정 UTC 오프셋을 사용하면 서머타임 기간에 오차가 발생한다.
+- 화면에서는 API가 전달한 UTC 시각을 브라우저에서 사용자 시간대로 변환해 표시한다.
+
 ### 파이프라인 운영
 
 - `COLLECTION_CHECKPOINT`에는 `(collector_id, source, query)` 유일 제약조건을 적용하고 같은 행을 갱신한다.
