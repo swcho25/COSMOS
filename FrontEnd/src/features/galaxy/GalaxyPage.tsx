@@ -228,9 +228,9 @@ export default function GalaxyPage() {
         <div className="hud hud-legend">
           {legendOpen ? (
             <div className="card legend-card">
-              <div className="row between">
-                <span className="kick">관계 · 굵을수록 점수 높음 · 점선은 무방향</span>
-                <div className="row" style={{ gap: 6 }}>
+              <div className="row between legend-head">
+                <span className="kick">관계 필터</span>
+                <div className="row legend-actions">
                   <button type="button" className={`toggle ${edgeBudget ? "on" : ""}`} onClick={toggleEdgeBudget} title="켜면 점수 상위 관계만 기본 표시, 나머지는 기업을 호버할 때 나타납니다">
                     상위만
                   </button>
@@ -242,7 +242,10 @@ export default function GalaxyPage() {
                   </button>
                 </div>
               </div>
-              <TypeLegend active={activeTypes} onToggle={toggleType} />
+              <div className="legend-types">
+                <TypeLegend active={activeTypes} onToggle={toggleType} />
+              </div>
+              <div className="meta legend-hint">굵을수록 점수가 높고, 점선은 방향이 없는 관계입니다</div>
               <div className="row-ctl">
                 <span className="lab">최소 점수</span>
                 <input type="range" min={0} max={90} step={5} value={minScore} onChange={(e) => setMinScore(Number(e.target.value))} aria-label="관계 최소 점수" />

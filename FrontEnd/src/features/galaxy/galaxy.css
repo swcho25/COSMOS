@@ -198,6 +198,35 @@
   gap: 12px;
   width: 340px;
 }
+.legend-head {
+  align-items: center;
+}
+.legend-head .kick {
+  white-space: nowrap;
+}
+.legend-actions {
+  gap: 6px;
+  flex: none;
+  flex-wrap: nowrap;
+}
+.legend-actions .toggle {
+  white-space: nowrap;
+}
+/* 관계 유형 칩을 2×2 격자로 — 줄바꿈으로 들쭉날쭉하지 않게 */
+.legend-types .row.wrap {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 6px;
+}
+.legend-types .chip {
+  justify-content: flex-start;
+  padding: 7px 12px;
+}
+.legend-hint {
+  font-size: 12px;
+  color: var(--text-4);
+  margin-top: -4px;
+}
 .legend-card .row-ctl {
   display: grid;
   grid-template-columns: auto 1fr auto;
