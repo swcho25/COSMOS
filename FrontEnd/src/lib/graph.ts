@@ -79,7 +79,7 @@ function relax(nodes: SceneNode[], edges: GraphEdge[], anchor: Map<string, Vec3>
         const dy = b.pos[1] - a.pos[1];
         const dz = b.pos[2] - a.pos[2];
         const d2 = dx * dx + dy * dy + dz * dz;
-        const min = (a.size + b.size) * 2.6 + 1.5;
+        const min = (a.size + b.size) * 3.2 + 2.5;
         if (d2 < min * min && d2 > 1e-6) {
           const d = Math.sqrt(d2);
           const push = ((min - d) / d) * 0.5;
@@ -175,18 +175,27 @@ export function layoutGalaxy(graph: LatestGraph): SceneModel {
   const anchor = new Map<string, Vec3>();
   const K = industries.length;
   const total = graph.nodes.length;
-  // 성단이 하나뿐이면(산업 필터) 중심에 크게, 여러 개면 디스크 위에 고리로
-  const ringRadius = K === 1 ? 0 : 42 + Math.sqrt(total) * 2.6;
+  // 성단이 하나뿐이면(산업 필터) 중심에 크게, 여러 개면 디스크 위에 고리로.
+  // 성단끼리 겹치지 않게 넉넉히 벌려 은하가 한 덩어리로 뭉치지 않고 성단 단위로 읽히도록 한다
+  const ringRadius = K === 1 ? 0 : 70 + Math.sqrt(total) * 4.6;
+
+  // 성단 반지름(spread)에 비례해 각도를 나눠 큰 성단은 넓게, 작은 성단은 좁게 자리를 차지한다
+  const spreadOf = (n: number) => (K === 1 ? 14 + Math.sqrt(n) * 9 : 9 + Math.sqrt(n) * 6.4);
+  const arcs = industries.map((ind) => spreadOf(groups.get(ind)!.length) + 10);
+  const arcTotal = arcs.reduce((a, b) => a + b, 0);
+  let arcCursor = 0;
 
   industries.forEach((ind, k) => {
     const members = groups.get(ind)!.slice().sort((a, b) => (deg.get(b.companyId) ?? 0) - (deg.get(a.companyId) ?? 0));
     const n = members.length;
-    const theta = (k / Math.max(1, K)) * Math.PI * 2 - Math.PI / 2 + (k % 2) * 0.12;
-    const wobble = Math.sin(k * 2.3) * 7;
+    const theta = ((arcCursor + arcs[k] / 2) / arcTotal) * Math.PI * 2 - Math.PI / 2;
+    arcCursor += arcs[k];
+    // 성단을 안쪽·바깥쪽 고리에 번갈아 놓아 이웃 성단과 겹치지 않고 나선 은하처럼 깊이가 생긴다
+    const wobble = (k % 2 === 0 ? -1 : 1) * ringRadius * 0.22 + Math.sin(k * 2.3) * 6;
     const cx = Math.cos(theta) * (ringRadius + wobble);
-    const cz = Math.sin(theta) * (ringRadius + wobble) * 0.78;
-    const cy = Math.sin(k * 1.9) * 5;
-    const spread = K === 1 ? 10 + Math.sqrt(n) * 7 : 6.5 + Math.sqrt(n) * 4.6;
+    const cz = Math.sin(theta) * (ringRadius + wobble) * 0.82;
+    const cy = Math.sin(k * 1.9) * 14;
+    const spread = spreadOf(n);
 
     members.forEach((m, i) => {
       // 해바라기 배열: 허브(연결 많은 기업)가 성단 중심에 온다
@@ -194,7 +203,8 @@ export function layoutGalaxy(graph: LatestGraph): SceneModel {
       const a = i * GOLDEN + k;
       let x = cx + Math.cos(a) * r;
       let z = cz + Math.sin(a) * r * 0.85;
-      const y = cy + (rng() - 0.5) * (3 + r * 0.25);
+      // 성단 바깥일수록 위아래로 더 흩어져 납작한 판이 아니라 두께 있는 성단이 된다
+      const y = cy + (rng() - 0.5) * (6 + r * 0.55);
       // 국내 기업은 은하 중심 쪽, 해외 기업은 바깥쪽으로 살짝 밀어 시장을 공간으로 구분한다
       if (K > 1) {
         const dirx = Math.cos(theta);

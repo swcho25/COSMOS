@@ -28,8 +28,9 @@ function poseFor(model: SceneModel | null, kind: "galaxy" | "system", aspect = 1
   });
   // 세로로 긴 화면은 가로가 먼저 잘리므로 종횡비만큼 물러난다
   const fit = Math.tan((52 * Math.PI) / 360) * Math.min(1, aspect);
-  const dist = (r / fit) * (kind === "galaxy" ? 0.66 : 0.82);
-  const elev = kind === "galaxy" ? 0.46 : 0.34;
+  const dist = (r / fit) * (kind === "galaxy" ? 0.7 : 0.82);
+  // 은하는 좀 더 위에서 내려다봐 납작한 띠가 아니라 성단이 흩어진 원반으로 보이게 한다
+  const elev = kind === "galaxy" ? 0.58 : 0.34;
   return { pos: [0, dist * elev, dist * Math.sqrt(1 - elev * elev)], tgt: [0, kind === "galaxy" ? -4 : -2, 0] };
 }
 const WARP_COMMIT = 0.6;
@@ -228,7 +229,7 @@ function Content({ galaxy, system, callout, warpRef }: ContentProps) {
   return (
     <>
       <Director warpRef={warpRef} galaxy={galaxy} system={system} />
-      <OrbitControls makeDefault enablePan={false} enableDamping dampingFactor={0.07} rotateSpeed={0.45} zoomSpeed={0.7} minDistance={22} maxDistance={520} maxPolarAngle={Math.PI * 0.62} />
+      <OrbitControls makeDefault enablePan={false} enableDamping dampingFactor={0.07} rotateSpeed={0.45} zoomSpeed={0.7} minDistance={22} maxDistance={900} maxPolarAngle={Math.PI * 0.62} />
       <fog attach="fog" args={["#05070f", 280, 950]} />
       <Nebula />
       <Starfield />
