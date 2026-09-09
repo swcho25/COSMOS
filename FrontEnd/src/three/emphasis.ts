@@ -13,14 +13,41 @@ export interface EmphasisInput {
   selectedEdgeId: string | null;
   minScore: number;
   activeTypes: Set<string>;
+  /**
+   * 간선 예산: 기본 상태에서는 점수 상위 일부(+각 노드의 최강 간선)만 그리고,
+   * 나머지는 노드를 호버했을 때만 나타난다. 관계가 많아도 화면이 읽히게 한다.
+   */
+  budget?: boolean;
 }
 
 const DEPTH_DIM = [1, 1, 0.74, 0.56];
+/** 뷰별 기본 표시 비율 — 은하는 상위 20%, 기업 중심 뷰는 간선이 적으니 절반 이상 */
+const BUDGET_RATIO: Record<SceneModel["kind"], number> = { galaxy: 0.2, system: 0.55 };
+
+/** 필터를 통과한 간선 중 기본으로 그릴 것. 점수 상위 비율 + 각 노드의 가장 강한 간선 하나 (고립 노드 방지) */
+function budgetSet(model: SceneModel, visible: Set<string>, on: boolean) {
+  if (!on) return visible;
+  const arr = model.edges.filter((e) => visible.has(e.id));
+  if (!arr.length) return visible;
+  const scores = arr.map((e) => e.score).sort((a, b) => b - a);
+  const cutoff = scores[Math.max(0, Math.ceil(scores.length * BUDGET_RATIO[model.kind]) - 1)];
+  const keep = new Set<string>();
+  const best = new Map<string, { id: string; score: number }>();
+  arr.forEach((e) => {
+    if (e.score >= cutoff) keep.add(e.id);
+    for (const n of [e.source, e.target]) {
+      const b = best.get(n);
+      if (!b || e.score > b.score) best.set(n, { id: e.id, score: e.score });
+    }
+  });
+  best.forEach((b) => keep.add(b.id));
+  return keep;
+}
 
 /**
  * 어떤 노드·간선을 얼마나 밝게 그릴지 계산한다.
  * 우선순위: 호버 노드 > 선택 간선 > 호버 간선 > 기업 중심 뷰의 depth 흐림 > 기본.
- * 필터(최소 점수·관계 유형)에 걸린 간선은 0 으로 숨긴다.
+ * 필터(최소 점수·관계 유형)에 걸린 간선은 0 으로 숨기고, 간선 예산 밖의 간선은 호버 노드에 붙은 것만 보인다.
  */
 export function computeEmphasis(model: SceneModel, input: EmphasisInput): Emphasis {
   const node = new Map<string, number>();
@@ -32,6 +59,7 @@ export function computeEmphasis(model: SceneModel, input: EmphasisInput): Emphas
     const ok = e.score >= input.minScore && input.activeTypes.has(String(e.type));
     if (ok) visible.add(e.id);
   });
+  const shown = budgetSet(model, visible, input.budget ?? false);
 
   const base = (id: string) => {
     const n = model.nodeById.get(id);
@@ -42,7 +70,8 @@ export function computeEmphasis(model: SceneModel, input: EmphasisInput): Emphas
     const h = input.hoveredId;
     const nb = model.neighbors.get(h) ?? new Set();
     model.nodes.forEach((n) => node.set(n.id, n.id === h ? 1 : nb.has(n.id) ? 0.95 : 0.16));
-    model.edges.forEach((e) => edge.set(e.id, !visible.has(e.id) ? 0 : e.source === h || e.target === h ? 1 : 0.08));
+    // 호버 노드의 간선은 예산과 무관하게 모두 나타난다
+    model.edges.forEach((e) => edge.set(e.id, !visible.has(e.id) ? 0 : e.source === h || e.target === h ? 1 : shown.has(e.id) ? 0.08 : 0));
     pinned.add(h);
     nb.forEach((id) => pinned.add(id));
     return { node, edge, pinned };
@@ -54,7 +83,7 @@ export function computeEmphasis(model: SceneModel, input: EmphasisInput): Emphas
     if (sel) {
       const strong = input.selectedEdgeId ? 0.14 : 0.35;
       model.nodes.forEach((n) => node.set(n.id, n.id === sel.source || n.id === sel.target ? 1 : strong));
-      model.edges.forEach((e) => edge.set(e.id, !visible.has(e.id) ? 0 : e.id === sel.id ? 1 : strong * 0.6));
+      model.edges.forEach((e) => edge.set(e.id, !visible.has(e.id) ? 0 : e.id === sel.id ? 1 : shown.has(e.id) ? strong * 0.6 : 0));
       pinned.add(sel.source);
       pinned.add(sel.target);
       return { node, edge, pinned };
@@ -62,7 +91,7 @@ export function computeEmphasis(model: SceneModel, input: EmphasisInput): Emphas
   }
 
   model.nodes.forEach((n) => node.set(n.id, base(n.id)));
-  model.edges.forEach((e) => edge.set(e.id, visible.has(e.id) ? Math.min(base(e.source), base(e.target)) : 0));
+  model.edges.forEach((e) => edge.set(e.id, shown.has(e.id) ? Math.min(base(e.source), base(e.target)) : 0));
   if (model.centerId) pinned.add(model.centerId);
   return { node, edge, pinned };
 }

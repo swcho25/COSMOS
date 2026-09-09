@@ -28,6 +28,8 @@ export default function GalaxyPage() {
   const minScore = useGalaxy((s) => s.minScore);
   const activeTypes = useGalaxy((s) => s.activeTypes);
   const showLabels = useGalaxy((s) => s.showLabels);
+  const edgeBudget = useGalaxy((s) => s.edgeBudget);
+  const toggleEdgeBudget = useGalaxy((s) => s.toggleEdgeBudget);
   const setIndustry = useGalaxy((s) => s.setIndustry);
   const setMinScore = useGalaxy((s) => s.setMinScore);
   const toggleType = useGalaxy((s) => s.toggleType);
@@ -227,8 +229,11 @@ export default function GalaxyPage() {
           {legendOpen ? (
             <div className="card legend-card">
               <div className="row between">
-                <span className="kick">관계 유형 · 굵을수록 점수 높음</span>
+                <span className="kick">관계 · 굵을수록 점수 높음 · 점선은 무방향</span>
                 <div className="row" style={{ gap: 6 }}>
+                  <button type="button" className={`toggle ${edgeBudget ? "on" : ""}`} onClick={toggleEdgeBudget} title="켜면 점수 상위 관계만 기본 표시, 나머지는 기업을 호버할 때 나타납니다">
+                    상위만
+                  </button>
                   <button type="button" className={`toggle ${showLabels ? "on" : ""}`} onClick={toggleLabels}>
                     라벨
                   </button>
@@ -249,7 +254,7 @@ export default function GalaxyPage() {
           ) : (
             <button type="button" className="hud-tag" onClick={toggleLegend} title="관계 유형 · 최소 점수 필터 펼치기">
               필터 · 범례
-              {(minScore > 0 || activeTypes.size < 4) && <i className="dot" style={{ background: "var(--primary-2)" }} />}
+              {(minScore > 0 || activeTypes.size < 4 || !edgeBudget) && <i className="dot" style={{ background: "var(--primary-2)" }} />}
             </button>
           )}
         </div>

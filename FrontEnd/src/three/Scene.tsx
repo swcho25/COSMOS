@@ -207,6 +207,7 @@ function Content({ galaxy, system, callout, warpRef }: ContentProps) {
   const minScore = useGalaxy((s) => s.minScore);
   const activeTypes = useGalaxy((s) => s.activeTypes);
   const showLabels = useGalaxy((s) => s.showLabels);
+  const edgeBudget = useGalaxy((s) => s.edgeBudget);
   const setHovered = useGalaxy((s) => s.setHovered);
   const setHoveredEdge = useGalaxy((s) => s.setHoveredEdge);
   const selectEdge = useGalaxy((s) => s.selectEdge);
@@ -215,8 +216,8 @@ function Content({ galaxy, system, callout, warpRef }: ContentProps) {
 
   const model = focusId ? system : galaxy;
   const emphasis = useMemo(
-    () => (model ? computeEmphasis(model, { hoveredId, hoveredEdgeId, selectedEdgeId, minScore, activeTypes: activeTypes as Set<string> }) : null),
-    [model, hoveredId, hoveredEdgeId, selectedEdgeId, minScore, activeTypes],
+    () => (model ? computeEmphasis(model, { hoveredId, hoveredEdgeId, selectedEdgeId, minScore, activeTypes: activeTypes as Set<string>, budget: edgeBudget }) : null),
+    [model, hoveredId, hoveredEdgeId, selectedEdgeId, minScore, activeTypes, edgeBudget],
   );
 
   const navMode = useGalaxy((s) => s.navMode);

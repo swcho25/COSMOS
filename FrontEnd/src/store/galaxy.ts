@@ -23,6 +23,8 @@ interface GalaxyState {
   minScore: number;
   activeTypes: Set<RelationshipType>;
   showLabels: boolean;
+  /** 간선 예산: 켜면 점수 상위 관계만 기본 표시, 나머지는 노드 호버 때만 */
+  edgeBudget: boolean;
 
   /* ---- 패널 ---- */
   panelTab: PanelTab;
@@ -51,6 +53,7 @@ interface GalaxyState {
   setMinScore(v: number): void;
   toggleType(t: RelationshipType): void;
   toggleLabels(): void;
+  toggleEdgeBudget(): void;
   setPanelTab(t: PanelTab): void;
   setWindow(w: MetricWindow): void;
   setPricePeriod(p: PricePeriod): void;
@@ -77,6 +80,7 @@ export const useGalaxy = create<GalaxyState>((set, get) => ({
   minScore: 0,
   activeTypes: new Set(RELATIONSHIP_ORDER),
   showLabels: true,
+  edgeBudget: true,
 
   panelTab: "news",
   window: "30D",
@@ -140,6 +144,9 @@ export const useGalaxy = create<GalaxyState>((set, get) => ({
       else next.add(t);
       return { activeTypes: next };
     });
+  },
+  toggleEdgeBudget() {
+    set((s) => ({ edgeBudget: !s.edgeBudget }));
   },
   toggleLabels() {
     set((s) => ({ showLabels: !s.showLabels }));
