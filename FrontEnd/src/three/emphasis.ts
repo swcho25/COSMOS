@@ -21,10 +21,12 @@ export interface EmphasisInput {
 }
 
 const DEPTH_DIM = [1, 1, 0.74, 0.56];
-/** 뷰별 기본 표시 비율 — 은하는 상위 20%, 기업 중심 뷰는 간선이 적으니 절반 이상 */
-const BUDGET_RATIO: Record<SceneModel["kind"], number> = { galaxy: 0.2, system: 0.55 };
+/** 뷰별 기본 표시 비율 — 은하는 핵심만(상위 8%), 기업 중심 뷰는 간선이 적으니 절반 이상 */
+const BUDGET_RATIO: Record<SceneModel["kind"], number> = { galaxy: 0.08, system: 0.55 };
+/** 각 노드의 가장 강한 간선 하나를 항상 남길지 — 기업 중심 뷰에서만. 은하에서는 노드 수만큼 간선이 깔려 화면을 덮는다 */
+const KEEP_BEST_PER_NODE: Record<SceneModel["kind"], boolean> = { galaxy: false, system: true };
 
-/** 필터를 통과한 간선 중 기본으로 그릴 것. 점수 상위 비율 + 각 노드의 가장 강한 간선 하나 (고립 노드 방지) */
+/** 필터를 통과한 간선 중 기본으로 그릴 것. 점수 상위 비율 (+ 기업 중심 뷰에서는 각 노드의 최강 간선) */
 function budgetSet(model: SceneModel, visible: Set<string>, on: boolean) {
   if (!on) return visible;
   const arr = model.edges.filter((e) => visible.has(e.id));
@@ -40,7 +42,7 @@ function budgetSet(model: SceneModel, visible: Set<string>, on: boolean) {
       if (!b || e.score > b.score) best.set(n, { id: e.id, score: e.score });
     }
   });
-  best.forEach((b) => keep.add(b.id));
+  if (KEEP_BEST_PER_NODE[model.kind]) best.forEach((b) => keep.add(b.id));
   return keep;
 }
 
