@@ -30,12 +30,11 @@ interface Planet {
 }
 
 const tmpObj = new THREE.Object3D();
-const CAM_RIGHT = new THREE.Vector3();
-const CAM_UP = new THREE.Vector3();
 const TMP = new THREE.Vector3();
-/** 로고 이름표가 보이기 시작하는 거리와 완전히 보이는 거리 (월드 단위) */
-const TAG_FAR = 150;
-const TAG_NEAR = 70;
+const TO_CAM = new THREE.Vector3();
+/** 로고 배지가 보이기 시작하는 거리와 완전히 보이는 거리 (월드 단위) */
+const TAG_FAR = 260;
+const TAG_NEAR = 120;
 /** 항성 점광 레이어 — 랩과 동일 */
 const LIT = 1;
 
@@ -43,7 +42,8 @@ const LIT = 1;
  * 기업 노드 = 저폴리 툰 행성 (장난감 우주 스타일).
  * - 산업색에서 만든 팔레트로 면 단위 바다·대륙을 칠하고, 대륙형·고리형·위성형을 시드로 섞는다
  * - 크기는 연결 가중치(node.size), 호버·중심·강조로 크기와 밝기를 프레임마다 lerp
- * - 로고 이름표는 행성 곁에 떠 있는 흰 원판(InstancedMesh 1회)으로, 가까이 가면 나타나고 멀어지면 사라진다
+ * - 로고 배지는 행성 정면 중앙에 붙은 흰 원판(InstancedMesh 1회). 카메라→행성 시선 위에 놓아 어느 각도에서도
+ *   행성 한가운데에 정원으로 보이고(구면 투영이 아니라 치우침이 없다), 가까이 가면 나타나고 멀어지면 사라진다
  * - 멀리서도 위치가 보이도록 아주 약한 헤일로 점광을 함께 둔다
  */
 export default function CompanyNodes({ model, emphasis, hoveredId, onHover, onClick }: Props) {
@@ -160,8 +160,6 @@ export default function CompanyNodes({ model, emphasis, hoveredId, onHover, onCl
     const k = 1 - Math.pow(0.001, dt);
     const t = state.clock.elapsedTime;
     const cam = state.camera;
-    CAM_RIGHT.set(1, 0, 0).applyQuaternion(cam.quaternion);
-    CAM_UP.set(0, 1, 0).applyQuaternion(cam.quaternion);
     tmpObj.quaternion.copy(cam.quaternion);
     const tagMesh = tags.current;
 
@@ -185,15 +183,18 @@ export default function CompanyNodes({ model, emphasis, hoveredId, onHover, onCl
       const moon = moons.current[i];
       if (moon) moon.rotation.y = t * 0.5 + p.seed;
 
-      // 이름표: 카메라 기준 오른쪽 위에 띄우고 거리로 페이드. 호버·중심은 항상 보인다
-      const dist = TMP.set(node.pos[0], node.pos[1], node.pos[2]).distanceTo(cam.position);
+      // 로고 배지: 행성 중심에서 카메라 쪽으로 반지름만큼 나온 지점에 빌보드로 놓는다 → 항상 행성 한가운데
+      TMP.set(node.pos[0], node.pos[1], node.pos[2]);
+      TO_CAM.copy(cam.position).sub(TMP);
+      const dist = TO_CAM.length();
+      TO_CAM.multiplyScalar(1 / Math.max(1e-6, dist));
       let ta = 1 - THREE.MathUtils.smoothstep(dist, TAG_NEAR, TAG_FAR);
       if (isHover || isCenter) ta = 1;
       const a = (anim.tagA[i] += (ta - anim.tagA[i]) * k);
       if (tagMesh) {
         const r = p.radius * s;
-        tmpObj.position.set(node.pos[0], node.pos[1], node.pos[2]).addScaledVector(CAM_RIGHT, r * 0.95).addScaledVector(CAM_UP, r * 1.05);
-        tmpObj.scale.setScalar(Math.max(0.001, r * 0.72));
+        tmpObj.position.copy(TMP).addScaledVector(TO_CAM, r * 1.04);
+        tmpObj.scale.setScalar(Math.max(0.001, r * 0.78));
         tmpObj.updateMatrix();
         tagMesh.setMatrixAt(i, tmpObj.matrix);
         (built.brightAttr.array as Float32Array)[i] = isHover ? 1.05 : 1;
