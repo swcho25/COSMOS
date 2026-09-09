@@ -1,4 +1,0 @@
-{"source":"리튬","relation":"SHORTAGE_RISK","target":"포스코퓨처엠","weight":0.92,"confidence":0.95,"evidence":"Open DART 사업보고서 · 시연 데이터","observed_at":"2026-08-21T00:30:00Z"}
-{"source":"리튬","relation":"SHORTAGE_RISK","target":"에코프로비엠","weight":0.81,"confidence":0.91,"evidence":"Open DART 사업보고서 · 시연 데이터","observed_at":"2026-08-21T00:30:00Z"}
-{"source":"포스코퓨처엠","relation":"SUPPLIES_TO","target":"LG에너지솔루션","weight":0.78,"confidence":0.87,"evidence":"주요 매출처 공시 · 시연 데이터","observed_at":"2026-08-21T00:32:00Z"}
-{"source":"LG에너지솔루션","relation":"SUPPLIES_TO","target":"현대자동차","weight":0.74,"confidence":0.83,"evidence":"공급계약 뉴스 · 시연 데이터","observed_at":"2026-08-21T00:35:00Z"}
