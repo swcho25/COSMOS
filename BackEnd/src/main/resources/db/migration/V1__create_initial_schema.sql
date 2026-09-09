@@ -9,8 +9,8 @@
 --   탈퇴: soft delete (deleted_at), 익명화 배치는 CAN
 --   refresh token: Redis 보관 (테이블 없음)
 CREATE TABLE IF NOT EXISTS users (
-    id                BIGSERIAL     PRIMARY KEY,
-    email             VARCHAR(255)  NOT NULL,
+                                     id                BIGSERIAL     PRIMARY KEY,
+                                     email             VARCHAR(255)  NOT NULL,
     password          VARCHAR(255)  NOT NULL,
     nickname          VARCHAR(30)   NOT NULL,
     role              VARCHAR(20)   NOT NULL DEFAULT 'ROLE_USER',
@@ -19,7 +19,7 @@ CREATE TABLE IF NOT EXISTS users (
     updated_at        TIMESTAMPTZ   NOT NULL DEFAULT now(),
     deleted_at        TIMESTAMPTZ,
     CONSTRAINT chk_users_role CHECK (role IN ('ROLE_USER', 'ROLE_ADMIN'))
-);
+    );
 
 -- 활성 회원 기준 유니크 (soft delete된 이메일/닉네임은 재사용 허용)
 -- 이메일은 대소문자 무시: 저장/조회 시 애플리케이션에서도 lower 정규화할 것
