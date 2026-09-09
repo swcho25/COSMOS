@@ -5,6 +5,11 @@ export interface Emphasis {
   edge: Map<string, number>;
   /** 강조의 이유가 되는 노드 (라벨 항상 표시) */
   pinned: Set<string>;
+  /**
+   * 행성 정면에 로고 원판(배지)을 띄울 노드. 기본 상태에서는 행성 표면을 비워 툰 질감이 보이게 하고,
+   * 호버 노드·중심 기업·선택(호버) 간선의 양끝에서만 배지가 떠오른다.
+   */
+  badges: Set<string>;
 }
 
 export interface EmphasisInput {
@@ -55,6 +60,7 @@ export function computeEmphasis(model: SceneModel, input: EmphasisInput): Emphas
   const node = new Map<string, number>();
   const edge = new Map<string, number>();
   const pinned = new Set<string>();
+  const badges = new Set<string>();
 
   const visible = new Set<string>();
   model.edges.forEach((e) => {
@@ -76,24 +82,30 @@ export function computeEmphasis(model: SceneModel, input: EmphasisInput): Emphas
     model.edges.forEach((e) => edge.set(e.id, !visible.has(e.id) ? 0 : e.source === h || e.target === h ? 1 : shown.has(e.id) ? 0.08 : 0));
     pinned.add(h);
     nb.forEach((id) => pinned.add(id));
-    return { node, edge, pinned };
+    badges.add(h);
+    return { node, edge, pinned, badges };
   }
 
   const edgeFocus = input.selectedEdgeId ?? input.hoveredEdgeId;
   if (edgeFocus) {
-    const sel = model.edges.find((e) => e.id === edgeFocus);
+    const sel = model.edgeById.get(edgeFocus);
     if (sel) {
       const strong = input.selectedEdgeId ? 0.14 : 0.35;
       model.nodes.forEach((n) => node.set(n.id, n.id === sel.source || n.id === sel.target ? 1 : strong));
       model.edges.forEach((e) => edge.set(e.id, !visible.has(e.id) ? 0 : e.id === sel.id ? 1 : shown.has(e.id) ? strong * 0.6 : 0));
       pinned.add(sel.source);
       pinned.add(sel.target);
-      return { node, edge, pinned };
+      badges.add(sel.source);
+      badges.add(sel.target);
+      return { node, edge, pinned, badges };
     }
   }
 
   model.nodes.forEach((n) => node.set(n.id, base(n.id)));
   model.edges.forEach((e) => edge.set(e.id, shown.has(e.id) ? Math.min(base(e.source), base(e.target)) : 0));
-  if (model.centerId) pinned.add(model.centerId);
-  return { node, edge, pinned };
+  if (model.centerId) {
+    pinned.add(model.centerId);
+    badges.add(model.centerId);
+  }
+  return { node, edge, pinned, badges };
 }

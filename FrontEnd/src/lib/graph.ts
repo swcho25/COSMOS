@@ -21,6 +21,20 @@ export interface SceneNode {
   /** 기업 중심 뷰에서의 단계 (은하 뷰는 0) */
   depth: number;
   degree: number;
+  /**
+   * 이름표 LOD 등급 — 0 이 가장 중요하다.
+   * 은하: 성단 허브 0, 첫 껍질 1, 나머지 2 / 기업 중심: min(depth, 2).
+   * 멀리서는 0 만, 가까이 갈수록 1·2 등급의 칩이 나타난다.
+   */
+  tier: number;
+}
+/** 은하 뷰의 산업 성단 하나 — 중력 우물 격자가 분지를 파는 기준 */
+export interface SceneCluster {
+  industry: string;
+  center: Vec3;
+  radius: number;
+  /** 구성 기업의 가중 연결도 합 (nodeSize 의 역함수 합) */
+  mass: number;
 }
 export interface SceneEdge {
   id: string;
@@ -44,6 +58,11 @@ export interface SceneModel {
   neighbors: Map<string, Set<string>>;
   /** 노드 → 인접 간선 id */
   incident: Map<string, Set<string>>;
+  edgeById: Map<string, SceneEdge>;
+  /** 산업 성단 (은하 뷰만, 기업 중심 뷰는 빈 배열) */
+  clusters: SceneCluster[];
+  /** 배치 범위 — 바닥 격자 높이·크기를 정하는 데 쓴다 */
+  extent: { minY: number; maxR: number };
 }
 
 const GOLDEN = Math.PI * (3 - Math.sqrt(5));
@@ -116,7 +135,13 @@ function relax(nodes: SceneNode[], edges: GraphEdge[], anchor: Map<string, Vec3>
   }
 }
 
-function finish(kind: SceneModel["kind"], centerId: string | null, nodes: SceneNode[], edges: GraphEdge[]): SceneModel {
+/** 노드 크기(nodeSize)에서 가중 연결도를 되돌린 값 — 질량으로 쓴다 */
+function massOf(size: number) {
+  const w = (size - 0.7) / 0.52;
+  return w * w;
+}
+
+function finish(kind: SceneModel["kind"], centerId: string | null, nodes: SceneNode[], edges: GraphEdge[], clusters: SceneCluster[]): SceneModel {
   const nodeById = new Map(nodes.map((n) => [n.id, n]));
   const neighbors = new Map<string, Set<string>>();
   const incident = new Map<string, Set<string>>();
@@ -149,7 +174,15 @@ function finish(kind: SceneModel["kind"], centerId: string | null, nodes: SceneN
     }
   });
   sceneEdges.sort((a, b) => a.score - b.score); // 강한 간선이 나중에(위에) 그려지도록
-  return { kind, centerId, nodes, edges: sceneEdges, nodeById, neighbors, incident };
+  const edgeById = new Map(sceneEdges.map((e) => [e.id, e]));
+  // 노드가 없으면 0 — 격자 쪽에서 나눗셈에 쓰지 않도록 유한값을 보장한다
+  let minY = 0;
+  let maxR = 0;
+  nodes.forEach((n, i) => {
+    minY = i === 0 ? n.pos[1] : Math.min(minY, n.pos[1]);
+    maxR = Math.max(maxR, Math.hypot(n.pos[0], n.pos[2]));
+  });
+  return { kind, centerId, nodes, edges: sceneEdges, nodeById, neighbors, incident, edgeById, clusters, extent: { minY, maxR } };
 }
 
 /* ------------------------------------------------------------------ */
@@ -223,19 +256,25 @@ export function layoutGalaxy(graph: LatestGraph): SceneModel {
   });
 
   const nodes: SceneNode[] = [];
+  const clusters: SceneCluster[] = [];
   industries.forEach((ind, k) => {
     const members = groups.get(ind)!.slice().sort((a, b) => (deg.get(b.companyId) ?? 0) - (deg.get(a.companyId) ?? 0));
     const [cx, cy, cz] = centers.get(ind)!;
     const spin = k * 1.7 + phase;
+    let mass = 0;
     members.forEach((m, i) => {
       let pos: Vec3 = [cx, cy, cz];
+      let tier = 0;
       if (i > 0) {
         const { shell, index, cap } = shellOf(i);
         const count = Math.min(cap, members.length - (i - index)); // 이 껍질에 실제로 앉는 수
         const [ux, uy, uz] = fibonacciSphere(count, index, spin + shell * 0.9);
         const r = shell * SHELL_STEP;
         pos = [cx + ux * r, cy + uy * r, cz + uz * r];
+        tier = shell === 1 ? 1 : 2;
       }
+      const size = nodeSize(deg.get(m.companyId) ?? 0);
+      mass += massOf(size);
       nodes.push({
         id: m.companyId,
         name: m.name,
@@ -244,20 +283,23 @@ export function layoutGalaxy(graph: LatestGraph): SceneModel {
         stockCode: m.stockCode,
         color: industryColor(m.industryName),
         pos,
-        size: nodeSize(deg.get(m.companyId) ?? 0),
+        size,
         depth: 0,
         degree: cnt.get(m.companyId) ?? 0,
+        tier,
       });
     });
+    clusters.push({ industry: ind, center: [cx, cy, cz], radius: clusterRadius(members.length), mass });
   });
 
-  return finish("galaxy", null, nodes, graph.edges);
+  return finish("galaxy", null, nodes, graph.edges, clusters);
 }
 
 /* ------------------------------------------------------------------ */
 /* 기업 중심 — depth 가 궤도 반지름이 된다                                  */
 /* ------------------------------------------------------------------ */
-const ORBIT = [0, 24, 44, 62];
+/** depth 별 궤도 반지름 — 격자의 궤도 링도 같은 값을 쓴다 */
+export const ORBIT = [0, 24, 44, 62];
 
 export function layoutSystem(graph: CompanyGraph, lookup: (id: string) => { industryName: string; market: Market; stockCode: string } | undefined): SceneModel {
   const rng = seededRandom(hashString(graph.snapshotId + graph.centerCompanyId));
@@ -329,11 +371,12 @@ export function layoutSystem(graph: CompanyGraph, lookup: (id: string) => { indu
       size: d === 0 ? 3.4 : nodeSize(deg.get(n.companyId) ?? 0) * (d === 1 ? 1.15 : d === 2 ? 0.95 : 0.8),
       depth: d,
       degree: cnt.get(n.companyId) ?? 0,
+      tier: Math.min(d, 2),
     });
   });
   const movable = nodes.filter((n) => n.depth > 0);
   relax(movable, graph.edges, anchor, 60, { spring: 0.05, attract: 0.0015, planar: false });
-  return finish("system", graph.centerCompanyId, nodes, graph.edges);
+  return finish("system", graph.centerCompanyId, nodes, graph.edges, []);
 }
 
 /* ------------------------------------------------------------------ */

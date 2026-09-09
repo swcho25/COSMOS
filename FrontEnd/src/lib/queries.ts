@@ -5,6 +5,8 @@ import { useSession } from "@/store/session";
 
 const useKey = () => useSession((s) => s.sessionKey);
 const useAuthed = () => useSession((s) => s.status === "authed");
+/** 쿼리 키에 들어가는 세션 키 — 컴포넌트가 prefetch 옵션을 만들 때 같은 키를 쓰도록 공개한다 */
+export const useSessionKey = useKey;
 
 /* ------------------------------ 기준 정보 ------------------------------ */
 export function useIndustries() {
@@ -21,14 +23,15 @@ export function useLatestGraph(industryId: string | null) {
     placeholderData: keepPreviousData,
   });
 }
+/** 기업 그래프 쿼리 옵션 — 훅과 prefetch(호버 선로딩)가 같은 키·함수를 공유하도록 팩토리로 둔다 */
+export const companyGraphQuery = (k: string, companyId: string) => ({
+  queryKey: ["graph", "company", k, companyId] as const,
+  queryFn: () => api.graphs.company(companyId),
+  staleTime: 5 * 60_000,
+});
 export function useCompanyGraph(companyId: string | null) {
   const k = useKey();
-  return useQuery({
-    queryKey: ["graph", "company", k, companyId],
-    queryFn: () => api.graphs.company(companyId!),
-    enabled: Boolean(companyId),
-    staleTime: 5 * 60_000,
-  });
+  return useQuery({ ...companyGraphQuery(k, companyId ?? ""), enabled: Boolean(companyId) });
 }
 export function useRelationship(relationshipId: string | null, window: T.MetricWindow) {
   const k = useKey();
