@@ -23,7 +23,8 @@ function Star({ position, radius, steps, glow }: { position: [number, number, nu
   }, []);
   // 인덱스를 풀어 면마다 평평한 법선을 갖게 한다 (툰 머티리얼은 flatShading 옵션이 없다)
   const geo = useMemo(() => {
-    const g = new THREE.IcosahedronGeometry(radius, 2).toNonIndexed();
+    const base = new THREE.IcosahedronGeometry(radius, 2);
+    const g = base.index ? base.toNonIndexed() : base;
     g.computeVertexNormals();
     return g;
   }, [radius]);

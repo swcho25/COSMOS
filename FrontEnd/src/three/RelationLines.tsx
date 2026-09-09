@@ -1,7 +1,8 @@
 import { useEffect, useMemo } from "react";
 import { useFrame, type ThreeEvent } from "@react-three/fiber";
 import * as THREE from "three";
-import type { SceneEdge, Vec3 } from "@/lib/graph";
+import type { SceneEdge } from "@/lib/graph";
+import { bezier, controlPoint, radiusOf } from "./edgeCurve";
 import type { Emphasis } from "./emphasis";
 import { LAB } from "./toon";
 
@@ -10,38 +11,8 @@ const SEGS = 22;
 const RADIAL = 6;
 const PULSES = 2;
 const PICK_SEGS = 8;
-const BOW = 0.16;
 
-const A = new THREE.Vector3();
-const B = new THREE.Vector3();
-const OUT = new THREE.Vector3();
 const P = new THREE.Vector3();
-
-/** 두 노드를 잇는 2차 베지어 아크의 제어점 — 원점 바깥으로 살짝 부풀린다 */
-function controlPoint(from: Vec3, to: Vec3, out: THREE.Vector3) {
-  A.fromArray(from);
-  B.fromArray(to);
-  const dist = A.distanceTo(B);
-  out.addVectors(A, B).multiplyScalar(0.5);
-  OUT.copy(out);
-  if (OUT.lengthSq() < 1e-6) OUT.set(0, 1, 0);
-  OUT.normalize().multiplyScalar(dist * BOW);
-  OUT.y += dist * BOW * 0.35;
-  out.add(OUT);
-  return dist;
-}
-function bezier(from: Vec3, to: Vec3, ctrl: THREE.Vector3, t: number, out: THREE.Vector3) {
-  const it = 1 - t;
-  out.set(0, 0, 0);
-  out.addScaledVector(A.fromArray(from), it * it);
-  out.addScaledVector(ctrl, 2 * it * t);
-  out.addScaledVector(B.fromArray(to), t * t);
-  return out;
-}
-/** 점수(0~1) → 튜브 반지름(월드 단위). 가까이 가면 굵어지고 멀면 가늘어진다 */
-function radiusOf(s: number) {
-  return 0.09 + s * s * 0.4;
-}
 
 interface Props {
   edges: SceneEdge[];
@@ -225,9 +196,11 @@ export default function RelationLines({ edges, emphasis, onHover, onSelect, inte
     const ei = Math.floor(idx / (PICK_SEGS * 2));
     return edges[ei];
   };
-  /** 같은 광선에 기업 노드(행성 또는 이름표 원판 안쪽)가 걸려 있으면 간선은 뒤로 물러난다 */
-  const nodeAhead = (e: ThreeEvent<PointerEvent | MouseEvent>) =>
-    e.intersections.some((i) => i.object.userData?.pick === "node" && (!i.object.userData?.disc || !i.uv || Math.hypot(i.uv.x - 0.5, i.uv.y - 0.5) <= 0.5));
+  /**
+   * 같은 광선에 기업 노드가 걸려 있으면 간선은 뒤로 물러난다.
+   * 배지·칩 InstancedMesh 는 CompanyNodes 가 raycast 를 감싸 보이는 원판·캡슐 안의 히트만 내보내므로 pick 표식만 보면 된다
+   */
+  const nodeAhead = (e: ThreeEvent<PointerEvent | MouseEvent>) => e.intersections.some((i) => i.object.userData?.pick === "node");
 
   return (
     <group>

@@ -5,7 +5,6 @@ import { Bloom, EffectComposer, Vignette } from "@react-three/postprocessing";
 import * as THREE from "three";
 import type { SceneModel } from "@/lib/graph";
 import CompanyNodes from "./CompanyNodes";
-import Labels from "./Labels";
 import RelationLines from "./RelationLines";
 import Backdrop from "./Backdrop";
 import { LAB } from "./toon";
@@ -60,7 +59,6 @@ export default function MiniScene({ model, onPickCompany, onPickEdge, highlightI
         <group key={model.centerId ?? "m"}>
           <RelationLines edges={model.edges} emphasis={emphasis} onHover={setHoveredEdge} onSelect={(id) => onPickEdge?.(id)} />
           <CompanyNodes model={model} emphasis={emphasis} hoveredId={hovered ?? highlightId} onHover={setHovered} onClick={(id) => onPickCompany?.(id)} />
-          <Labels model={model} emphasis={emphasis} visible />
         </group>
       )}
       <EffectComposer multisampling={0}>

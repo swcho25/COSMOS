@@ -8,7 +8,6 @@ import { useGalaxy } from "@/store/galaxy";
 import Backdrop from "./Backdrop";
 import CompanyNodes from "./CompanyNodes";
 import FlyControls from "./FlyControls";
-import Labels from "./Labels";
 import RelationLines from "./RelationLines";
 import Warp from "./Warp";
 import { cameraBusy } from "./cameraState";
@@ -245,8 +244,7 @@ function Content({ galaxy, system, callout, warpRef }: ContentProps) {
         {model && emphasis && (
           <group key={model.kind + (model.centerId ?? "")}>
             <RelationLines edges={model.edges} emphasis={emphasis} onHover={setHoveredEdge} onSelect={selectEdge} intensity={model.kind === "galaxy" ? 0.85 : 1} />
-            <CompanyNodes model={model} emphasis={emphasis} hoveredId={hoveredId} onHover={setHovered} onClick={warpTo} />
-            <Labels model={model} emphasis={emphasis} visible={showLabels} />
+            <CompanyNodes model={model} emphasis={emphasis} hoveredId={hoveredId} onHover={setHovered} onClick={warpTo} showLabels={showLabels} />
             {callout && calloutNode && (
               <Html position={[calloutNode.pos[0], calloutNode.pos[1] - calloutNode.size * 3.2, calloutNode.pos[2]]} center zIndexRange={[5, 0]} style={{ pointerEvents: "none", transform: "translateY(50%)" }}>
                 <div className="scene-callout" style={{ pointerEvents: "auto" }}>

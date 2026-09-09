@@ -98,7 +98,9 @@ export function fbm(x: number, y: number, z: number) {
  * 인덱스를 풀어 면마다 다른 색을 줄 수 있게 하고, 흔들림은 위치 기반이라 이음새가 생기지 않는다.
  */
 export function planetGeometry(radius: number, palette: PlanetPalette, seed: number, detail = 2, landRatio = 0.45) {
-  const geo = new THREE.IcosahedronGeometry(radius, detail).toNonIndexed();
+  // IcosahedronGeometry 는 이미 인덱스가 없다 — toNonIndexed 를 다시 부르면 three 가 경고를 찍는다
+  const base = new THREE.IcosahedronGeometry(radius, detail);
+  const geo = base.index ? base.toNonIndexed() : base;
   const pos = geo.attributes.position as THREE.BufferAttribute;
   const colors = new Float32Array(pos.count * 3);
   const ocean = new THREE.Color(palette.ocean);
@@ -106,13 +108,17 @@ export function planetGeometry(radius: number, palette: PlanetPalette, seed: num
   const land = new THREE.Color(palette.land);
   const landHi = new THREE.Color(palette.landHi);
   const v = new THREE.Vector3();
+  const dir = new THREE.Vector3();
   const c = new THREE.Vector3();
   const threshold = 1 - landRatio;
 
-  // 1) 정점 흔들기 (위치 해시 기반 → 같은 위치는 같은 값)
+  // 1) 정점 흔들기 — 방향(단위 벡터) 기준으로 노이즈를 읽어 반지름과 무관하게 같은 요철이 나오게 한다
+  //    (같은 기업이 은하 뷰와 기업 중심 뷰에서 size 가 달라도 같은 행성으로 보여야 한다). 주파수 3.4 는 반지름 2 짜리 행성의
+  //    예전 값(좌표 × 1.7)과 같은 굴곡이다. 위치 기반이라 이음새는 생기지 않는다
   for (let i = 0; i < pos.count; i += 1) {
     v.fromBufferAttribute(pos, i);
-    const n = fbm(v.x * 1.7 + seed, v.y * 1.7 + seed * 2, v.z * 1.7 + seed * 3);
+    dir.copy(v).normalize();
+    const n = fbm(dir.x * 3.4 + seed, dir.y * 3.4 + seed * 2, dir.z * 3.4 + seed * 3);
     v.multiplyScalar(1 + (n - 0.5) * 0.06);
     pos.setXYZ(i, v.x, v.y, v.z);
   }

@@ -8,7 +8,8 @@ import * as THREE from "three";
 const CELL = 128;
 const COLS = 16; // 16 x 16 = 256 기업
 const SIZE = CELL * COLS;
-const FONT = 'Pretendard Variable, Pretendard, "Malgun Gothic", "Apple SD Gothic Neo", "Segoe UI", sans-serif';
+/** 한글 글리프가 있는 폰트 스택 — 로고 모노그램과 이름 아틀라스가 공유한다 */
+export const FONT = 'Pretendard Variable, Pretendard, "Malgun Gothic", "Apple SD Gothic Neo", "Segoe UI", sans-serif';
 
 let canvas: HTMLCanvasElement | null = null;
 let ctx: CanvasRenderingContext2D | null = null;
