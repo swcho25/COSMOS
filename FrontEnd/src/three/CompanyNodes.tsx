@@ -20,7 +20,7 @@ interface Props {
 const tmpObj = new THREE.Object3D();
 
 /**
- * 기업 노드 = 카메라를 바라보는 원형 로고 디스크.
+ * 기업 노드 = 카메라를 바라보는 원형 로고 디스크 (얇은 산업색 테두리).
  * - InstancedMesh 하나(드로우콜 1회)로 모든 노드를 그리고, 로고는 아틀라스에서 읽는다
  * - 인스턴스 행렬을 매 프레임 카메라 회전으로 맞춰 빌보드로 만든다 (레이캐스트도 같은 행렬을 쓴다)
  * - 호버/중심 시 크기·밝기를 프레임마다 목표값으로 lerp
@@ -58,6 +58,7 @@ export default function CompanyNodes({ model, emphasis, hoveredId, onHover, onCl
     });
 
     const geo = new THREE.PlaneGeometry(2, 2);
+    geo.setAttribute("aColor", new THREE.InstancedBufferAttribute(color, 3));
     geo.setAttribute("aCell", new THREE.InstancedBufferAttribute(cell, 2));
     const brightAttr = new THREE.InstancedBufferAttribute(bright, 1);
     brightAttr.setUsage(THREE.DynamicDrawUsage);
@@ -68,7 +69,7 @@ export default function CompanyNodes({ model, emphasis, hoveredId, onHover, onCl
 
     const haloGeo = new THREE.BufferGeometry();
     haloGeo.setAttribute("position", new THREE.BufferAttribute(pos, 3));
-    haloGeo.setAttribute("color", new THREE.BufferAttribute(color, 3));
+    haloGeo.setAttribute("color", new THREE.BufferAttribute(color.slice(), 3));
     const haloSize = new THREE.BufferAttribute(size, 1);
     haloSize.setUsage(THREE.DynamicDrawUsage);
     const haloAlpha = new THREE.BufferAttribute(alpha, 1);
