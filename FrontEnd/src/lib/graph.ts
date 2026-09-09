@@ -48,7 +48,6 @@ export interface SceneModel {
 
 const GOLDEN = Math.PI * (3 - Math.sqrt(5));
 const INDUSTRY_ORDER = Object.keys(INDUSTRY_COLORS);
-const KR = new Set(["KOSPI", "KOSDAQ"]);
 
 function weightedDegree(edges: GraphEdge[]) {
   const deg = new Map<string, number>();
@@ -156,6 +155,40 @@ function finish(kind: SceneModel["kind"], centerId: string | null, nodes: SceneN
 /* ------------------------------------------------------------------ */
 /* 은하 — 산업 성단이 은하 디스크 위에 배치된다                              */
 /* ------------------------------------------------------------------ */
+/** 구면 위에 n 개 점을 고르게 놓는 피보나치 분포 (단위 벡터) */
+function fibonacciSphere(n: number, i: number, phase: number): Vec3 {
+  if (n <= 1) return [0, 1, 0];
+  const y = 1 - (2 * (i + 0.5)) / n;
+  const r = Math.sqrt(Math.max(0, 1 - y * y));
+  const a = i * GOLDEN + phase;
+  return [Math.cos(a) * r, y, Math.sin(a) * r];
+}
+
+/** 성단 껍질 j(1부터)에 앉을 수 있는 노드 수 — 바깥 껍질일수록 넓다 */
+const SHELL_CAP = (j: number) => 2 * (j + 1) * (j + 1);
+const SHELL_STEP = 10.5;
+const CLUSTER_GAP = 18;
+
+/** 성단 안에서 i 번째(연결 많은 순) 노드의 껍질 번호와 껍질 내 순번·정원 */
+function shellOf(i: number) {
+  let j = 1;
+  let start = 1;
+  while (i >= start + SHELL_CAP(j)) {
+    start += SHELL_CAP(j);
+    j += 1;
+  }
+  return { shell: j, index: i - start, cap: SHELL_CAP(j) };
+}
+function clusterRadius(n: number) {
+  return n <= 1 ? 4 : shellOf(n - 1).shell * SHELL_STEP + 4;
+}
+
+/**
+ * 전체 은하 — 입체 성단들이 은하 핵을 둘러싼 구조.
+ *  - 성단 하나 = 허브(연결 많은 기업)를 중심으로 한 동심 구 껍질. 연결 순으로 안쪽 껍질부터 채운다
+ *  - 기업 수가 가장 많은 산업이 은하 핵을 차지하고, 나머지 성단은 핵을 둘러싼 구면 위에 고르게 놓인다
+ *  - 어느 방향에서 봐도 앞뒤·위아래로 성단이 겹겹이 보여 깊이가 생기고, 배치 규칙은 눈에 읽힌다
+ */
 export function layoutGalaxy(graph: LatestGraph): SceneModel {
   const rng = seededRandom(hashString(graph.snapshotId));
   const { deg, cnt } = weightedDegree(graph.edges);
@@ -171,50 +204,38 @@ export function layoutGalaxy(graph: LatestGraph): SceneModel {
     return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib);
   });
 
+  // 성단 중심 배치: 핵 + 구면
+  const core = industries.slice().sort((a, b) => groups.get(b)!.length - groups.get(a)!.length)[0];
+  const shellInds = industries.filter((ind) => ind !== core);
+  const maxR = shellInds.reduce((m, ind) => Math.max(m, clusterRadius(groups.get(ind)!.length)), 0);
+  const coreR = clusterRadius(groups.get(core)!.length);
+  // 구면 위 이웃 간 각거리 ≈ sqrt(4π/K). 그 호 길이가 성단 지름 + 여백보다 크도록 반지름을 정한다
+  const sep = Math.sqrt((4 * Math.PI) / Math.max(1, shellInds.length));
+  const R = shellInds.length === 0 ? 0 : Math.max(coreR + maxR + CLUSTER_GAP, ((2 * maxR + CLUSTER_GAP) / sep) * 1.05);
+
+  const centers = new Map<string, Vec3>();
+  centers.set(core, [0, 0, 0]);
+  const phase = rng() * Math.PI * 2;
+  shellInds.forEach((ind, k) => {
+    const [ux, uy, uz] = fibonacciSphere(shellInds.length, k, phase);
+    // 위아래는 살짝 눌러 은하다운 원반 기운을 남기되, 앞뒤(z)는 그대로 두어 깊이를 살린다
+    centers.set(ind, [ux * R, uy * R * 0.72, uz * R]);
+  });
+
   const nodes: SceneNode[] = [];
-  const anchor = new Map<string, Vec3>();
-  const K = industries.length;
-  const total = graph.nodes.length;
-  // 성단이 하나뿐이면(산업 필터) 중심에 크게, 여러 개면 디스크 위에 고리로.
-  // 성단끼리 겹치지 않게 넉넉히 벌려 은하가 한 덩어리로 뭉치지 않고 성단 단위로 읽히도록 한다
-  const ringRadius = K === 1 ? 0 : 70 + Math.sqrt(total) * 4.6;
-
-  // 성단 반지름(spread)에 비례해 각도를 나눠 큰 성단은 넓게, 작은 성단은 좁게 자리를 차지한다
-  const spreadOf = (n: number) => (K === 1 ? 14 + Math.sqrt(n) * 9 : 9 + Math.sqrt(n) * 6.4);
-  const arcs = industries.map((ind) => spreadOf(groups.get(ind)!.length) + 10);
-  const arcTotal = arcs.reduce((a, b) => a + b, 0);
-  let arcCursor = 0;
-
   industries.forEach((ind, k) => {
     const members = groups.get(ind)!.slice().sort((a, b) => (deg.get(b.companyId) ?? 0) - (deg.get(a.companyId) ?? 0));
-    const n = members.length;
-    const theta = ((arcCursor + arcs[k] / 2) / arcTotal) * Math.PI * 2 - Math.PI / 2;
-    arcCursor += arcs[k];
-    // 성단을 안쪽·바깥쪽 고리에 번갈아 놓아 이웃 성단과 겹치지 않고 나선 은하처럼 깊이가 생긴다
-    const wobble = (k % 2 === 0 ? -1 : 1) * ringRadius * 0.22 + Math.sin(k * 2.3) * 6;
-    const cx = Math.cos(theta) * (ringRadius + wobble);
-    const cz = Math.sin(theta) * (ringRadius + wobble) * 0.82;
-    const cy = Math.sin(k * 1.9) * 14;
-    const spread = spreadOf(n);
-
+    const [cx, cy, cz] = centers.get(ind)!;
+    const spin = k * 1.7 + phase;
     members.forEach((m, i) => {
-      // 해바라기 배열: 허브(연결 많은 기업)가 성단 중심에 온다
-      const r = spread * Math.sqrt((i + 0.5) / n);
-      const a = i * GOLDEN + k;
-      let x = cx + Math.cos(a) * r;
-      let z = cz + Math.sin(a) * r * 0.85;
-      // 성단 바깥일수록 위아래로 더 흩어져 납작한 판이 아니라 두께 있는 성단이 된다
-      const y = cy + (rng() - 0.5) * (6 + r * 0.55);
-      // 국내 기업은 은하 중심 쪽, 해외 기업은 바깥쪽으로 살짝 밀어 시장을 공간으로 구분한다
-      if (K > 1) {
-        const dirx = Math.cos(theta);
-        const dirz = Math.sin(theta);
-        const shift = (KR.has(m.market) ? -1 : 1) * spread * 0.32;
-        x += dirx * shift;
-        z += dirz * shift;
+      let pos: Vec3 = [cx, cy, cz];
+      if (i > 0) {
+        const { shell, index, cap } = shellOf(i);
+        const count = Math.min(cap, members.length - (i - index)); // 이 껍질에 실제로 앉는 수
+        const [ux, uy, uz] = fibonacciSphere(count, index, spin + shell * 0.9);
+        const r = shell * SHELL_STEP;
+        pos = [cx + ux * r, cy + uy * r, cz + uz * r];
       }
-      const pos: Vec3 = [x, y, z];
-      anchor.set(m.companyId, [x, y, z]);
       nodes.push({
         id: m.companyId,
         name: m.name,
@@ -230,7 +251,6 @@ export function layoutGalaxy(graph: LatestGraph): SceneModel {
     });
   });
 
-  relax(nodes, graph.edges, anchor, 90, { spring: 0.02, attract: 0.0035, planar: false });
   return finish("galaxy", null, nodes, graph.edges);
 }
 

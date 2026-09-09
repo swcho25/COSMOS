@@ -24,14 +24,15 @@ function poseFor(model: SceneModel | null, kind: "galaxy" | "system", aspect = 1
   if (!model || !model.nodes.length) return FALLBACK_POSE[kind];
   let r = 10;
   model.nodes.forEach((n) => {
-    r = Math.max(r, Math.hypot(n.pos[0], n.pos[2]) + n.size * 2);
+    // 은하는 입체(구), 기업 중심 뷰는 바닥 궤도(x·z) 기준으로 바깥 반지름을 잡는다
+    r = Math.max(r, (kind === "galaxy" ? Math.hypot(n.pos[0], n.pos[1], n.pos[2]) : Math.hypot(n.pos[0], n.pos[2])) + n.size * 2);
   });
   // 세로로 긴 화면은 가로가 먼저 잘리므로 종횡비만큼 물러난다
   const fit = Math.tan((52 * Math.PI) / 360) * Math.min(1, aspect);
-  const dist = (r / fit) * (kind === "galaxy" ? 0.7 : 0.82);
-  // 은하는 좀 더 위에서 내려다봐 납작한 띠가 아니라 성단이 흩어진 원반으로 보이게 한다
-  const elev = kind === "galaxy" ? 0.58 : 0.34;
-  return { pos: [0, dist * elev, dist * Math.sqrt(1 - elev * elev)], tgt: [0, kind === "galaxy" ? -4 : -2, 0] };
+  const dist = (r / fit) * (kind === "galaxy" ? 0.98 : 0.82);
+  // 은하는 살짝 위에서 비스듬히 보아 앞뒤 성단이 겹겹이 보이게 한다
+  const elev = kind === "galaxy" ? 0.3 : 0.34;
+  return { pos: [0, dist * elev, dist * Math.sqrt(1 - elev * elev)], tgt: [0, kind === "galaxy" ? 0 : -2, 0] };
 }
 const WARP_COMMIT = 0.6;
 const WARP_END = 1.45;
@@ -230,13 +231,13 @@ function Content({ galaxy, system, callout, warpRef }: ContentProps) {
     <>
       <Director warpRef={warpRef} galaxy={galaxy} system={system} />
       <OrbitControls makeDefault enablePan={false} enableDamping dampingFactor={0.07} rotateSpeed={0.45} zoomSpeed={0.7} minDistance={22} maxDistance={900} maxPolarAngle={Math.PI * 0.62} />
-      <fog attach="fog" args={["#05070f", 280, 950]} />
+      <fog attach="fog" args={["#05070f", 480, 1500]} />
       <Nebula />
       <Starfield />
       <group onPointerMissed={(e) => e.button === 0 && clearSelection()}>
         {model && emphasis && (
           <group key={model.kind + (model.centerId ?? "")}>
-            <RelationLines edges={model.edges} emphasis={emphasis} onHover={setHoveredEdge} onSelect={selectEdge} />
+            <RelationLines edges={model.edges} emphasis={emphasis} onHover={setHoveredEdge} onSelect={selectEdge} intensity={model.kind === "galaxy" ? 0.5 : 1} />
             <CompanyNodes model={model} emphasis={emphasis} hoveredId={hoveredId} onHover={setHovered} onClick={warpTo} />
             <Labels model={model} emphasis={emphasis} visible={showLabels} />
             {callout && calloutNode && (

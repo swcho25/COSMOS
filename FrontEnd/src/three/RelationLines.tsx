@@ -39,6 +39,8 @@ interface Props {
   emphasis: Emphasis;
   onHover?: (id: string | null) => void;
   onSelect?: (id: string) => void;
+  /** 전체 밝기·폭 배율 (은하 뷰처럼 간선이 많을 때 낮춰 노드·성단이 묻히지 않게) */
+  intensity?: number;
 }
 
 /**
@@ -47,7 +49,7 @@ interface Props {
  * - 프래그먼트에서 간선을 따라 흐르는 펄스 → 방향(공급·투자)과 생동감. 무방향 관계는 양쪽에서 흐른다.
  * - 강조(emphasis) 값은 지오메트리를 다시 만들지 않고 속성 하나만 갱신한다.
  */
-export default function RelationLines({ edges, emphasis, onHover, onSelect }: Props) {
+export default function RelationLines({ edges, emphasis, onHover, onSelect, intensity = 1 }: Props) {
   const mat = useRef<THREE.ShaderMaterial>(null);
   const size = useThree((s) => s.size);
   const camera = useThree((s) => s.camera);
@@ -180,11 +182,12 @@ export default function RelationLines({ edges, emphasis, onHover, onSelect }: Pr
     emphAttr.needsUpdate = true;
   }, [edges, emphasis, emphAttr]);
 
-  const uniforms = useMemo(() => ({ uTime: { value: 0 }, uPixel: { value: 0.002 } }), []);
+  const uniforms = useMemo(() => ({ uTime: { value: 0 }, uPixel: { value: 0.002 }, uDim: { value: 1 } }), []);
 
   useFrame((state) => {
     if (!mat.current) return;
     mat.current.uniforms.uTime.value = state.clock.elapsedTime;
+    mat.current.uniforms.uDim.value = intensity;
     const cam = camera as THREE.PerspectiveCamera;
     const fov = (cam.fov * Math.PI) / 180;
     mat.current.uniforms.uPixel.value = (2 * Math.tan(fov / 2)) / Math.max(1, size.height);
@@ -224,6 +227,7 @@ export default function RelationLines({ edges, emphasis, onHover, onSelect }: Pr
             attribute float aNeg;
             attribute float aEmph;
             uniform float uPixel;
+            uniform float uDim;
             varying vec3 vColor;
             varying float vT;
             varying float vSide;
@@ -242,13 +246,14 @@ export default function RelationLines({ edges, emphasis, onHover, onSelect }: Pr
               vec3 side = cross(tan, viewDir);
               float l = length(side);
               side = l > 0.0001 ? side / l : vec3(1.0, 0.0, 0.0);
-              float w = aWidth * mix(0.75, 1.7, aEmph);
+              float w = aWidth * mix(0.75, 1.7, aEmph) * mix(0.55, 1.0, uDim);
               mv.xyz += side * aSide * w * 0.5 * uPixel * (-mv.z);
               gl_Position = projectionMatrix * mv;
             }
           `}
           fragmentShader={/* glsl */ `
             uniform float uTime;
+            uniform float uDim;
             varying vec3 vColor;
             varying float vT;
             varying float vSide;
@@ -269,11 +274,11 @@ export default function RelationLines({ edges, emphasis, onHover, onSelect }: Pr
               vec3 hot = mix(vColor, vec3(1.0), 0.55);
               vec3 neg = vec3(1.0, 0.36, 0.42);
               hot = mix(hot, neg, vNeg * 0.65);
-              vec3 col = mix(vColor * 0.75, hot * 2.4, pulse);
+              vec3 col = mix(vColor * 0.75, hot * mix(1.3, 2.4, uDim), pulse);
               col *= mix(0.4, 1.0, vEmph);
               // 끝점은 노드에 묻히도록 살짝 페이드
               float ends = smoothstep(0.0, 0.06, vT) * smoothstep(1.0, 0.94, vT);
-              float a = vAlpha * vEmph * soft * (0.5 + 0.5 * pulse) * (0.7 + 0.3 * ends);
+              float a = vAlpha * vEmph * soft * (0.5 + 0.5 * pulse) * (0.7 + 0.3 * ends) * uDim;
               gl_FragColor = vec4(col * soft, a);
             }
           `}
