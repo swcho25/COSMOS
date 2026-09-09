@@ -278,6 +278,10 @@ button:disabled {
   padding: 6px 11px;
   font-size: 12px;
 }
+.chip .edge-glyph {
+  display: block;
+  flex: none;
+}
 .badge {
   display: inline-flex;
   align-items: center;

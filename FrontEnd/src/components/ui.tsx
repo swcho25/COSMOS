@@ -77,6 +77,16 @@ export function ScoreBar({ score, color }: { score: number; color?: string }) {
 }
 
 /* ------------------------------ 관계 유형 범례 ------------------------------ */
+/** 간선은 한 가지 주황 빔이므로 색 대신 선 모양으로 구분한다: 방향 있음 = 실선 + 화살, 방향 없음 = 점선 */
+function EdgeGlyph({ directed }: { directed: boolean }) {
+  return (
+    <svg className="edge-glyph" width="22" height="10" viewBox="0 0 22 10" aria-hidden>
+      <line x1="1" y1="5" x2={directed ? 15 : 21} y2="5" stroke="#ffa24c" strokeWidth="2" strokeLinecap="round" strokeDasharray={directed ? undefined : "2.5 3"} />
+      {directed && <path d="M14 1.5 L19.5 5 L14 8.5" fill="none" stroke="#ffa24c" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />}
+    </svg>
+  );
+}
+
 export function TypeLegend({ active, onToggle }: { active?: Set<RelationshipType>; onToggle?: (t: RelationshipType) => void }) {
   return (
     <div className="row wrap" style={{ gap: 8 }}>
@@ -84,10 +94,9 @@ export function TypeLegend({ active, onToggle }: { active?: Set<RelationshipType
         const m = relationshipMeta(t);
         const on = active ? active.has(t) : true;
         return (
-          <button key={t} type="button" className={`chip chip-sm ${on ? "on" : ""}`} onClick={() => onToggle?.(t)} title={m.description} style={{ opacity: on ? 1 : 0.55 }}>
-            <i style={{ background: m.color }} />
+          <button key={t} type="button" className={`chip chip-sm ${on ? "on" : ""}`} onClick={() => onToggle?.(t)} title={`${m.description} · ${m.directed ? "방향 있음 (펄스가 한쪽으로 흐름)" : "방향 없음 (점선)"}`} style={{ opacity: on ? 1 : 0.55 }}>
+            <EdgeGlyph directed={m.directed} />
             {m.label}
-            <span style={{ opacity: 0.6, fontSize: 11 }}>{m.directed ? "→" : "↔"}</span>
           </button>
         );
       })}
