@@ -78,7 +78,7 @@ function relax(nodes: SceneNode[], edges: GraphEdge[], anchor: Map<string, Vec3>
         const dy = b.pos[1] - a.pos[1];
         const dz = b.pos[2] - a.pos[2];
         const d2 = dx * dx + dy * dy + dz * dz;
-        const min = (a.size + b.size) * 3.2 + 2.5;
+        const min = (a.size + b.size) * 3.8 + 4;
         if (d2 < min * min && d2 > 1e-6) {
           const d = Math.sqrt(d2);
           const push = ((min - d) / d) * 0.5;
@@ -166,8 +166,8 @@ function fibonacciSphere(n: number, i: number, phase: number): Vec3 {
 
 /** 성단 껍질 j(1부터)에 앉을 수 있는 노드 수 — 바깥 껍질일수록 넓다 */
 const SHELL_CAP = (j: number) => 2 * (j + 1) * (j + 1);
-const SHELL_STEP = 10.5;
-const CLUSTER_GAP = 18;
+const SHELL_STEP = 13;
+const CLUSTER_GAP = 26;
 
 /** 성단 안에서 i 번째(연결 많은 순) 노드의 껍질 번호와 껍질 내 순번·정원 */
 function shellOf(i: number) {
@@ -257,7 +257,7 @@ export function layoutGalaxy(graph: LatestGraph): SceneModel {
 /* ------------------------------------------------------------------ */
 /* 기업 중심 — depth 가 궤도 반지름이 된다                                  */
 /* ------------------------------------------------------------------ */
-const ORBIT = [0, 15, 27, 38];
+const ORBIT = [0, 24, 44, 62];
 
 export function layoutSystem(graph: CompanyGraph, lookup: (id: string) => { industryName: string; market: Market; stockCode: string } | undefined): SceneModel {
   const rng = seededRandom(hashString(graph.snapshotId + graph.centerCompanyId));
@@ -315,7 +315,7 @@ export function layoutSystem(graph: CompanyGraph, lookup: (id: string) => { indu
     const d = n.depth;
     const r = ORBIT[Math.min(d, ORBIT.length - 1)] + (d > 0 ? (rng() - 0.5) * 6 : 0);
     const a = angle.get(n.companyId) ?? rng() * Math.PI * 2;
-    const pos: Vec3 = d === 0 ? [0, 0, 0] : [Math.cos(a) * r, (rng() - 0.5) * (2 + d * 2.2), Math.sin(a) * r * 0.82];
+    const pos: Vec3 = d === 0 ? [0, 0, 0] : [Math.cos(a) * r, (rng() - 0.5) * (5 + d * 4), Math.sin(a) * r * 0.82];
     anchor.set(n.companyId, [...pos] as Vec3);
     const info = lookup(n.companyId);
     nodes.push({
