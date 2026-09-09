@@ -7,14 +7,14 @@ spring:
     username: ${DB_USERNAME:cosmos}
     password: ${DB_PASSWORD:cosmos1234}
 
-  # schema.sql을 매 기동마다 실행 (스크립트가 IF NOT EXISTS로 멱등해야 함)
-  sql:
-    init:
-      mode: always
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    validate-on-migrate: true
 
   jpa:
     hibernate:
-      ddl-auto: validate   # 스키마는 schema.sql이 전담, JPA는 엔티티-테이블 일치 검증만
+      ddl-auto: validate   # 스키마는 Flyway가 관리하고 JPA는 Entity와의 일치 여부만 검증
     open-in-view: false
 
 management:

@@ -21,7 +21,7 @@ import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
 @Entity
 @Table(name = "users")
-@SQLDelete(sql = "UPDATE users SET deleted_at = now() WHERE id = ?") // delete() 호출 시 soft delete
+@SQLDelete(sql = "UPDATE users SET deleted_at = now() WHERE user_id = ?") // delete() 호출 시 soft delete
 @SQLRestriction("deleted_at IS NULL")                                // 모든 조회에서 탈퇴 회원 자동 제외
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
@@ -30,7 +30,8 @@ public class User {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+    @Column(name = "user_id")
+    private Long userId;
 
     @Column(nullable = false)
     private String email;
