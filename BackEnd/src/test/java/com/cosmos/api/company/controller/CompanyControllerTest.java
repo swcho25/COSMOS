@@ -10,14 +10,22 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.cosmos.api.company.dto.CompanyDetailResponse;
 import com.cosmos.api.company.dto.CompanyIndustryResponse;
+import com.cosmos.api.company.dto.CompanyMetricHistoryItemResponse;
+import com.cosmos.api.company.dto.CompanyMetricHistoryResponse;
+import com.cosmos.api.company.dto.CompanyMetricResponse;
 import com.cosmos.api.company.dto.CompanySummaryResponse;
 import com.cosmos.api.company.dto.IndustryListResponse;
 import com.cosmos.api.company.dto.IndustryReferenceResponse;
 import com.cosmos.api.company.dto.IndustryResponse;
+import com.cosmos.api.company.dto.StockPriceHistoryResponse;
+import com.cosmos.api.company.dto.StockPriceItemResponse;
 import com.cosmos.api.company.repository.CompanySearchCondition;
 import com.cosmos.api.company.service.CompanyService;
 import com.cosmos.api.global.error.GlobalExceptionHandler;
 import com.cosmos.api.global.response.CursorPageResponse;
+import java.math.BigDecimal;
+import java.time.Instant;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
@@ -105,5 +113,65 @@ class CompanyControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.items[0].industryId").value(INDUSTRY_ID.toString()))
                 .andExpect(jsonPath("$.items[0].companyCount").value(2));
+    }
+
+    @Test
+    void returnsLatestMetric() throws Exception {
+        when(companyService.findLatestMetric(COMPANY_ID, "30D")).thenReturn(new CompanyMetricResponse(
+                COMPANY_ID, "30D", 152, 91, 23, new BigDecimal("0.620000"), 18,
+                Instant.parse("2026-09-07T06:00:00Z")));
+
+        mockMvc.perform(get("/api/companies/{companyId}/metrics", COMPANY_ID))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.window").value("30D"))
+                .andExpect(jsonPath("$.newsMentionCount").value(152))
+                .andExpect(jsonPath("$.measuredAt").value("2026-09-07T06:00:00Z"));
+    }
+
+    @Test
+    void returnsMetricHistory() throws Exception {
+        when(companyService.findMetricHistory(
+                COMPANY_ID,
+                "7D",
+                LocalDate.parse("2026-09-01"),
+                LocalDate.parse("2026-09-07")))
+                .thenReturn(new CompanyMetricHistoryResponse(
+                        COMPANY_ID,
+                        "7D",
+                        List.of(new CompanyMetricHistoryItemResponse(
+                                Instant.parse("2026-09-07T00:00:00Z"),
+                                40, 25, 5, new BigDecimal("0.700000"), 6))));
+
+        mockMvc.perform(get("/api/companies/{companyId}/metrics/history", COMPANY_ID)
+                        .param("window", "7D")
+                        .param("from", "2026-09-01")
+                        .param("to", "2026-09-07"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.window").value("7D"))
+                .andExpect(jsonPath("$.items[0].relationshipCount").value(6));
+    }
+
+    @Test
+    void returnsStockPriceHistory() throws Exception {
+        Instant tradingAt = Instant.parse("2026-09-06T00:00:00Z");
+        when(companyService.findStockPrices(COMPANY_ID, "1M", "1D"))
+                .thenReturn(new StockPriceHistoryResponse(
+                        COMPANY_ID,
+                        "1M",
+                        "1D",
+                        tradingAt,
+                        List.of(new StockPriceItemResponse(
+                                tradingAt,
+                                new BigDecimal("72000"),
+                                new BigDecimal("73500"),
+                                new BigDecimal("71500"),
+                                new BigDecimal("73000"),
+                                18234567L))));
+
+        mockMvc.perform(get("/api/companies/{companyId}/stock-prices", COMPANY_ID))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.period").value("1M"))
+                .andExpect(jsonPath("$.interval").value("1D"))
+                .andExpect(jsonPath("$.items[0].closePrice").value(73000));
     }
 }
