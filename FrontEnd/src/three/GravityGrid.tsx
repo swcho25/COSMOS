@@ -40,7 +40,7 @@ export default function GravityGrid({ model, warpRef, hoveredId }: Props) {
     const low = isLowEnd();
     const n = model.kind === "galaxy" ? (low ? 96 : 128) : low ? 72 : 96;
     const half = field.half;
-    // 기업 중심 뷰만 궤도 링 — 은하는 성단이 구면이라 기준 원이 없다
+    // 기업 중심 뷰만 궤도 링 — 은하의 반지름은 질량 랭크라 눈금이 될 기준 원이 없다
     const rings = model.kind === "system" ? ORBIT.slice(1) : [];
     const total = n * n + rings.length * RING_PTS;
     const position = new Float32Array(total * 3);

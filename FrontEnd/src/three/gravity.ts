@@ -25,6 +25,12 @@ const CENTER_BOOST = 3;
 const LEAF_MASS = 0.35;
 /** 저사양 기기에서 유지할 노드 우물 수 (질량 상위) */
 const LOW_END_WELLS = 96;
+/**
+ * 성단 우물의 기준 반경. 은하 배치가 산업 성단이 아니라 관계 기반이 되면서 한 산업이 원반 전체에 흩어질 수 있다
+ * (실측 σ 66~143). 진폭을 그대로 두면 성단 우물 합만으로 격자 중심이 160 넘게 내려앉아 기업 딤플이 묻힌다.
+ * 같은 질량을 넓게 편 만큼 얕아지도록(부피 보존) 진폭을 (기준/σ)² 로 줄인다 — 뭉친 성단은 예전 깊이 그대로다.
+ */
+const CLUSTER_REF_SIGMA = 30;
 
 let lowEnd: boolean | null = null;
 /** 논리 코어 4 이하 = 통합 GPU 노트북으로 보고 격자·우물 수를 줄인다 */
@@ -94,8 +100,10 @@ export function buildWellField(model: SceneModel): WellField {
   // 성단 분지 — 중심·반경이 레이아웃 고정값이라 정적이다 (은하 뷰만, 기업 중심 뷰는 clusters 가 비어 있다)
   clusters.forEach((c, ci) => {
     const s = nodeCount + ci;
-    mass[s] = c.mass * 0.5 * atten(c.center[1], floorY);
-    sigma[s] = Math.max(6, c.radius * 0.9);
+    const sig = Math.max(6, c.radius * 0.9);
+    const spread = Math.min(1, (CLUSTER_REF_SIGMA / sig) ** 2);
+    mass[s] = c.mass * 0.5 * spread * atten(c.center[1], floorY);
+    sigma[s] = sig;
     data[s * 4] = c.center[0];
     data[s * 4 + 1] = c.center[2];
     data[s * 4 + 2] = mass[s];
