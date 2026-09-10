@@ -27,12 +27,14 @@ public class AuthController {
 
     private final UserService userService;
 
+    /** 회원가입. 성공하면 201과 만들어진 회원 정보(userId, email, nickname)를 돌려준다. */
     @PostMapping("/signup")
     public ResponseEntity<UserResponse> signup(@Valid @RequestBody SignupRequest request) {
         UserResponse response = userService.signup(request);
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 
+    /** 이메일 중복 확인. 가입 폼에서 실시간으로 쓰는 공개 API — 쓸 수 있으면 available=true. */
     @GetMapping("/check-email")
     public AvailabilityResponse checkEmail(
             @RequestParam
@@ -44,6 +46,7 @@ public class AuthController {
         return new AvailabilityResponse(userService.isEmailAvailable(email));
     }
 
+    /** 닉네임 중복 확인. 가입 폼에서 실시간으로 쓰는 공개 API — 쓸 수 있으면 available=true. */
     @GetMapping("/check-nickname")
     public AvailabilityResponse checkNickname(
             @RequestParam
