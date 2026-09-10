@@ -3,7 +3,7 @@ import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { AdaptiveDpr, Html, OrbitControls } from "@react-three/drei";
 import { Bloom, ChromaticAberration, EffectComposer, Vignette } from "@react-three/postprocessing";
 import * as THREE from "three";
-import type { SceneEdge, SceneModel } from "@/lib/graph";
+import type { SceneEdge, SceneModel, Vec3 } from "@/lib/graph";
 import { hoverPath } from "@/lib/path";
 import { neighborRoles } from "@/lib/roles";
 import { useGalaxy } from "@/store/galaxy";
@@ -11,12 +11,14 @@ import Backdrop from "./Backdrop";
 import CompanyNodes from "./CompanyNodes";
 import EdgeArrows from "./EdgeArrows";
 import FlyControls from "./FlyControls";
+import GhostNodes from "./GhostNodes";
 import GravityGrid from "./GravityGrid";
 import RelationLines from "./RelationLines";
 import RoleRings from "./RoleRings";
 import Warp from "./Warp";
 import { cameraBusy } from "./cameraState";
 import { computeEmphasis } from "./emphasis";
+import { liveFor, morphState, planMorph, sampleMorph } from "./morph";
 import { LAB } from "./toon";
 
 type Pose = { pos: [number, number, number]; tgt: [number, number, number] };
@@ -39,8 +41,20 @@ function poseFor(model: SceneModel | null, kind: "galaxy" | "system", aspect = 1
   const elev = kind === "galaxy" ? 0.3 : 0.34;
   return { pos: [0, dist * elev, dist * Math.sqrt(1 - elev * elev)], tgt: [0, kind === "galaxy" ? 0 : -2, 0] };
 }
+/**
+ * 워프 타이밍 (초, warpStartedAt 기준) — morph.ts 의 표와 같은 것을 여기서 실행한다.
+ *   0 ~ 0.6   가속·스트릭, 빔 페이드아웃(morphState.fade 1→0, 0.25s), 칩·배지 페이드아웃
+ *   0.6       커밋 — focusId 교체 + planMorph + 카메라·시선 피벗 평행이동(순간이동 컷 없음)
+ *   0.6 ~ 1.7 나선 낙하(sampleMorph) · 고스트 이탈(앞 0.45s) · 격자 재settle
+ *   1.7       착지 — plan=null, landedAt 기록 → 이후 0.6s 동안 빔 리빌
+ */
 const WARP_COMMIT = 0.6;
-const WARP_END = 1.45;
+const WARP_END = 1.7;
+/** 워프 리빌 길이(ms) — 착지 후 이 시간 동안 빔이 안쪽에서 바깥으로 자란다 */
+const REVEAL_MS = 600;
+const ORIGIN: Vec3 = [0, 0, 0];
+const SHIFT = new THREE.Vector3();
+const PIVOT = new THREE.Vector3();
 const easeOutCubic = (x: number) => 1 - Math.pow(1 - x, 3);
 const easeInQuad = (x: number) => x * x;
 const smoothstep = (a: number, b: number, x: number) => {
@@ -58,7 +72,7 @@ interface Anim {
 }
 
 /** 카메라 연출 + 워프 타이밍. 스토어는 getState 로 읽어 리렌더를 만들지 않는다. */
-function Director({ warpRef, galaxy, system }: { warpRef: MutableRefObject<number>; galaxy: SceneModel | null; system: SceneModel | null }) {
+function Director({ warpRef, galaxy, system, next }: { warpRef: MutableRefObject<number>; galaxy: SceneModel | null; system: SceneModel | null; next: SceneModel | null }) {
   const camera = useThree((s) => s.camera);
   const controls = useThree((s) => s.controls) as unknown as { target: THREE.Vector3; update: () => void; enabled: boolean } | null;
   const rig = useRef({
@@ -69,18 +83,28 @@ function Director({ warpRef, galaxy, system }: { warpRef: MutableRefObject<numbe
     speed: 0,
   }).current;
 
-  const startAnim = (to: Pose, dur: number, fromPos?: THREE.Vector3) => {
+  // 항상 "지금 카메라가 있는 곳"에서 시작한다 — 워프 커밋도 순간이동 없이 이어 붙인다
+  const startAnim = (to: Pose, dur: number) => {
     const tgt = controls ? controls.target : new THREE.Vector3();
     rig.anim = {
       t: 0,
       dur,
-      fromPos: (fromPos ?? camera.position).clone(),
+      fromPos: camera.position.clone(),
       fromTgt: tgt.clone(),
       toPos: new THREE.Vector3().fromArray(to.pos),
       toTgt: new THREE.Vector3().fromArray(to.tgt),
     };
-    if (fromPos) camera.position.copy(fromPos);
   };
+
+  // 워프 도중에 씬이 사라지면(라우트 이동) 계획이 남아 다음 마운트의 빔·피킹을 잠근다 — 모프 상태는 Director 수명에 묶는다
+  useEffect(
+    () => () => {
+      morphState.plan = null;
+      morphState.fade = 1;
+      morphState.reveal = 1;
+    },
+    [],
+  );
 
   // 뷰가 바뀌지 않았는데 모델(산업 필터·기업 그래프 로딩)이 갱신되면 카메라를 다시 맞춘다
   const fitted = useRef<SceneModel | null>(null);
@@ -105,10 +129,12 @@ function Director({ warpRef, galaxy, system }: { warpRef: MutableRefObject<numbe
 
     if (s.phase === "warp") {
       const el = (now - s.warpStartedAt) / 1000;
-      intensity = smoothstep(0, 0.22, el) * (1 - smoothstep(WARP_END - 0.6, WARP_END, el));
+      // 터널 피크를 커밋 직후로 당겨 배치 교체를 덮고, 1.15s 에는 걷혀 낙하 후반이 맑게 보인다
+      intensity = smoothstep(0, 0.22, el) * (1 - smoothstep(WARP_COMMIT + 0.1, WARP_COMMIT + 0.55, el)) * 0.85;
       if (el < WARP_COMMIT) {
         if (rig.speed === 0) {
-          const aim = s.warpTarget && s.focusId === null ? galaxy?.nodeById.get(s.warpTarget)?.pos : null;
+          // 기업 → 기업 워프도 지금 보이는 뷰(system) 안의 목표를 향해 가속한다
+          const aim = s.warpTarget ? (s.focusId === null ? galaxy : system)?.nodeById.get(s.warpTarget)?.pos : null;
           if (aim) rig.warpAim.fromArray(aim);
           else rig.warpAim.set(0, 0, 0);
           rig.warpDir.copy(rig.warpAim).sub(camera.position).normalize();
@@ -119,23 +145,50 @@ function Director({ warpRef, galaxy, system }: { warpRef: MutableRefObject<numbe
           controls.target.lerp(rig.warpAim, dt * 3);
           controls.update();
         }
+        // 빔·구슬은 가속 0.25s 안에 완전히 사라진다 (착지 후 리빌로 다시 자란다)
+        morphState.fade = 1 - smoothstep(0, 0.25, el);
+        morphState.reveal = 0;
       } else if (!s.warpCommitted) {
+        const prevFocus = s.focusId;
         s.commitWarp();
-        const aspect = (camera as THREE.PerspectiveCamera).aspect;
-        const pose = s.warpTarget ? poseFor(system, "system", aspect) : poseFor(galaxy, "galaxy", aspect);
-        fitted.current = s.warpTarget ? system : galaxy;
-        const from = new THREE.Vector3().fromArray(pose.pos).multiplyScalar(1.7);
-        if (controls) controls.target.fromArray(pose.tgt);
-        startAnim(pose, WARP_END - WARP_COMMIT - 0.05, from);
+        const src = prevFocus ? system : galaxy;
+        // 목적지 배치가 아직 안 왔으면(next null) plan 없이 기존 팝인·재프레이밍으로 폴백한다
+        const dst = s.warpTarget ? next : galaxy;
+        // 피벗 = 두 배치에서 같은 자리가 되는 점. 은하→기업: 목표의 은하 좌표 → 원점 / 복귀: 원점 → 떠나온 기업의 은하 좌표
+        const pivotSrc = (s.warpTarget ? src?.nodeById.get(s.warpTarget)?.pos : undefined) ?? ORIGIN;
+        const pivotDst = (s.warpTarget || !prevFocus ? undefined : galaxy?.nodeById.get(prevFocus)?.pos) ?? ORIGIN;
+        morphState.plan = src && dst && src !== dst ? planMorph(src, dst, pivotSrc, pivotDst, WARP_END - WARP_COMMIT) : null;
+        morphState.fade = 1;
+        // 목표 행성의 화면 위치가 그대로이도록 카메라·시선도 같은 양만큼 평행이동한다 (순간이동 컷 제거)
+        SHIFT.fromArray(pivotDst).sub(PIVOT.fromArray(pivotSrc));
+        camera.position.add(SHIFT);
+        if (controls) controls.target.add(SHIFT);
+        const kind: "galaxy" | "system" = s.warpTarget ? "system" : "galaxy";
+        fitted.current = dst;
+        startAnim(poseFor(dst ?? (s.warpTarget ? system : galaxy), kind, (camera as THREE.PerspectiveCamera).aspect), WARP_END - WARP_COMMIT - 0.05);
         rig.speed = 0;
         rig.lastPhase = "warp-committed";
       }
+      const plan = morphState.plan;
+      if (plan && el >= WARP_COMMIT) {
+        plan.t = Math.min(1, (el - WARP_COMMIT) / (WARP_END - WARP_COMMIT));
+        sampleMorph(plan, plan.t, liveFor(plan.dst));
+      }
       if (el >= WARP_END) {
+        // plan 은 여기서 지우지 않는다 — 이 프레임에 sampleMorph(t=1) 로 착지 좌표를 막 썼고,
+        // Director 뒤에 도는 헤일로(haloPos.needsUpdate)·격자(writeWells)가 plan 을 보고 마지막 값을 올리기 때문.
+        // 정리는 다음 프레임의 비-워프 분기가 한다 (한 프레임 = 16ms 라 연출 차이는 없다).
+        morphState.landedAt = now;
         s.completeWarp();
         rig.lastPhase = s.warpTarget ? "system" : "galaxy";
       }
     } else {
       rig.speed = 0;
+      // 착지 프레임이 남겨 둔 계획을 여기서 정리한다 (워프가 중간에 끊겨 phase 가 빠져나온 경우의 안전장치이기도 하다)
+      morphState.plan = null;
+      morphState.fade = 1;
+      // 착지 후 0.6s 동안 빔이 자란다 (landedAt 0 = 아직 워프한 적 없음 → 마운트 램프에만 맡긴다)
+      morphState.reveal = morphState.landedAt === 0 ? 1 : Math.min(1, (now - morphState.landedAt) / REVEAL_MS);
       if (rig.lastPhase !== s.phase && rig.lastPhase !== "warp-committed" && s.navMode !== "fly") {
         startAnim(s.phase === "system" ? poseFor(system, "system", (camera as THREE.PerspectiveCamera).aspect) : poseFor(galaxy, "galaxy", (camera as THREE.PerspectiveCamera).aspect), 1.4);
       }
@@ -199,11 +252,13 @@ export interface Callout {
 interface ContentProps {
   galaxy: SceneModel | null;
   system: SceneModel | null;
+  /** 워프 목적지 배치 — 커밋(0.6s) 시점에 있으면 모프하고, 없으면 기존 팝인으로 폴백한다 */
+  next?: SceneModel | null;
   callout: Callout | null;
   warpRef: MutableRefObject<number>;
 }
 
-function Content({ galaxy, system, callout, warpRef }: ContentProps) {
+function Content({ galaxy, system, next = null, callout, warpRef }: ContentProps) {
   const focusId = useGalaxy((s) => s.focusId);
   const hoveredId = useGalaxy((s) => s.hoveredId);
   const hoveredEdgeId = useGalaxy((s) => s.hoveredEdgeId);
@@ -245,7 +300,7 @@ function Content({ galaxy, system, callout, warpRef }: ContentProps) {
 
   return (
     <>
-      <Director warpRef={warpRef} galaxy={galaxy} system={system} />
+      <Director warpRef={warpRef} galaxy={galaxy} system={system} next={next} />
       <FlyControls />
       <OrbitControls makeDefault enablePan={false} enableDamping dampingFactor={0.07} rotateSpeed={0.45} zoomSpeed={0.7} minDistance={22} maxDistance={900} maxPolarAngle={Math.PI * 0.62} />
       <fog attach="fog" args={[LAB.bg, 520, 1600]} />
@@ -259,7 +314,15 @@ function Content({ galaxy, system, callout, warpRef }: ContentProps) {
           <group key={model.kind + (model.centerId ?? "")}>
             {/* 바닥 격자는 빔보다 먼저 그린다 (renderOrder 0). keyed group 안이라 뷰가 바뀌면 평평한 면에서 다시 패인다 */}
             <GravityGrid model={model} warpRef={warpRef} hoveredId={hoveredId} />
-            <RelationLines edges={model.edges} emphasis={emphasis} onHover={setHoveredEdge} onSelect={selectEdge} intensity={model.kind === "galaxy" ? 0.85 : 1} hoveredEdgeId={hoveredEdgeId} />
+            <RelationLines
+              edges={model.edges}
+              emphasis={emphasis}
+              onHover={setHoveredEdge}
+              onSelect={selectEdge}
+              intensity={model.kind === "galaxy" ? 0.85 : 1}
+              hoveredEdgeId={hoveredEdgeId}
+              warpFx
+            />
             <EdgeArrows model={model} emphasis={emphasis} />
             <RoleRings model={model} hoveredId={hoveredId} roles={roleTags} />
             <CompanyNodes model={model} emphasis={emphasis} hoveredId={hoveredId} onHover={setHovered} onClick={warpTo} onPin={togglePin} showLabels={showLabels} roleTags={roleTags} />
@@ -280,6 +343,8 @@ function Content({ galaxy, system, callout, warpRef }: ContentProps) {
           </group>
         )}
       </group>
+      {/* 은하 전용 행성의 이탈 — keyed group 밖이라 모델이 교체돼도 계획이 끝날 때까지 살아 있다 */}
+      <GhostNodes />
       <Warp intensityRef={warpRef} />
       <Effects warpRef={warpRef} />
       <AdaptiveDpr />

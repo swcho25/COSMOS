@@ -301,7 +301,10 @@ export function layoutGalaxy(graph: LatestGraph): SceneModel {
 /** depth 별 궤도 반지름 — 격자의 궤도 링도 같은 값을 쓴다 */
 export const ORBIT = [0, 24, 44, 62];
 
-export function layoutSystem(graph: CompanyGraph, lookup: (id: string) => { industryName: string; market: Market; stockCode: string } | undefined): SceneModel {
+/** 기업 중심 배치가 산업·시장·종목코드를 채우는 데 쓰는 조회 함수 (전체 우주 스냅샷에서 만든다) */
+export type CompanyLookup = (id: string) => { industryName: string; market: Market; stockCode: string } | undefined;
+
+export function layoutSystem(graph: CompanyGraph, lookup: CompanyLookup): SceneModel {
   const rng = seededRandom(hashString(graph.snapshotId + graph.centerCompanyId));
   const { deg, cnt } = weightedDegree(graph.edges);
   const depthOf = new Map(graph.nodes.map((n) => [n.companyId, n.depth]));
@@ -377,6 +380,21 @@ export function layoutSystem(graph: CompanyGraph, lookup: (id: string) => { indu
   const movable = nodes.filter((n) => n.depth > 0);
   relax(movable, graph.edges, anchor, 60, { spring: 0.05, attract: 0.0015, planar: false });
   return finish("system", graph.centerCompanyId, nodes, graph.edges, []);
+}
+
+const SYSTEM_CACHE = new WeakMap<CompanyGraph, { lookup: CompanyLookup; model: SceneModel }>();
+/**
+ * 그래프 객체 기준 배치 캐시.
+ * 워프 목적지(useCompanyGraph(warpTarget))와 착지 후 포커스(useCompanyGraph(focusId))는 react-query 에서 같은
+ * CompanyGraph 참조를 받는다. 그때 같은 SceneModel 을 돌려주어야 커밋 뒤에도 씬이 리마운트되지 않고
+ * (= 행성 팝인 없이) 모프가 그대로 이어진다. lookup 이 바뀌면(우주 스냅샷 도착) 다시 만든다.
+ */
+export function layoutSystemCached(graph: CompanyGraph, lookup: CompanyLookup): SceneModel {
+  const hit = SYSTEM_CACHE.get(graph);
+  if (hit && hit.lookup === lookup) return hit.model;
+  const model = layoutSystem(graph, lookup);
+  SYSTEM_CACHE.set(graph, { lookup, model });
+  return model;
 }
 
 /* ------------------------------------------------------------------ */

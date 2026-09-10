@@ -4,6 +4,7 @@ import * as THREE from "three";
 import type { SceneEdge } from "@/lib/graph";
 import { bezier, controlPoint, radiusOf } from "./edgeCurve";
 import type { Emphasis } from "./emphasis";
+import { morphState } from "./morph";
 import { LAB } from "./toon";
 
 /** 튜브 길이 방향 분할, 둘레 분할, 간선당 빛 구슬 수 */
@@ -23,10 +24,36 @@ interface Props {
   intensity?: number;
   /** 호버 중인 간선 — 그 빔의 구슬이 2.2 배 빨리 흐르고 1.4 배 커져 방향이 한눈에 읽힌다 */
   hoveredEdgeId?: string | null;
+  /**
+   * 워프 연출(morphState)에 반응할지. 메인 씬만 true — 워프 가속 중 소멸(uFade)하고 착지 후 자라난다(uReveal).
+   * 미니 씬은 워프와 무관하므로 끄고 항상 완전히 보인다.
+   */
+  warpFx?: boolean;
 }
 /** 호버 빔의 구슬 속도·크기 배율 */
 const HOVER_SPEED = 2.2;
 const HOVER_SIZE = 1.4;
+/** 마운트 직후 빔이 자라나는 구간(초) — 워프 없이 모델이 바뀌었을 때도 툭 나타나지 않게 */
+const AGE_IN = [0.35, 0.95];
+/** 리빌 순서 폭 — 점수 낮은 빔일수록 이만큼 늦게 시작한다 (uReveal 과 셰이더 rv 식이 같아야 한다) */
+const REVEAL_STAGGER = 0.35;
+/** 피킹을 다시 허용하는 리빌 — 아직 자라는 중인 빔은 집히지 않는다 */
+const PICK_REVEAL = 0.9;
+
+/**
+ * 인스턴스별 리빌 상태 — 마운트 시각(초)과 현재 리빌.
+ * useRef 로 만든 객체를 useFrame 안에서 고치면 react-hooks/immutability 에 걸리므로(기준선 유지) 모듈 캐시에 둔다.
+ * 키는 인스턴스마다 새로 만들어지는 built 객체라, 컴포넌트가 사라지면 항목도 함께 회수된다.
+ */
+const GATES = new WeakMap<object, { born: number; reveal: number }>();
+
+const clamp01 = (x: number) => (x < 0 ? 0 : x > 1 ? 1 : x);
+const smoothstep = (a: number, b: number, x: number) => {
+  const t = clamp01((x - a) / (b - a));
+  return t * t * (3 - 2 * t);
+};
+/** 셰이더 rv 와 같은 식 — 구슬도 빔과 같은 순서·같은 지점에서 나타난다 */
+const revealAt = (reveal: number, score01: number) => clamp01((reveal - (1 - score01) * REVEAL_STAGGER) / (1 - REVEAL_STAGGER));
 
 /**
  * 관계 빔 — 아트 디렉션 랩의 튜브 빔을 은하 전체에 적용한 것.
@@ -36,7 +63,7 @@ const HOVER_SIZE = 1.4;
  *   방향 있는 관계는 source → target 으로, 무방향 관계는 양방향으로 흐르며 점선 튜브를 쓴다
  * - 강조(emphasis) 값은 지오메트리를 다시 만들지 않고 속성 하나만 갱신한다
  */
-export default function RelationLines({ edges, emphasis, onHover, onSelect, intensity = 1, hoveredEdgeId = null }: Props) {
+export default function RelationLines({ edges, emphasis, onHover, onSelect, intensity = 1, hoveredEdgeId = null, warpFx = false }: Props) {
   const built = useMemo(() => {
     const n = edges.length;
     const ctrls: THREE.Vector3[] = [];
@@ -51,6 +78,10 @@ export default function RelationLines({ edges, emphasis, onHover, onSelect, inte
     const position = new Float32Array(n * vPer * 3);
     const normal = new Float32Array(n * vPer * 3);
     const aT = new Float32Array(n * vPer);
+    /** 성장 방향 좌표 — 원점에 가까운 끝이 0 이라 리빌이 안쪽에서 바깥으로 번진다 */
+    const aT2 = new Float32Array(n * vPer);
+    /** 간선별 성장 방향 (1 = from 이 안쪽) — 구슬 게이트도 같은 방향을 쓴다 */
+    const outward = new Uint8Array(n);
     const aScore = new Float32Array(n * vPer);
     const aRadius = new Float32Array(n * vPer);
     const aFlow = new Float32Array(n * vPer);
@@ -78,8 +109,12 @@ export default function RelationLines({ edges, emphasis, onHover, onSelect, inte
       const vBase = ei * vPer;
       position.set(tp, vBase * 3);
       normal.set(tn, vBase * 3);
+      // 기업 중심 뷰의 중심도, 은하 핵 성단도 원점이라 "원점에 가까운 끝"이 곧 안쪽이다
+      const inward = Math.hypot(e.from[0], e.from[1], e.from[2]) <= Math.hypot(e.to[0], e.to[1], e.to[2]) ? 1 : 0;
+      outward[ei] = inward;
       for (let v = 0; v < vPer; v += 1) {
         aT[vBase + v] = tuv[v * 2]; // u = 길이 방향 0~1
+        aT2[vBase + v] = inward ? tuv[v * 2] : 1 - tuv[v * 2];
         aScore[vBase + v] = s;
         aRadius[vBase + v] = r;
         aFlow[vBase + v] = e.directed ? 1 : 0;
@@ -107,6 +142,7 @@ export default function RelationLines({ edges, emphasis, onHover, onSelect, inte
     geo.setAttribute("position", new THREE.BufferAttribute(position, 3));
     geo.setAttribute("normal", new THREE.BufferAttribute(normal, 3));
     geo.setAttribute("aT", new THREE.BufferAttribute(aT, 1));
+    geo.setAttribute("aT2", new THREE.BufferAttribute(aT2, 1));
     geo.setAttribute("aScore", new THREE.BufferAttribute(aScore, 1));
     geo.setAttribute("aRadius", new THREE.BufferAttribute(aRadius, 1));
     geo.setAttribute("aFlow", new THREE.BufferAttribute(aFlow, 1));
@@ -138,7 +174,7 @@ export default function RelationLines({ edges, emphasis, onHover, onSelect, inte
     pulseGeo.setAttribute("aAlpha", pAlpha);
     pulseGeo.setAttribute("aNeg", new THREE.BufferAttribute(pNeg, 1));
 
-    return { geo, emphAttr, pick, ctrls, radii, speeds, phases, pulseGeo, pPos, pSize, pAlpha, vPer };
+    return { geo, emphAttr, pick, ctrls, radii, speeds, phases, outward, pulseGeo, pPos, pSize, pAlpha, vPer };
   }, [edges]);
 
   useEffect(
@@ -160,8 +196,15 @@ export default function RelationLines({ edges, emphasis, onHover, onSelect, inte
     built.emphAttr.needsUpdate = true;
   }, [edges, emphasis, built]);
 
-  const tubeUniforms = useMemo(() => ({ uColor: { value: new THREE.Color(LAB.beam) }, uDim: { value: 1 }, uInflate: { value: 0 }, uHalo: { value: 0 } }), []);
-  const haloUniforms = useMemo(() => ({ uColor: { value: new THREE.Color(LAB.beamGlow) }, uDim: { value: 1 }, uInflate: { value: 1.7 }, uHalo: { value: 1 } }), []);
+  // uFade·uReveal 은 강조(uDim)와 완전히 분리된 워프 게이트다 — 필터·호버로 흐려지는 것과 섞이면 안 된다
+  const tubeUniforms = useMemo(
+    () => ({ uColor: { value: new THREE.Color(LAB.beam) }, uDim: { value: 1 }, uInflate: { value: 0 }, uHalo: { value: 0 }, uFade: { value: 1 }, uReveal: { value: 1 } }),
+    [],
+  );
+  const haloUniforms = useMemo(
+    () => ({ uColor: { value: new THREE.Color(LAB.beamGlow) }, uDim: { value: 1 }, uInflate: { value: 1.7 }, uHalo: { value: 1 }, uFade: { value: 1 }, uReveal: { value: 1 } }),
+    [],
+  );
   const pulseUniforms = useMemo(() => ({ uDim: { value: 1 }, uScale: { value: 600 } }), []);
 
   useFrame((state, delta) => {
@@ -172,6 +215,20 @@ export default function RelationLines({ edges, emphasis, onHover, onSelect, inte
     // 포인트 크기를 화면 높이에 맞춘다 (fov 고정 가정)
     pulseUniforms.uScale.value = state.size.height * 0.62;
 
+    // 낙하 중(plan)은 완전히 숨기고, 착지 후에는 morphState.reveal(0.6s 램프)과 마운트 램프 중 느린 쪽을 따른다.
+    // 두 입력이 이미 시간 램프라 여기서 한 번 더 감쇠하지 않는다 — 그러면 "착지 후 0.6s" 를 넘긴다
+    let gate = GATES.get(built);
+    if (!gate) {
+      gate = { born: state.clock.elapsedTime, reveal: warpFx ? 0 : 1 };
+      GATES.set(built, gate);
+    }
+    const reveal = (gate.reveal = !warpFx ? 1 : morphState.plan ? 0 : Math.min(morphState.reveal, smoothstep(AGE_IN[0], AGE_IN[1], state.clock.elapsedTime - gate.born)));
+    const fade = warpFx ? morphState.fade : 1;
+    tubeUniforms.uFade.value = fade;
+    haloUniforms.uFade.value = fade;
+    tubeUniforms.uReveal.value = reveal;
+    haloUniforms.uReveal.value = reveal;
+
     const pos = built.pPos.array as Float32Array;
     const size = built.pSize.array as Float32Array;
     const alpha = built.pAlpha.array as Float32Array;
@@ -180,6 +237,8 @@ export default function RelationLines({ edges, emphasis, onHover, onSelect, inte
       const ctrl = built.ctrls[ei];
       const hot = e.id === hoveredEdgeId;
       const phase = (built.phases[ei] = (built.phases[ei] + dt * built.speeds[ei] * (hot ? HOVER_SPEED : 1)) % 1);
+      // 아직 자라지 않은 구간의 구슬은 빔 밖에 뜬다 — 튜브와 같은 리빌 지점에서 잘라 낸다
+      const rvE = reveal >= 1 ? 1 : revealAt(reveal, e.score / 100);
       for (let j = 0; j < PULSES; j += 1) {
         const k = ei * PULSES + j;
         let u = (phase + j / PULSES) % 1;
@@ -189,9 +248,10 @@ export default function RelationLines({ edges, emphasis, onHover, onSelect, inte
         pos[k * 3] = P.x;
         pos[k * 3 + 1] = P.y;
         pos[k * 3 + 2] = P.z;
-        const fade = Math.sin(u * Math.PI);
-        size[k] = built.radii[ei] * (6.0 + fade * 3.6) * (hot ? HOVER_SIZE : 1);
-        alpha[k] = emph <= 0.003 ? 0 : (0.35 + 0.65 * fade) * Math.min(1, emph * 1.4);
+        const bell = Math.sin(u * Math.PI);
+        size[k] = built.radii[ei] * (6.0 + bell * 3.6) * (hot ? HOVER_SIZE : 1);
+        const grown = (built.outward[ei] ? u : 1 - u) <= rvE;
+        alpha[k] = emph <= 0.003 || !grown ? 0 : (0.35 + 0.65 * bell) * Math.min(1, emph * 1.4) * fade;
       }
     });
     built.pPos.needsUpdate = true;
@@ -199,6 +259,8 @@ export default function RelationLines({ edges, emphasis, onHover, onSelect, inte
     built.pAlpha.needsUpdate = true;
   });
 
+  /** 지금 리빌 — 아직 자라는 중(또는 워프로 사라진) 빔은 보이지 않으므로 집히지도 않아야 한다 */
+  const revealOf = () => GATES.get(built)?.reveal ?? 1;
   const edgeIndexOf = (e: ThreeEvent<PointerEvent | MouseEvent>) => {
     const idx = e.index ?? 0;
     const ei = Math.floor(idx / (PICK_SEGS * 2));
@@ -229,6 +291,7 @@ export default function RelationLines({ edges, emphasis, onHover, onSelect, inte
         geometry={built.pick}
         frustumCulled={false}
         onPointerMove={(e) => {
+          if (revealOf() < PICK_REVEAL) return;
           if (nodeAhead(e)) {
             onHover?.(null);
             return;
@@ -239,6 +302,7 @@ export default function RelationLines({ edges, emphasis, onHover, onSelect, inte
         }}
         onPointerOut={() => onHover?.(null)}
         onClick={(e) => {
+          if (revealOf() < PICK_REVEAL) return;
           if (nodeAhead(e)) return;
           e.stopPropagation();
           const edge = edgeIndexOf(e);
@@ -253,6 +317,7 @@ export default function RelationLines({ edges, emphasis, onHover, onSelect, inte
 
 const TUBE_VERTEX = /* glsl */ `
   attribute float aT;
+  attribute float aT2;
   attribute float aScore;
   attribute float aRadius;
   attribute float aFlow;
@@ -260,13 +325,14 @@ const TUBE_VERTEX = /* glsl */ `
   attribute float aEmph;
   uniform float uInflate;
   varying float vT;
+  varying float vT2;
   varying float vScore;
   varying float vFlow;
   varying float vNeg;
   varying float vEmph;
   varying vec3 vNormalV;
   void main(){
-    vT = aT; vScore = aScore; vFlow = aFlow; vNeg = aNeg; vEmph = aEmph;
+    vT = aT; vT2 = aT2; vScore = aScore; vFlow = aFlow; vNeg = aNeg; vEmph = aEmph;
     // 헤일로 패스는 법선 방향으로 부풀린다
     vec3 p = position + normal * aRadius * uInflate;
     vNormalV = normalize(normalMatrix * normal);
@@ -277,21 +343,28 @@ const TUBE_FRAGMENT = /* glsl */ `
   uniform vec3 uColor;
   uniform float uDim;
   uniform float uHalo;
+  uniform float uFade;
+  uniform float uReveal;
   varying float vT;
+  varying float vT2;
   varying float vScore;
   varying float vFlow;
   varying float vNeg;
   varying float vEmph;
   varying vec3 vNormalV;
   void main(){
-    if (vEmph <= 0.003) discard;
+    if (vEmph <= 0.003 || uFade <= 0.003) discard;
+    // 리빌: 점수 높은 빔이 먼저(rv), 각 빔은 원점에 가까운 끝(vT2=0)에서 바깥으로 자란다
+    float rv = clamp((uReveal - (1.0 - vScore) * 0.35) / 0.65, 0.0, 1.0);
+    float grow = 1.0 - smoothstep(rv - 0.06, rv, vT2);
+    if (grow <= 0.003) discard;
     // 무방향 관계는 점선
     float dash = vFlow > 0.5 ? 1.0 : mix(0.3, 1.0, step(0.5, fract(vT * 18.0)));
     // 끝점은 행성에 묻히도록 살짝 페이드
     float ends = smoothstep(0.0, 0.05, vT) * smoothstep(1.0, 0.95, vT);
     vec3 col = mix(uColor, vec3(1.0, 0.42, 0.46), vNeg * 0.55);
     if (uHalo > 0.5) {
-      float a = 0.14 * (0.5 + 0.5 * vScore) * vEmph * vEmph * dash * ends * uDim;
+      float a = 0.14 * (0.5 + 0.5 * vScore) * vEmph * vEmph * dash * ends * uDim * uFade * grow;
       gl_FragColor = vec4(col, a);
       return;
     }
@@ -300,7 +373,7 @@ const TUBE_FRAGMENT = /* glsl */ `
     col *= shade;
     // 흐린 간선은 색을 탁하게 하지 않고 투명도만 낮춘다 (갈색 띠 방지)
     col *= mix(0.85, 1.0, vEmph);
-    float a = (0.55 + 0.45 * vScore) * vEmph * vEmph * dash * ends * mix(0.55, 1.0, uDim);
+    float a = (0.55 + 0.45 * vScore) * vEmph * vEmph * dash * ends * mix(0.55, 1.0, uDim) * uFade * grow;
     gl_FragColor = vec4(col, a);
   }
 `;

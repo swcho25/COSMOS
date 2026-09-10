@@ -2,10 +2,10 @@ import { useCallback, useEffect, useMemo, useRef } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import Scene, { type Callout } from "@/three/Scene";
-import { layoutGalaxy, layoutSystem } from "@/lib/graph";
+import { layoutGalaxy, layoutSystemCached } from "@/lib/graph";
 import { fmtDateTime, fmtRelative } from "@/lib/format";
 import { industryColor } from "@/lib/meta";
-import { useCompanyGraph, useIndustries, useLatestGraph, useNewsFeed } from "@/lib/queries";
+import { companyGraphQuery, useCompanyGraph, useIndustries, useLatestGraph, useNewsFeed, useSessionKey } from "@/lib/queries";
 import { useGalaxy } from "@/store/galaxy";
 import { Icon, TypeLegend } from "@/components/ui";
 import CompanyPanel from "./CompanyPanel";
@@ -15,6 +15,20 @@ import RelationshipPanel from "./RelationshipPanel";
 import SceneTip, { type PointerPos } from "./SceneTip";
 import SearchPalette from "./SearchPalette";
 import "./galaxy.css";
+
+/** 호버 200ms 프리페치 — 워프 커밋(0.6s) 전에 목적지 배치가 준비되도록 미리 받아 둔다.
+    hoveredId 구독을 이 조각에 가둬 호버마다 HUD 전체가 리렌더되지 않게 한다 */
+function HoverPrefetch({ focusId }: { focusId: string | null }) {
+  const hoveredId = useGalaxy((s) => s.hoveredId);
+  const sessionKey = useSessionKey();
+  const qc = useQueryClient();
+  useEffect(() => {
+    if (!hoveredId || hoveredId === focusId) return;
+    const t = setTimeout(() => void qc.prefetchQuery(companyGraphQuery(sessionKey, hoveredId)), 200);
+    return () => clearTimeout(t);
+  }, [hoveredId, focusId, sessionKey, qc]);
+  return null;
+}
 
 /**
  * 전체 은하 (화면구성도 ①). 산업 성단 위에 기업 항성과 관계 간선을 그리고,
@@ -52,7 +66,10 @@ export default function GalaxyPage() {
   const industries = useIndustries();
   const universe = useLatestGraph(null); // 전체 우주 — 색·시장 조회용
   const latest = useLatestGraph(industryId);
-  const companyGraph = useCompanyGraph(focusId);
+  const focusGraph = useCompanyGraph(focusId);
+  // 워프 중인 목적지 — 커밋 전에 미리 배치를 만들어 둬야 모프가 첫 프레임부터 이어진다
+  const warpTarget = useGalaxy((s) => s.warpTarget);
+  const targetGraph = useCompanyGraph(phase === "warp" ? warpTarget : null);
   const focusNews = useNewsFeed({ companyId: focusId ?? undefined, size: 1 }, Boolean(focusId));
 
   const galaxyModel = useMemo(() => (latest.data ? layoutGalaxy(latest.data) : null), [latest.data]);
@@ -60,7 +77,10 @@ export default function GalaxyPage() {
     const m = new Map(universe.data?.nodes.map((n) => [n.companyId, n]) ?? []);
     return (id: string) => m.get(id);
   }, [universe.data]);
-  const systemModel = useMemo(() => (companyGraph.data ? layoutSystem(companyGraph.data, lookup) : null), [companyGraph.data, lookup]);
+  // 그래프 객체 기준 캐시(layoutSystemCached) — 커밋 뒤 목적지 그래프가 포커스 그래프가 되어도 같은 SceneModel 이라
+  // 씬이 리마운트되지 않고(팝인 없음) 모프가 그대로 이어진다
+  const systemModel = useMemo(() => (focusGraph.data ? layoutSystemCached(focusGraph.data, lookup) : null), [focusGraph.data, lookup]);
+  const nextModel = useMemo(() => (targetGraph.data ? layoutSystemCached(targetGraph.data, lookup) : null), [targetGraph.data, lookup]);
   // 씬 툴팁이 따라갈 포인터 위치 — ref 에만 써서 포인터 이동이 리렌더를 만들지 않는다
   const pointer = useRef<PointerPos>({ x: -1000, y: -1000 });
 
@@ -118,7 +138,7 @@ export default function GalaxyPage() {
   const focusName = focusId ? systemModel?.nodeById.get(focusId)?.name ?? lookup(focusId)?.name ?? "…" : null;
   const snapshot = latest.data;
   const stale = snapshot ? Date.now() > Date.parse(snapshot.nextRefreshAt) : false;
-  const loading = latest.isLoading || (Boolean(focusId) && companyGraph.isLoading && !systemModel);
+  const loading = latest.isLoading || (Boolean(focusId) && focusGraph.isLoading && !systemModel);
 
   return (
     <div
@@ -129,8 +149,9 @@ export default function GalaxyPage() {
       }}
     >
       <div className="stage">
-        <Scene galaxy={galaxyModel} system={systemModel} callout={callout} />
+        <Scene galaxy={galaxyModel} system={systemModel} next={nextModel} callout={callout} />
       </div>
+      <HoverPrefetch focusId={focusId} />
       {/* 빔·기업 호버 툴팁 — 포인터를 따라가는 DOM, 클릭은 통과시킨다 */}
       <SceneTip model={focusId ? systemModel : galaxyModel} pointer={pointer} />
 
