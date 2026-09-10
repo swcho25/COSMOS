@@ -20,7 +20,7 @@ import RoleRings from "./RoleRings";
 import Warp from "./Warp";
 import { cameraBusy } from "./cameraState";
 import { computeEmphasis } from "./emphasis";
-import { liveFor, morphState, planMorph, sampleMorph } from "./morph";
+import { dragState, liveFor, morphState, planMorph, sampleMorph } from "./morph";
 import { LAB } from "./toon";
 
 type Pose = { pos: [number, number, number]; tgt: [number, number, number] };
@@ -98,12 +98,15 @@ function Director({ warpRef, galaxy, system, next }: { warpRef: MutableRefObject
     };
   };
 
-  // 워프 도중에 씬이 사라지면(라우트 이동) 계획이 남아 다음 마운트의 빔·피킹을 잠근다 — 모프 상태는 Director 수명에 묶는다
+  // 워프 도중에 씬이 사라지면(라우트 이동) 계획이 남아 다음 마운트의 빔·피킹을 잠근다 — 모프 상태는 Director 수명에 묶는다.
+  // cameraBusy 도 마찬가지다: 이 값을 쓰는 건 Director 뿐인데 읽는 쪽에는 연출 카메라가 없는 미니 씬의 드래그도 있어,
+  // 연출 중에 떠나면 true 로 굳어 그쪽 입력이 영영 막힌다
   useEffect(
     () => () => {
       morphState.plan = null;
       morphState.fade = 1;
       morphState.reveal = 1;
+      cameraBusy.anim = false;
     },
     [],
   );
@@ -218,7 +221,8 @@ function Director({ warpRef, galaxy, system, next }: { warpRef: MutableRefObject
 
     cameraBusy.anim = !!rig.anim || s.phase === "warp";
     if (controls) {
-      const free = s.phase !== "warp" && !rig.anim && s.navMode !== "fly";
+      // 행성을 끄는 동안은 궤도 회전을 멈춘다 — 안 그러면 행성과 카메라가 같은 드래그로 함께 움직인다
+      const free = s.phase !== "warp" && !rig.anim && s.navMode !== "fly" && !dragState.id;
       if (controls.enabled !== free) controls.enabled = free;
     }
   });
@@ -317,7 +321,8 @@ function Content({ galaxy, system, next = null, callout, warpRef }: ContentProps
       <ambientLight intensity={0.55} color="#c9d4ff" />
       <hemisphereLight args={["#9ab3ff", "#3a1f5c", 0.6]} />
       <directionalLight position={[-60, 80, 70]} intensity={2.4} color="#fff3e0" />
-      <group onPointerMissed={(e) => e.button === 0 && clearSelection()}>
+      {/* 행성을 끌어 옮긴 직후의 클릭은 "빈 곳 클릭"이 아니다 */}
+      <group onPointerMissed={(e) => e.button === 0 && !dragState.blockClick && clearSelection()}>
         {model && emphasis && (
           <group key={model.kind + (model.centerId ?? "")}>
             {/* 별가루는 은하 뷰에만, 격자보다 먼저 그려 가장 뒤에 깔린다 */}
@@ -325,6 +330,7 @@ function Content({ galaxy, system, next = null, callout, warpRef }: ContentProps
             {/* 바닥 격자는 빔보다 먼저 그린다 (renderOrder 0). keyed group 안이라 뷰가 바뀌면 평평한 면에서 다시 패인다 */}
             <GravityGrid model={model} warpRef={warpRef} hoveredId={hoveredId} />
             <RelationLines
+              model={model}
               edges={model.edges}
               emphasis={emphasis}
               onHover={setHoveredEdge}

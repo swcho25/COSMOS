@@ -1,10 +1,11 @@
 import { useEffect, useMemo } from "react";
 import { useFrame, type ThreeEvent } from "@react-three/fiber";
 import * as THREE from "three";
-import type { SceneEdge } from "@/lib/graph";
+import type { SceneEdge, SceneModel } from "@/lib/graph";
+import { touch } from "./bufferUtil";
 import { bezier, controlPoint, radiusOf } from "./edgeCurve";
 import type { Emphasis } from "./emphasis";
-import { morphState } from "./morph";
+import { dragState, liveFor, morphState, type LiveTransform } from "./morph";
 import { beamColorFor } from "./toon";
 
 /** 튜브 길이 방향 분할, 둘레 분할, 간선당 빛 구슬 수 */
@@ -15,9 +16,16 @@ const PICK_SEGS = 8;
 
 const P = new THREE.Vector3();
 const C = new THREE.Color();
+/** 드래그 추종에서 튜브를 다시 구울 때 쓰는 곡선 스크래치 */
+const CURVE = new THREE.QuadraticBezierCurve3(new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3());
 
 interface Props {
   edges: SceneEdge[];
+  /**
+   * 끝점을 live 버퍼에서 다시 읽기 위한 모델 (간선 → 노드 인덱스). 주면 드래그로 옮긴 행성을 간선이 따라간다.
+   * 없으면 레이아웃 좌표(SceneEdge.from/to)에 고정된다.
+   */
+  model?: SceneModel;
   emphasis: Emphasis;
   onHover?: (id: string | null) => void;
   onSelect?: (id: string) => void;
@@ -47,6 +55,70 @@ const PICK_REVEAL = 0.9;
  * 키는 인스턴스마다 새로 만들어지는 built 객체라, 컴포넌트가 사라지면 항목도 함께 회수된다.
  */
 const GATES = new WeakMap<object, { born: number; reveal: number }>();
+/** 인스턴스별 드래그 추종 상태 — 마지막으로 반영한 dragState.version. GATES 와 같은 이유로 모듈 캐시에 둔다 */
+const FOLLOWED = new WeakMap<object, { version: number }>();
+
+/** followEdges 가 건드리는 병합 버퍼 (built 의 부분집합) */
+interface EdgeBuffers {
+  fromArr: Float32Array;
+  toArr: Float32Array;
+  position: Float32Array;
+  normal: Float32Array;
+  pickPos: Float32Array;
+  ctrls: THREE.Vector3[];
+  radii: Float32Array;
+  vPer: number;
+  posAttr: THREE.BufferAttribute;
+  normAttr: THREE.BufferAttribute;
+  pickAttr: THREE.BufferAttribute;
+  pick: THREE.BufferGeometry;
+}
+
+/**
+ * 드래그로 움직인(dirty) 노드에 붙은 간선만 live 좌표로 다시 굽는다 — 튜브 정점·법선, 제어점, 피킹 선분.
+ * 전체 재생성은 하지 않는다 (한 노드의 인접 간선은 수십 개 수준).
+ */
+function followEdges(buf: EdgeBuffers, edges: SceneEdge[], adjacency: Map<string, number[]>, nodeIndex: Map<string, number>, live: LiveTransform) {
+  const hits = new Set<number>();
+  dragState.dirty.forEach((id) => adjacency.get(id)?.forEach((ei) => hits.add(ei)));
+  if (!hits.size) return;
+  const { fromArr, toArr, position, normal, pickPos, ctrls, radii, vPer } = buf;
+  hits.forEach((ei) => {
+    const e = edges[ei];
+    const si = nodeIndex.get(e.source);
+    const ti = nodeIndex.get(e.target);
+    if (si === undefined || ti === undefined) return;
+    // 양끝을 모두 live 에서 읽는다 — 두 행성을 차례로 옮긴 간선도 어긋나지 않는다
+    for (let k = 0; k < 3; k += 1) {
+      fromArr[ei * 3 + k] = live.pos[si * 3 + k];
+      toArr[ei * 3 + k] = live.pos[ti * 3 + k];
+    }
+    const ctrl = ctrls[ei];
+    controlPoint(fromArr, toArr, ctrl, ei * 3, ei * 3);
+    CURVE.v0.fromArray(fromArr, ei * 3);
+    CURVE.v1.copy(ctrl);
+    CURVE.v2.fromArray(toArr, ei * 3);
+    // 성장 방향(aT2·outward)은 그대로 둔다 — 끌 때마다 리빌 방향이 뒤집히면 빔이 깜빡인다
+    const tube = new THREE.TubeGeometry(CURVE, SEGS, radii[ei], RADIAL, false);
+    position.set(tube.attributes.position.array as Float32Array, ei * vPer * 3);
+    normal.set(tube.attributes.normal.array as Float32Array, ei * vPer * 3);
+    tube.dispose();
+    for (let k = 0; k < PICK_SEGS; k += 1) {
+      const o = (ei * PICK_SEGS + k) * 6;
+      bezier(fromArr, toArr, ctrl, k / PICK_SEGS, P, ei * 3, ei * 3);
+      pickPos[o] = P.x;
+      pickPos[o + 1] = P.y;
+      pickPos[o + 2] = P.z;
+      bezier(fromArr, toArr, ctrl, (k + 1) / PICK_SEGS, P, ei * 3, ei * 3);
+      pickPos[o + 3] = P.x;
+      pickPos[o + 4] = P.y;
+      pickPos[o + 5] = P.z;
+    }
+  });
+  touch(buf.posAttr, buf.normAttr, buf.pickAttr);
+  // 피킹 선분의 경계구는 한 번 계산되면 캐시된다 — 멀리 옮긴 간선도 집히도록 다시 잰다
+  buf.pick.computeBoundingSphere();
+}
 
 const clamp01 = (x: number) => (x < 0 ? 0 : x > 1 ? 1 : x);
 const smoothstep = (a: number, b: number, x: number) => {
@@ -64,7 +136,7 @@ const revealAt = (reveal: number, score01: number) => clamp01((reveal - (1 - sco
  *   방향 있는 관계는 source → target 으로, 무방향 관계는 양방향으로 흐르며 점선 튜브를 쓴다
  * - 강조(emphasis) 값은 지오메트리를 다시 만들지 않고 속성 하나만 갱신한다
  */
-export default function RelationLines({ edges, emphasis, onHover, onSelect, intensity = 1, hoveredEdgeId = null, warpFx = false }: Props) {
+export default function RelationLines({ edges, emphasis, model, onHover, onSelect, intensity = 1, hoveredEdgeId = null, warpFx = false }: Props) {
   const built = useMemo(() => {
     const n = edges.length;
     const ctrls: THREE.Vector3[] = [];
@@ -73,7 +145,9 @@ export default function RelationLines({ edges, emphasis, onHover, onSelect, inte
     // 구슬 위상 — 시각(t)×속도 대신 프레임마다 누적해, 호버로 속도가 바뀌어도 구슬이 점프하지 않는다
     const phases = new Float32Array(n);
 
-    // 튜브 병합 버퍼
+    // 튜브 병합 버퍼. from/to 는 지금 그려진 끝점 — 드래그로 행성이 움직이면 여기만 갱신하고 그 간선을 다시 굽는다
+    const fromArr = new Float32Array(n * 3);
+    const toArr = new Float32Array(n * 3);
     const vPer = (SEGS + 1) * (RADIAL + 1);
     const iPer = SEGS * RADIAL * 6;
     const position = new Float32Array(n * vPer * 3);
@@ -94,6 +168,8 @@ export default function RelationLines({ edges, emphasis, onHover, onSelect, inte
     const rgb = new Float32Array(n * 3);
 
     edges.forEach((e, ei) => {
+      fromArr.set(e.from, ei * 3);
+      toArr.set(e.to, ei * 3);
       const ctrl = new THREE.Vector3();
       controlPoint(e.from, e.to, ctrl);
       ctrls.push(ctrl);
@@ -150,8 +226,13 @@ export default function RelationLines({ edges, emphasis, onHover, onSelect, inte
     });
 
     const geo = new THREE.BufferGeometry();
-    geo.setAttribute("position", new THREE.BufferAttribute(position, 3));
-    geo.setAttribute("normal", new THREE.BufferAttribute(normal, 3));
+    // 위치·법선은 드래그 추종이 구간 단위로 덮어쓴다
+    const posAttr = new THREE.BufferAttribute(position, 3);
+    posAttr.setUsage(THREE.DynamicDrawUsage);
+    const normAttr = new THREE.BufferAttribute(normal, 3);
+    normAttr.setUsage(THREE.DynamicDrawUsage);
+    geo.setAttribute("position", posAttr);
+    geo.setAttribute("normal", normAttr);
     geo.setAttribute("aT", new THREE.BufferAttribute(aT, 1));
     geo.setAttribute("aT2", new THREE.BufferAttribute(aT2, 1));
     geo.setAttribute("aScore", new THREE.BufferAttribute(aScore, 1));
@@ -165,7 +246,9 @@ export default function RelationLines({ edges, emphasis, onHover, onSelect, inte
     geo.computeBoundingSphere();
 
     const pick = new THREE.BufferGeometry();
-    pick.setAttribute("position", new THREE.BufferAttribute(pickPos, 3));
+    const pickAttr = new THREE.BufferAttribute(pickPos, 3);
+    pickAttr.setUsage(THREE.DynamicDrawUsage);
+    pick.setAttribute("position", pickAttr);
 
     // 빛 구슬
     const pn = n * PULSES;
@@ -191,7 +274,7 @@ export default function RelationLines({ edges, emphasis, onHover, onSelect, inte
     pulseGeo.setAttribute("aAlpha", pAlpha);
     pulseGeo.setAttribute("aColor", new THREE.BufferAttribute(pColor, 3));
 
-    return { geo, emphAttr, pick, ctrls, radii, speeds, phases, outward, pulseGeo, pPos, pSize, pAlpha, vPer };
+    return { geo, emphAttr, posAttr, normAttr, pick, pickAttr, position, normal, pickPos, fromArr, toArr, ctrls, radii, speeds, phases, outward, pulseGeo, pPos, pSize, pAlpha, vPer };
   }, [edges]);
 
   useEffect(
@@ -213,6 +296,25 @@ export default function RelationLines({ edges, emphasis, onHover, onSelect, inte
     built.emphAttr.needsUpdate = true;
   }, [edges, emphasis, built]);
 
+  /** 노드 id → 그 노드에 붙은 간선 인덱스 — 드래그 추종이 인접 간선만 다시 굽도록 */
+  const adjacency = useMemo(() => {
+    const m = new Map<string, number[]>();
+    const add = (id: string, ei: number) => {
+      const list = m.get(id);
+      if (list) list.push(ei);
+      else m.set(id, [ei]);
+    };
+    edges.forEach((e, ei) => {
+      add(e.source, ei);
+      add(e.target, ei);
+    });
+    return m;
+  }, [edges]);
+  const nodeIndex = useMemo(() => {
+    const m = new Map<string, number>();
+    model?.nodes.forEach((nd, i) => m.set(nd.id, i));
+    return m;
+  }, [model]);
   // uFade·uReveal 은 강조(uDim)와 완전히 분리된 워프 게이트다 — 필터·호버로 흐려지는 것과 섞이면 안 된다
   // 색은 정점 속성(aColor)이라 두 패스가 나눠 갖는 유니폼은 부풀림·헤일로 여부뿐이다
   const tubeUniforms = useMemo(() => ({ uDim: { value: 1 }, uInflate: { value: 0 }, uHalo: { value: 0 }, uFade: { value: 1 }, uReveal: { value: 1 } }), []);
@@ -221,6 +323,17 @@ export default function RelationLines({ edges, emphasis, onHover, onSelect, inte
 
   useFrame((state, delta) => {
     const dt = Math.min(delta, 0.05);
+    // 드래그로 행성이 움직인 프레임에만 그 행성의 인접 간선을 다시 굽는다.
+    // -1 로 시작해, 이미 옮겨 둔 행성이 있는 채로 마운트해도 한 번은 따라잡는다
+    let follow = FOLLOWED.get(built);
+    if (!follow) {
+      follow = { version: -1 };
+      FOLLOWED.set(built, follow);
+    }
+    if (model && follow.version !== dragState.version) {
+      follow.version = dragState.version;
+      followEdges(built, edges, adjacency, nodeIndex, liveFor(model));
+    }
     tubeUniforms.uDim.value = intensity;
     haloUniforms.uDim.value = intensity;
     pulseUniforms.uDim.value = intensity;
@@ -256,7 +369,7 @@ export default function RelationLines({ edges, emphasis, onHover, onSelect, inte
         let u = (phase + j / PULSES) % 1;
         // 무방향 관계는 구슬이 양쪽으로 오간다
         if (!e.directed && j % 2 === 1) u = 1 - u;
-        bezier(e.from, e.to, ctrl, u, P);
+        bezier(built.fromArr, built.toArr, ctrl, u, P, ei * 3, ei * 3);
         pos[k * 3] = P.x;
         pos[k * 3 + 1] = P.y;
         pos[k * 3 + 2] = P.z;
@@ -303,7 +416,7 @@ export default function RelationLines({ edges, emphasis, onHover, onSelect, inte
         geometry={built.pick}
         frustumCulled={false}
         onPointerMove={(e) => {
-          if (revealOf() < PICK_REVEAL) return;
+          if (revealOf() < PICK_REVEAL || dragState.id) return;
           if (nodeAhead(e)) {
             onHover?.(null);
             return;
@@ -314,7 +427,8 @@ export default function RelationLines({ edges, emphasis, onHover, onSelect, inte
         }}
         onPointerOut={() => onHover?.(null)}
         onClick={(e) => {
-          if (revealOf() < PICK_REVEAL) return;
+          // 행성을 끌어 옮긴 직후의 클릭은 간선 선택이 아니다
+          if (revealOf() < PICK_REVEAL || dragState.blockClick) return;
           if (nodeAhead(e)) return;
           e.stopPropagation();
           const edge = edgeIndexOf(e);

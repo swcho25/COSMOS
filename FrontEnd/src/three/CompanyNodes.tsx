@@ -1,17 +1,19 @@
 import { useEffect, useMemo, useRef } from "react";
-import { useFrame, type ThreeEvent } from "@react-three/fiber";
+import { useFrame, useThree, type ThreeEvent } from "@react-three/fiber";
 import * as THREE from "three";
 import type { SceneModel, SceneNode } from "@/lib/graph";
 import { initials } from "@/lib/format";
 import { logoUrl } from "@/lib/logos";
 import { hashString } from "@/lib/rng";
 import { ROLE_META, ROLE_ORDER, roleColor, type RoleKey } from "@/lib/roles";
+import { useGalaxy } from "@/store/galaxy";
 import { touch } from "./bufferUtil";
+import { cameraBusy } from "./cameraState";
 import { CHIP_H, CHIP_PILL, CHIP_STEM, chipFragment, chipHit, chipVertex } from "./chipShader";
 import type { Emphasis } from "./emphasis";
 import { ATLAS_CELL_UV, cellUv, ensureLogoCell, logoAtlasTexture } from "./logoAtlas";
 import { discFragment, discVertex } from "./logoDiscShader";
-import { liveFor, morphState } from "./morph";
+import { dragState, liveFor, morphState, type LiveTransform } from "./morph";
 import { ensureNameCell, nameAtlasTexture, type NameCell } from "./nameAtlas";
 import { animFor } from "./nodeAnim";
 import { dotTexture, ringTexture } from "./textures";
@@ -48,6 +50,43 @@ const TO_CAM = new THREE.Vector3();
 const UPV = new THREE.Vector3();
 const RGT = new THREE.Vector3();
 const NDC = new THREE.Vector3();
+/** 드래그 스크래치 — 한 번에 하나만 끌 수 있으므로 모듈에 둔다 */
+const DRAG_PLANE = new THREE.Plane();
+const DRAG_HIT = new THREE.Vector3();
+const DRAG_OFF = new THREE.Vector3();
+const DRAG_POS = new THREE.Vector3();
+const DRAG_DIR = new THREE.Vector3();
+const PTR = new THREE.Vector2();
+const RAY = new THREE.Raycaster();
+/** 이만큼(px) 끌어야 드래그로 친다 — 그 아래 흔들림은 그대로 클릭(워프·핀) */
+const DRAG_SLOP = 6;
+/**
+ * 드래그 진행 상태 — 포인터는 하나뿐이라 인스턴스별로 나눌 필요가 없고, useRef(...).current 를 훅 의존성으로 넘기면
+ * react-hooks/refs 에 걸리므로 BUCKETS 처럼 모듈에 둔다.
+ * id 는 포인터를 누른 후보 노드(아직 드래그는 아니다), active 는 슬롭을 넘겨 실제로 끄는 중이다.
+ * live 는 그 노드가 속한 버퍼 — 씬이 둘(은하·미니) 겹쳐 있어도 자기 것이 아닌 드래그에는 반응하지 않게 하는 주인 표식이다.
+ */
+const DRAG = { id: null as string | null, index: -1, x: 0, y: 0, active: false, cursor: "", live: null as LiveTransform | null };
+/** built 별 "헤일로 위치를 마지막으로 올린 드래그 버전" */
+const HALO_SYNC = new WeakMap<object, { version: number }>();
+
+/**
+ * 드래그 후보를 잡아 둔다 (실제로 옮기기 시작하는 건 슬롭을 넘긴 pointermove).
+ * dragState.id 는 여기서 바로 세운다 — 궤도 컨트롤은 프레임마다 이 값을 보고 꺼지므로, 슬롭을 넘긴 뒤에 세우면
+ * 그 사이에 들어온 pointermove 한 번이 카메라를 돌려 버린다. 행성을 누른 동안 카메라가 멈추는 건 의도한 동작이다.
+ * (렌더 중에 만들어지는 이벤트 핸들러가 모듈 변수를 직접 고치면 react-hooks/immutability 에 걸리므로 touch() 처럼 밖으로 뺐다)
+ */
+function armDrag(id: string, index: number, x: number, y: number, live: LiveTransform) {
+  DRAG.id = id;
+  DRAG.index = index;
+  DRAG.x = x;
+  DRAG.y = y;
+  DRAG.active = false;
+  DRAG.live = live;
+  dragState.id = id;
+  // 앞선 드래그의 클릭 차단이 남아 있을 일은 없지만(rAF 에서 풀린다), 새 입력이 시작되면 확실히 턴다
+  dragState.blockClick = false;
+}
 /** 화면 버킷 → 그 버킷을 차지한 노드 인덱스. 프레임마다 비우고 채우는 스크래치라 모듈에 둔다 */
 const BUCKETS = new Map<number, number>();
 /**
@@ -93,6 +132,7 @@ function filteredRaycast(accept: (instanceId: number, uv: THREE.Vector2) => bool
  *   항상 카메라를 향하고, 티어(허브·첫 껍질·나머지)별 거리 LOD 와 화면 버킷으로 혼잡을 억제한다
  * - 정면 배지(흰 로고 원판)는 emphasis.badges — 호버·중심·선택 간선 양끝 — 에서만 카메라→행성 시선 위에 떠오른다
  * - 멀리서도 위치가 보이도록 아주 약한 헤일로 점광을 함께 둔다
+ * - 행성·칩·배지를 끌면 그 행성을 옮길 수 있다. 옮긴 자리는 live 버퍼에만 남으므로 새로고침하면 레이아웃 좌표로 돌아간다
  */
 export default function CompanyNodes({ model, emphasis, hoveredId, onHover, onClick, showLabels = true, onPin, roleTags = null }: Props) {
   const tags = useRef<THREE.InstancedMesh>(null);
@@ -103,6 +143,8 @@ export default function CompanyNodes({ model, emphasis, hoveredId, onHover, onCl
   const moons = useRef<(THREE.Group | null)[]>([]);
   const n = model.nodes.length;
   const live = liveFor(model);
+  const gl = useThree((s) => s.gl);
+  const camera = useThree((s) => s.camera);
 
   const planets = useMemo<Planet[]>(
     () =>
@@ -413,7 +455,16 @@ export default function CompanyNodes({ model, emphasis, hoveredId, onHover, onCl
     }
     built.haloSize.needsUpdate = true;
     built.haloAlpha.needsUpdate = true;
-    if (morphing) built.haloPos.needsUpdate = true;
+    // 헤일로는 live.pos 를 정점 위치로 그대로 쓴다 — 모프 중이거나 드래그로 좌표가 바뀐 프레임에만 다시 올린다
+    let halo = HALO_SYNC.get(built);
+    if (!halo) {
+      halo = { version: dragState.version };
+      HALO_SYNC.set(built, halo);
+    }
+    if (morphing || halo.version !== dragState.version) {
+      halo.version = dragState.version;
+      built.haloPos.needsUpdate = true;
+    }
 
     // 칩 — 버킷 판정이 끝난 뒤 알파를 lerp 하고 행렬·속성을 쓴다
     if (chipMesh) {
@@ -493,7 +544,8 @@ export default function CompanyNodes({ model, emphasis, hoveredId, onHover, onCl
     [model, built],
   );
 
-  const pickable = (id: string) => !morphState.plan && (emphasis.node.get(id) ?? 1) > 0.05;
+  // 드래그 중에는 호버 주인을 바꾸지 않는다 — 끄는 동안 이웃 강조·역할 링이 깜빡이지 않게
+  const pickable = (id: string) => !morphState.plan && !dragState.id && (emphasis.node.get(id) ?? 1) > 0.05;
   /** 인스턴스 히트 → 기업 id. 원판·캡슐 판정은 raycast 래퍼가 이미 끝냈다 */
   const idOf = (e: ThreeEvent<PointerEvent | MouseEvent>) => (e.instanceId === undefined ? null : (model.nodes[e.instanceId]?.id ?? null));
   /**
@@ -502,12 +554,101 @@ export default function CompanyNodes({ model, emphasis, hoveredId, onHover, onCl
    * 그 뒤에서 호버 중이던 다른 행성의 강조가 끊긴다 (그 행성은 hovered 맵에 남아 다시 over 가 오지 않는다).
    */
   const release = (id: string | null) => {
+    if (dragState.id) return;
     if (id && id === hoveredId) onHover(null);
   };
   const activate = (e: ThreeEvent<MouseEvent>, id: string) => {
+    // 끌어서 옮긴 직후의 클릭은 워프·핀이 아니다
+    if (dragState.blockClick) return;
     if (e.nativeEvent.shiftKey && onPin) onPin(id);
     else onClick(id);
   };
+
+  /**
+   * 주 버튼으로 행성·칩·배지를 누르면 드래그 후보로 잡아 둔다 (실제 시작은 슬롭을 넘긴 pointermove).
+   * 카메라 연출 중(인트로 비행·필터 변경 재프레이밍)에는 시작하지 않는다 — 드래그 평면은 시작 시점의 시선으로 한 번만 고정되는데
+   * controls.enabled=false 는 사용자 입력만 막을 뿐 Director 의 연출은 계속 카메라를 밀어 옮기므로, 같은 커서 위치가 프레임마다
+   * 다른 점에 떨어져 행성이 커서에서 미끄러진다. FlyControls 가 같은 이유로 cameraBusy.anim 을 보는 것과 같은 가드다.
+   */
+  const beginDrag = (e: ThreeEvent<PointerEvent>, id: string, index: number) => {
+    const s = useGalaxy.getState();
+    if (e.nativeEvent.button !== 0 || morphState.plan || s.phase === "warp" || s.navMode === "fly" || cameraBusy.anim) return;
+    if (!pickable(id)) return;
+    e.stopPropagation();
+    armDrag(id, index, e.nativeEvent.clientX, e.nativeEvent.clientY, live);
+  };
+
+  // 드래그 본체 — 캔버스 밖으로 나가도 끝나도록 window 에 건다
+  useEffect(() => {
+    /** 화면 좌표 → 드래그 평면 위의 점. 평면은 시작할 때 노드를 지나며 시선에 수직으로 고정한다 */
+    const hitPlane = (x: number, y: number) => {
+      const r = gl.domElement.getBoundingClientRect();
+      PTR.set(((x - r.left) / r.width) * 2 - 1, -((y - r.top) / r.height) * 2 + 1);
+      RAY.setFromCamera(PTR, camera);
+      return RAY.ray.intersectPlane(DRAG_PLANE, DRAG_HIT);
+    };
+    const start = () => {
+      DRAG.active = true;
+      // dirty 는 소비자가 여럿이라 여기서만 비운다 (morph.ts 주석 참고)
+      dragState.dirty.clear();
+      if (DRAG.id) dragState.dirty.add(DRAG.id);
+      DRAG_POS.fromArray(live.pos, DRAG.index * 3);
+      camera.getWorldDirection(DRAG_DIR);
+      DRAG_PLANE.setFromNormalAndCoplanarPoint(DRAG_DIR, DRAG_POS);
+      // 잡은 지점(누른 자리)을 기준으로 오프셋을 잡는다 — 행성이 커서 아래로 순간이동하지도, 슬롭만큼 뒤처지지도 않게
+      if (hitPlane(DRAG.x, DRAG.y)) DRAG_OFF.subVectors(DRAG_HIT, DRAG_POS);
+      else DRAG_OFF.set(0, 0, 0);
+      DRAG.cursor = document.body.style.cursor;
+      document.body.style.cursor = "grabbing";
+    };
+    const onMove = (ev: PointerEvent) => {
+      if (!DRAG.id || DRAG.live !== live) return;
+      if (!DRAG.active) {
+        if (Math.hypot(ev.clientX - DRAG.x, ev.clientY - DRAG.y) < DRAG_SLOP) return;
+        start();
+      }
+      if (!hitPlane(ev.clientX, ev.clientY)) return;
+      const o = DRAG.index * 3;
+      live.pos[o] = DRAG_HIT.x - DRAG_OFF.x;
+      live.pos[o + 1] = DRAG_HIT.y - DRAG_OFF.y;
+      live.pos[o + 2] = DRAG_HIT.z - DRAG_OFF.z;
+      dragState.version += 1;
+    };
+    const onUp = () => {
+      if (DRAG.live !== live) return;
+      if (DRAG.active) {
+        document.body.style.cursor = DRAG.cursor;
+        // 뒤따라오는 click 한 번만 삼킨다 (click 은 pointerup 과 같은 태스크에서 오고 rAF 는 그 뒤다)
+        dragState.blockClick = true;
+        requestAnimationFrame(() => {
+          dragState.blockClick = false;
+        });
+        // 포인터가 행성 밖에서 손을 뗐을 수 있다 — 호버를 풀면 다음 포인터 이동이 알아서 다시 잡는다
+        onHover(null);
+      }
+      DRAG.id = null;
+      DRAG.active = false;
+      DRAG.live = null;
+      dragState.id = null;
+    };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", onUp);
+    window.addEventListener("blur", onUp);
+    return () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onUp);
+      window.removeEventListener("blur", onUp);
+      // 끄는 도중 언마운트되면(라우트 이동) 커서·컨트롤 잠금만 되돌린다 — 여기서 호버를 건드리면 사라진 트리에 set 이 간다
+      if (DRAG.live !== live) return;
+      if (DRAG.active) document.body.style.cursor = DRAG.cursor;
+      DRAG.id = null;
+      DRAG.active = false;
+      DRAG.live = null;
+      dragState.id = null;
+    };
+  }, [gl, camera, live, onHover]);
 
   return (
     <group>
@@ -535,6 +676,7 @@ export default function CompanyNodes({ model, emphasis, hoveredId, onHover, onCl
               onHover(p.node.id);
             }}
             onPointerOut={() => release(p.node.id)}
+            onPointerDown={(e) => beginDrag(e, p.node.id, i)}
             onClick={(e) => {
               if (!pickable(p.node.id)) return;
               e.stopPropagation();
@@ -578,6 +720,10 @@ export default function CompanyNodes({ model, emphasis, hoveredId, onHover, onCl
           onHover(id);
         }}
         onPointerOut={(e) => release(idOf(e))}
+        onPointerDown={(e) => {
+          const id = idOf(e);
+          if (id && e.instanceId !== undefined) beginDrag(e, id, e.instanceId);
+        }}
         onClick={(e) => {
           const id = idOf(e);
           if (!id || !pickable(id)) return;
@@ -603,6 +749,10 @@ export default function CompanyNodes({ model, emphasis, hoveredId, onHover, onCl
           onHover(id);
         }}
         onPointerOut={(e) => release(idOf(e))}
+        onPointerDown={(e) => {
+          const id = idOf(e);
+          if (id && e.instanceId !== undefined) beginDrag(e, id, e.instanceId);
+        }}
         onClick={(e) => {
           const id = idOf(e);
           if (!id || !pickable(id)) return;

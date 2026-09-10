@@ -5,7 +5,7 @@ import { ORBIT, type SceneModel } from "@/lib/graph";
 import { hashString, seededRandom } from "@/lib/rng";
 import { useGalaxy } from "@/store/galaxy";
 import { buildWellField, isLowEnd, MAX_WELLS, writeWells, type WellField } from "./gravity";
-import { liveFor, morphState } from "./morph";
+import { dragState, liveFor, morphState } from "./morph";
 import { LAB } from "./toon";
 
 interface Props {
@@ -30,7 +30,7 @@ const easeOutCubic = (x: number) => 1 - Math.pow(1 - x, 3);
  * 중력 우물 격자 — 은하 아래에 깔리는 점 바닥.
  * 정점 셰이더가 우물 텍스처를 훑어 깊이(아래로 패임)와 기울기(우물 쪽으로 쓸림)를 구하고, 프래그먼트가 깊이색·안개·가장자리
  * 페이드를 입힌다. 기업 중심 뷰에서는 궤도 반지름(ORBIT)에 점선 링을 얹어 같은 변위로 휘게 해 사면이 계단처럼 읽힌다.
- * 위치는 liveFor(model) 을 읽으므로 워프 모프 중 행성과 함께 우물이 움직인다.
+ * 위치는 liveFor(model) 을 읽으므로 워프 모프 중에도, 행성을 끌어 옮겼을 때도 우물이 함께 움직인다.
  */
 export default function GravityGrid({ model, warpRef, hoveredId }: Props) {
   const mat = useRef<THREE.ShaderMaterial>(null);
@@ -105,7 +105,7 @@ export default function GravityGrid({ model, warpRef, hoveredId }: Props) {
    * 프레임 상태. useMemo 값에 쓰면 react-hooks 불변 규칙에 걸리므로 갱신되는 값은 모두 여기(ref)에 둔다.
    * scale 은 슬롯별 질량 배율(호버 딤플), sync 는 모델 교체 후 유니폼을 한 번 다시 맞추라는 표식이다.
    */
-  const frame = useRef({ field: null as WellField | null, settle: 0, scale: new Float32Array(0), sync: true, dirty: true });
+  const frame = useRef({ field: null as WellField | null, settle: 0, scale: new Float32Array(0), sync: true, dirty: true, dragVersion: dragState.version });
 
   useFrame((state, delta) => {
     const dt = Math.min(delta, 0.05);
@@ -136,7 +136,8 @@ export default function GravityGrid({ model, warpRef, hoveredId }: Props) {
       }
     }
     // 우물 텍스처는 바뀔 때만 올린다 — 정적인 장면에서는 프레임당 CPU 비용이 0 이다
-    if (f.dirty || moving || morphState.plan !== null) {
+    if (f.dirty || moving || morphState.plan !== null || f.dragVersion !== dragState.version) {
+      f.dragVersion = dragState.version;
       writeWells(field, liveFor(model), f.scale);
       f.dirty = false;
     }

@@ -1,11 +1,11 @@
-import { useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import type { SceneModel } from "@/lib/graph";
 import { useGalaxy } from "@/store/galaxy";
 import { bezier, controlPoint, radiusOf } from "./edgeCurve";
 import type { Emphasis } from "./emphasis";
-import { morphState } from "./morph";
+import { dragState, liveFor, morphState } from "./morph";
 import { beamColorFor } from "./toon";
 
 interface Props {
@@ -41,28 +41,46 @@ const COLOR = new THREE.Color();
  * 색은 빔 규칙을 그대로 따른다(영향 방향별 파랑·빨강·보라) — 관계 유형 색은 노드 쪽 요소에만 쓴다.
  * 위치는 target 행성 표면 바로 바깥 — 짧은 간선에서 고정 t(0.93) 를 쓰면 콘이 행성 안에 묻히므로,
  * 끝점 거리에서 행성 반지름 + 콘 반 높이만큼 물러난 t 를 쓴다.
+ * 끝점은 node.pos 가 아니라 live 버퍼에서 읽는다 — 드래그로 옮긴 행성에도 화살촉이 따라붙는다.
  */
 export default function EdgeArrows({ model, emphasis }: Props) {
   const mesh = useRef<THREE.InstancedMesh>(null);
   const geo = useMemo(() => new THREE.ConeGeometry(1, CONE_H, 8), []);
   useEffect(() => () => geo.dispose(), [geo]);
 
-  useEffect(() => {
+  const live = liveFor(model);
+  const nodeIndex = useMemo(() => {
+    const m = new Map<string, number>();
+    model.nodes.forEach((nd, i) => m.set(nd.id, i));
+    return m;
+  }, [model]);
+  const targets = useMemo(
+    () => model.edges.filter((e) => e.directed && (emphasis.edge.get(e.id) ?? 1) >= MIN_EMPH).sort((a, b) => b.score - a.score).slice(0, MAX),
+    [model, emphasis],
+  );
+
+  /** 화살촉 배치 — 강조·모델이 바뀔 때와 드래그로 행성이 움직인 프레임에 부른다 */
+  const place = useCallback(() => {
     const m = mesh.current;
     if (!m) return;
-    const targets = model.edges.filter((e) => e.directed && (emphasis.edge.get(e.id) ?? 1) >= MIN_EMPH).sort((a, b) => b.score - a.score).slice(0, MAX);
-    targets.forEach((e, i) => {
+    let count = 0;
+    targets.forEach((e) => {
+      const si = nodeIndex.get(e.source);
+      const ti = nodeIndex.get(e.target);
+      if (si === undefined || ti === undefined) return;
+      const i = count;
+      count += 1;
       const emph = emphasis.edge.get(e.id) ?? 1;
       const s = e.score / 100;
       const scale = Math.max(CONE_MIN, radiusOf(s) * CONE_K);
-      const dist = controlPoint(e.from, e.to, CTRL);
+      const dist = controlPoint(live.pos, live.pos, CTRL, si * 3, ti * 3);
       // target 행성 반지름(size×1.3)의 바깥 + 콘 반 높이만큼 끝에서 물러난다 (곡선 끝부분은 거의 직선이라 거리 비로 근사)
       const rT = (model.nodeById.get(e.target)?.size ?? 1) * 1.3;
       const back = rT * 1.15 + (scale * CONE_H) / 2;
       const t = THREE.MathUtils.clamp(1 - back / Math.max(1e-3, dist), 0.5, 0.93);
-      bezier(e.from, e.to, CTRL, t, P);
-      bezier(e.from, e.to, CTRL, Math.min(1, t + 0.03), Q);
-      bezier(e.from, e.to, CTRL, Math.max(0, t - 0.03), DIR);
+      bezier(live.pos, live.pos, CTRL, t, P, si * 3, ti * 3);
+      bezier(live.pos, live.pos, CTRL, Math.min(1, t + 0.03), Q, si * 3, ti * 3);
+      bezier(live.pos, live.pos, CTRL, Math.max(0, t - 0.03), DIR, si * 3, ti * 3);
       DIR.subVectors(Q, DIR);
       if (DIR.lengthSq() < 1e-8) DIR.copy(Y);
       DIR.normalize();
@@ -78,15 +96,23 @@ export default function EdgeArrows({ model, emphasis }: Props) {
       COLOR.multiplyScalar(0.35 + 0.65 * emph);
       m.setColorAt(i, COLOR);
     });
-    m.count = targets.length;
+    m.count = count;
     m.instanceMatrix.needsUpdate = true;
     if (m.instanceColor) m.instanceColor.needsUpdate = true;
-  }, [model, emphasis]);
+  }, [targets, model, emphasis, live, nodeIndex]);
+  useEffect(() => place(), [place]);
+
+  /** 드래그 추종에서 마지막으로 반영한 버전 */
+  const followed = useRef({ version: dragState.version }).current;
 
   // 모프·워프 중에는 간선이 사라지므로 화살촉도 숨긴다 (프레임마다 getState 로 읽어 리렌더를 만들지 않는다)
   useFrame(() => {
     const m = mesh.current;
     if (!m) return;
+    if (followed.version !== dragState.version) {
+      followed.version = dragState.version;
+      place();
+    }
     const warping = useGalaxy.getState().phase === "warp";
     m.visible = m.count > 0 && !warping && !morphState.plan && morphState.reveal >= 0.99;
   });

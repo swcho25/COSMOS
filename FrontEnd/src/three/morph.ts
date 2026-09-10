@@ -33,6 +33,17 @@ export function liveFor(model: SceneModel): LiveTransform {
   return live;
 }
 
+/**
+ * 행성 드래그 — 이 화면(세션)에서만 유효한 임시 배치.
+ * live.pos 에만 쓰고 node.pos 는 그대로 두므로, 새로고침해서 모델을 다시 만들면 liveFor 가 레이아웃 좌표로 초기화한다(= 원래 자리).
+ * id 는 지금 끌고 있는 노드(카메라 컨트롤을 잠그는 신호), version 은 "위치가 바뀌었다" 는 카운터,
+ * dirty 는 이번 드래그에서 움직인 노드 id 다. 소비자(간선·화살촉·격자)가 여럿이라 dirty 는 드래그를 시작할 때만 비운다 —
+ * 한 소비자가 처리 후 비우면 나머지가 그 변화를 놓친다.
+ * blockClick 은 드래그로 끝난 pointerup 뒤에 브라우저가 한 번 더 보내는 click(워프·핀·간선 선택·빈 곳 클릭)을 삼키는 표식으로,
+ * 그 click 이 지나간 다음 프레임에 풀린다.
+ */
+export const dragState = { id: null as string | null, version: 0, dirty: new Set<string>(), blockClick: false };
+
 /** 워프 모프 계획 — 원통 좌표로 보간할 출발·도착 상태 */
 export interface MorphPlan {
   src: SceneModel;
