@@ -4,6 +4,8 @@
  */
 export type UUID = string;
 export type ISODateTime = string;
+/** 사용자 식별자만 64비트 정수(users.user_id BIGSERIAL). 그 밖의 식별자는 UUID 문자열이다. */
+export type UserId = number;
 
 export type Market = "KOSPI" | "KOSDAQ" | "NASDAQ" | (string & {});
 export type MetricWindow = "7D" | "30D" | "90D";
@@ -44,7 +46,7 @@ export interface SignupRequest {
   nickname: string;
 }
 export interface SignupResponse {
-  userId: UUID;
+  userId: UserId;
   email: string;
   nickname: string;
 }
@@ -54,7 +56,7 @@ export interface Availability {
 
 /* ------------------------------ users ------------------------------ */
 export interface Me {
-  userId: UUID;
+  userId: UserId;
   email: string;
   nickname: string;
 }
@@ -74,7 +76,7 @@ export interface IndustryRef {
 export interface WatchCompanyItem {
   companyId: UUID;
   name: string;
-  stockCode: string;
+  stockCode: string | null;
   market: Market;
   primaryIndustry: IndustryRef;
   watchedAt: ISODateTime;
@@ -89,8 +91,8 @@ export interface WeightSetting {
 export interface CompanySummary {
   companyId: UUID;
   name: string;
-  nameEn: string;
-  stockCode: string;
+  nameEn: string | null;
+  stockCode: string | null;
   market: Market;
   primaryIndustry: IndustryRef;
   watched: boolean;
@@ -101,12 +103,18 @@ export interface CompanyIndustry extends IndustryRef {
 export interface CompanyDetail {
   companyId: UUID;
   name: string;
-  nameEn: string;
-  stockCode: string;
+  nameEn: string | null;
+  stockCode: string | null;
   market: Market;
-  description: string;
+  description: string | null;
   industries: CompanyIndustry[];
   watched: boolean;
+  /**
+   * 시가총액·상장주식수는 V1 DDL 의 company 테이블에도 명세 응답에도 없다.
+   * 백엔드가 열어 줄 때 화면이 그대로 받을 수 있도록 선택 필드로만 자리를 둔다(목업은 채운다).
+   */
+  marketCap?: number | null;
+  listedShares?: number | null;
 }
 export interface CompanyMetrics {
   companyId: UUID;
@@ -123,8 +131,14 @@ export interface MetricPoint {
   newsMentionCount: number;
   positiveCount: number;
   negativeCount: number;
-  sentimentScore: number;
+  sentimentScore: number | null;
   relationshipCount: number;
+}
+export interface MetricsHistoryParams {
+  window?: MetricWindow;
+  /** YYYY-MM-DD */
+  from?: string;
+  to?: string;
 }
 export interface MetricsHistory {
   companyId: UUID;
@@ -142,7 +156,8 @@ export interface Candle {
 export interface StockPrices {
   companyId: UUID;
   period: PricePeriod;
-  interval: "1D";
+  /** MVP 는 1D 만 지원하지만 stock_price_history.interval_type 은 자유값이라 확장을 열어 둔다. */
+  interval: "1D" | (string & {});
   asOfAt: ISODateTime;
   items: Candle[];
 }
@@ -150,7 +165,7 @@ export interface Industry {
   industryId: UUID;
   parentIndustryId: UUID | null;
   name: string;
-  description: string;
+  description: string | null;
   companyCount: number;
 }
 export interface CompanyListParams {
@@ -169,31 +184,31 @@ export interface CompanyRef {
 export interface NewsItem {
   newsId: UUID;
   title: string;
-  summary: string;
-  publisher: string;
+  summary: string | null;
+  publisher: string | null;
   originalUrl: string;
-  publishedAt: ISODateTime;
+  publishedAt: ISODateTime | null;
   sentiment: Sentiment;
   relatedCompanies: CompanyRef[];
   scrapped: boolean;
 }
 export interface NewsRelatedCompany extends CompanyRef {
   sentiment: Sentiment;
-  relevanceScore: number;
-  impactScore: number;
+  relevanceScore: number | null;
+  impactScore: number | null;
 }
 export interface NewsEvidence {
   sentence: string;
-  confidence: number;
+  confidence: number | null;
 }
 export interface NewsDetail {
   newsId: UUID;
   title: string;
-  summary: string;
-  publisher: string;
+  summary: string | null;
+  publisher: string | null;
   author: string | null;
   originalUrl: string;
-  publishedAt: ISODateTime;
+  publishedAt: ISODateTime | null;
   relatedCompanies: NewsRelatedCompany[];
   evidence: NewsEvidence[];
   scrapped: boolean;
@@ -217,14 +232,21 @@ export interface GraphEdge {
   relationshipType: RelationshipType;
   /** 0 ~ 100 */
   score: number;
-  impactDirection: ImpactDirection;
+  impactDirection: ImpactDirection | null;
 }
+/** 은하 뷰가 행성 높이로 쓰는 등락률 기간 */
+export type AltitudeWindow = "1D" | "1M" | "3M";
 export interface LatestGraphNode {
   companyId: UUID;
   name: string;
-  stockCode: string;
+  stockCode: string | null;
   market: Market;
   industryName: string;
+  /**
+   * 기간별 주가 등락률(퍼센트, 예 -3.2). 은하 뷰의 행성 높이가 이 값을 쓴다.
+   * 서버가 아직 내려주지 않을 수 있어 선택 필드이고, 시계열이 없는 기업은 null 이다 (README '백엔드에 확인이 필요한 항목').
+   */
+  priceChange?: { "1D"?: number | null; "1M"?: number | null; "3M"?: number | null };
 }
 export interface LatestGraph {
   snapshotId: UUID;
@@ -266,8 +288,8 @@ export interface RelationshipDetail {
   directionality: Directionality;
   window: MetricWindow;
   score: number;
-  impactDirection: ImpactDirection;
-  confidence: number;
+  impactDirection: ImpactDirection | null;
+  confidence: number | null;
   evidenceCount: number;
   asOfAt: ISODateTime;
   personalized: boolean;
@@ -275,18 +297,18 @@ export interface RelationshipDetail {
 export interface RelationshipEvidence {
   newsId: UUID;
   title: string;
-  summary: string;
-  publisher: string;
+  summary: string | null;
+  publisher: string | null;
   originalUrl: string;
-  publishedAt: ISODateTime;
+  publishedAt: ISODateTime | null;
   evidenceSentence: string;
-  contributionScore: number;
-  confidence: number;
+  contributionScore: number | null;
+  confidence: number | null;
 }
 
 /* ---------------------------- community ---------------------------- */
 export interface CommentAuthor {
-  userId: UUID;
+  userId: UserId;
   nickname: string;
 }
 export interface CompanyComment {

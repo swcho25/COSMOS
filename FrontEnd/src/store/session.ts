@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { api, ApiError, type Me } from "@/api";
-import { tokenStore } from "@/api/client";
+import { setSessionExpiredHandler, tokenStore } from "@/api/client";
 
 type Status = "booting" | "guest" | "authed";
 
@@ -22,10 +22,12 @@ export const useSession = create<SessionState>((set) => ({
   sessionKey: "guest",
 
   async bootstrap() {
+    // userId 는 64비트 정수라 캐시 키로 쓰려면 문자열로 바꾼다
+    setSessionExpiredHandler(() => set({ status: "guest", user: null, sessionKey: "guest" }));
     try {
       await api.auth.refresh();
       const me = await api.users.me();
-      set({ status: "authed", user: me, sessionKey: me.userId });
+      set({ status: "authed", user: me, sessionKey: String(me.userId) });
     } catch {
       tokenStore.set(null);
       set({ status: "guest", user: null, sessionKey: "guest" });
@@ -35,14 +37,14 @@ export const useSession = create<SessionState>((set) => ({
   async login(email, password) {
     await api.auth.login({ email, password });
     const me = await api.users.me();
-    set({ status: "authed", user: me, sessionKey: me.userId });
+    set({ status: "authed", user: me, sessionKey: String(me.userId) });
   },
 
   async signup(email, password, nickname) {
     await api.auth.signup({ email, password, nickname });
     await api.auth.login({ email, password });
     const me = await api.users.me();
-    set({ status: "authed", user: me, sessionKey: me.userId });
+    set({ status: "authed", user: me, sessionKey: String(me.userId) });
   },
 
   async logout() {

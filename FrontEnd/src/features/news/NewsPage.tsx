@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
-import type { GraphEdge, LatestGraph, NewsDetail, Sentiment } from "@/api/types";
+import type { GraphEdge, LatestGraph, NewsDetail, NewsRelatedCompany, Sentiment } from "@/api/types";
 import MiniScene from "@/three/MiniScene";
 import { layoutNewsSubgraph } from "@/lib/graph";
 import { fmtDateTime, fmtRelative } from "@/lib/format";
@@ -68,7 +68,8 @@ export default function NewsPage() {
   const seedIds = useMemo(() => {
     const d = detail.data;
     if (!d) return [] as string[];
-    const sorted = d.relatedCompanies.slice().sort((a, b) => b.relevanceScore * b.impactScore - a.relevanceScore * a.impactScore);
+    const weight = (r: NewsRelatedCompany) => (r.relevanceScore ?? 0) * (r.impactScore ?? 0);
+    const sorted = d.relatedCompanies.slice().sort((a, b) => weight(b) - weight(a));
     const ids = sorted.map((r) => r.companyId);
     if (companyId && ids.includes(companyId)) return [companyId, ...ids.filter((x) => x !== companyId)];
     return ids;
@@ -83,7 +84,7 @@ export default function NewsPage() {
         pos: detail.data.relatedCompanies.filter((r) => r.sentiment === "POSITIVE").length,
         neg: detail.data.relatedCompanies.filter((r) => r.sentiment === "NEGATIVE").length,
         evidence: detail.data.evidence.length,
-        confidence: detail.data.evidence.length ? Math.round((detail.data.evidence.reduce((s, e) => s + e.confidence, 0) / detail.data.evidence.length) * 100) : null,
+        confidence: detail.data.evidence.length ? Math.round((detail.data.evidence.reduce((s, e) => s + (e.confidence ?? 0), 0) / detail.data.evidence.length) * 100) : null,
       }
     : null;
 
@@ -127,7 +128,7 @@ export default function NewsPage() {
                 <div className="grow">
                   <div className="nm">{company.data?.name ?? <Skeleton h={18} w={120} />} 뉴스</div>
                   <div className="meta num">
-                    {company.data?.stockCode} · {company.data?.industries.find((i) => i.primary)?.name} · {items.length}건{feed.hasNextPage ? "+" : ""}
+                    {[company.data?.stockCode, company.data?.industries.find((i) => i.primary)?.name, `${items.length}건${feed.hasNextPage ? "+" : ""}`].filter(Boolean).join(" · ")}
                   </div>
                 </div>
               </div>
@@ -186,9 +187,7 @@ export default function NewsPage() {
                       연결 <b className="num">{n.relatedCompanies.length}</b>
                     </span>
                   </div>
-                  <span className="meta num">
-                    {n.publisher} · {fmtRelative(n.publishedAt)}
-                  </span>
+                  <span className="meta num">{[n.publisher, fmtRelative(n.publishedAt)].filter(Boolean).join(" · ")}</span>
                 </div>
                 <div className="title clamp-2">{n.title}</div>
                 <div className="summary clamp-2">{n.summary}</div>
@@ -230,7 +229,7 @@ export default function NewsPage() {
                     selected news
                   </div>
                   <div className="ttl">{detail.data?.title ?? <Skeleton h={22} w={360} />}</div>
-                  <div className="meta num mt-8">{detail.data ? `${detail.data.publisher} · ${fmtDateTime(detail.data.publishedAt)}${detail.data.author ? ` · ${detail.data.author}` : ""}` : ""}</div>
+                  <div className="meta num mt-8">{detail.data ? [detail.data.publisher, fmtDateTime(detail.data.publishedAt), detail.data.author].filter(Boolean).join(" · ") : ""}</div>
                 </div>
               )}
               <div className="row" style={{ gap: 8, flex: "none" }}>
@@ -329,7 +328,7 @@ export default function NewsPage() {
                     <span className="nm">
                       <b>{r.name}</b>
                       <span className="meta num">
-                        {marketLabel(r.market)} · {r.stockCode}
+                        {[marketLabel(r.market), r.stockCode].filter(Boolean).join(" · ")}
                       </span>
                     </span>
                     <ScoreBar score={r.score} color={r.hop === 0 ? "#829CFF" : "#F5A623"} />
@@ -432,7 +431,7 @@ function analyze(detail: NewsDetail, graph: LatestGraph) {
   });
   const best = new Map<string, Best>();
   detail.relatedCompanies.forEach((r) => {
-    const s = Math.round(r.relevanceScore * r.impactScore * 100);
+    const s = Math.round((r.relevanceScore ?? 0) * (r.impactScore ?? 0) * 100);
     const cur = best.get(r.companyId);
     if (!cur || cur.score < s) best.set(r.companyId, { score: s, hop: 0, from: null, via: null });
   });

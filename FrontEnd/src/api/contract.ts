@@ -29,7 +29,7 @@ export interface CosmosApi {
     list(params?: T.CompanyListParams): Promise<T.Page<T.CompanySummary>>;
     detail(companyId: string): Promise<T.CompanyDetail>;
     metrics(companyId: string, window?: T.MetricWindow): Promise<T.CompanyMetrics>;
-    metricsHistory(companyId: string, window?: T.MetricWindow): Promise<T.MetricsHistory>;
+    metricsHistory(companyId: string, params?: T.MetricsHistoryParams): Promise<T.MetricsHistory>;
     stockPrices(companyId: string, period?: T.PricePeriod): Promise<T.StockPrices>;
     industries(): Promise<{ items: T.Industry[] }>;
   };
@@ -41,6 +41,7 @@ export interface CosmosApi {
     latest(params?: T.LatestGraphParams): Promise<T.LatestGraph>;
     company(companyId: string, params?: T.CompanyGraphParams): Promise<T.CompanyGraph>;
     relationship(relationshipId: string, window?: T.MetricWindow): Promise<T.RelationshipDetail>;
+    /** size 는 기본 10 · 최대 20 (명세). 그 이상을 보내면 실 백엔드가 400 을 낸다. */
     evidence(relationshipId: string, params?: { cursor?: string; size?: number }): Promise<T.Page<T.RelationshipEvidence>>;
   };
   community: {

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type RefObject } from "react";
 import { ImpactBadge, IndustryBadge, Skeleton, TypeBadge } from "@/components/ui";
-import { fmtScore } from "@/lib/format";
+import { fmtPctFrom01, fmtScore } from "@/lib/format";
 import type { SceneModel } from "@/lib/graph";
 import { scoreBand } from "@/lib/meta";
 import { useRelationship } from "@/lib/queries";
@@ -96,6 +96,8 @@ export default function SceneTip({ model, pointer }: Props) {
             </span>
           ))}
         </div>
+        {/* Shift+클릭 발견성이 낮아 노드 툴팁에도 힌트를 남긴다 — PathStrip 이 이 기준으로 최단 경로를 켠다 */}
+        <div className="tip-hint">Shift+클릭으로 경로 기준 고정</div>
       </div>
     );
   }
@@ -124,7 +126,7 @@ export default function SceneTip({ model, pointer }: Props) {
       <div className="tip-ev meta num">
         {detail ? (
           <>
-            근거 {detail.evidenceCount}건 · 신뢰 {Math.round(detail.confidence * 100)}%
+            근거 {detail.evidenceCount}건 · 신뢰 {fmtPctFrom01(detail.confidence)}
           </>
         ) : (
           <Skeleton h={12} w={120} />

@@ -65,10 +65,10 @@ export function useCompanyMetrics(companyId: string | null, window: T.MetricWind
     placeholderData: keepPreviousData,
   });
 }
-export function useMetricsHistory(companyId: string | null, window: T.MetricWindow) {
+export function useMetricsHistory(companyId: string | null, params: T.MetricsHistoryParams) {
   return useQuery({
-    queryKey: ["company", "metrics-history", companyId, window],
-    queryFn: () => api.companies.metricsHistory(companyId!, window),
+    queryKey: ["company", "metrics-history", companyId, params],
+    queryFn: () => api.companies.metricsHistory(companyId!, params),
     enabled: Boolean(companyId),
     placeholderData: keepPreviousData,
   });

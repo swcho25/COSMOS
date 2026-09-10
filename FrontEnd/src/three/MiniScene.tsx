@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Canvas } from "@react-three/fiber";
+import { Canvas, useFrame } from "@react-three/fiber";
 import { OrbitControls } from "@react-three/drei";
 import { Bloom, EffectComposer, Vignette } from "@react-three/postprocessing";
 import * as THREE from "three";
@@ -9,6 +9,18 @@ import RelationLines from "./RelationLines";
 import Backdrop from "./Backdrop";
 import { LAB } from "./toon";
 import { computeEmphasis } from "./emphasis";
+import { dragState } from "./morph";
+
+/**
+ * 행성을 끄는 동안 궤도 회전을 멈춘다 — 메인 씬은 Director 가 같은 일을 하지만, 여기에는 연출 카메라가 없다.
+ */
+function DragGuard() {
+  useFrame((state) => {
+    const controls = state.controls as unknown as { enabled: boolean } | null;
+    if (controls && controls.enabled === !!dragState.id) controls.enabled = !dragState.id;
+  });
+  return null;
+}
 
 interface Props {
   model: SceneModel | null;
@@ -51,13 +63,14 @@ export default function MiniScene({ model, onPickCompany, onPickEdge, highlightI
     >
       <color attach="background" args={["#05070f"]} />
       <OrbitControls makeDefault enablePan={false} enableDamping dampingFactor={0.08} autoRotate={autoRotate && !hovered} autoRotateSpeed={0.6} minDistance={14} maxDistance={radius * 4 + 40} maxPolarAngle={Math.PI * 0.6} />
+      <DragGuard />
       <Backdrop radius={600} stars={400} />
       <ambientLight intensity={0.55} color="#c9d4ff" />
       <hemisphereLight args={["#9ab3ff", "#3a1f5c", 0.6]} />
       <directionalLight position={[-40, 60, 50]} intensity={2.4} color="#fff3e0" />
       {model && emphasis && (
         <group key={model.centerId ?? "m"}>
-          <RelationLines edges={model.edges} emphasis={emphasis} onHover={setHoveredEdge} onSelect={(id) => onPickEdge?.(id)} />
+          <RelationLines model={model} edges={model.edges} emphasis={emphasis} onHover={setHoveredEdge} onSelect={(id) => onPickEdge?.(id)} />
           <CompanyNodes model={model} emphasis={emphasis} hoveredId={hovered ?? highlightId} onHover={setHovered} onClick={(id) => onPickCompany?.(id)} />
         </group>
       )}

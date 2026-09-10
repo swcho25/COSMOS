@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import type { ImpactDirection } from "@/api/types";
 
 /**
  * 장난감 우주 스타일 — 팔레트와 셀 셰이딩 유틸 (아트 디렉션 랩에서 확정, 은하 본편과 공유).
@@ -13,6 +14,14 @@ export const LAB = {
   starHot: "#ff7a45",
   beam: "#ffa24c",
   beamGlow: "#ff7a45",
+  /**
+   * 영향 방향별 관계 빔 색 — 긍정 파랑·부정 빨강·중립 보라 (랩의 단색 beam 과 별개로 은하 본편이 쓴다).
+   * 톤매핑이 없어 셰이더가 쓴 값이 그대로 화면 sRGB 가 되므로 셋 다 채도를 높게 유지하고,
+   * 특히 파랑은 네이비 배경(#0b1030)에 묻히지 않도록 명도를 충분히 올려 잡았다.
+   */
+  beamPositive: "#4f8dff",
+  beamNegative: "#ff4d6d",
+  beamNeutral: "#a06bff",
   accent: "#6d8cff",
   planets: {
     teal: { name: "틸 — 대륙형", ocean: "#2fb8c9", oceanDeep: "#2394ad", land: "#7be495", landHi: "#b6f2c0", ring: "#bdedff" },
@@ -20,6 +29,16 @@ export const LAB = {
     blue: { name: "블루 — 위성형", ocean: "#3d7bff", oceanDeep: "#2f62d6", land: "#9dc4ff", landHi: "#d7e6ff", ring: "#d7e6ff" },
   },
 } as const;
+
+/**
+ * 영향 방향 → 관계 빔 색. 빔·화살촉·경로 스트립 글리프가 모두 이 한 곳을 보게 해서 색 규칙이 갈라지지 않게 한다.
+ * 정의되지 않은 방향이나 값 누락은 중립 보라로 떨어뜨린다 — 색이 비거나 긍정·부정으로 오독되면 안 된다.
+ */
+export function beamColorFor(impact: ImpactDirection | null | undefined): string {
+  if (impact === "POSITIVE") return LAB.beamPositive;
+  if (impact === "NEGATIVE") return LAB.beamNegative;
+  return LAB.beamNeutral;
+}
 
 export interface PlanetPalette {
   name: string;

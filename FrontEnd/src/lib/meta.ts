@@ -1,4 +1,5 @@
 import type { ImpactDirection, Market, RelationshipType, Sentiment } from "@/api/types";
+import type { CurrencyCode } from "@/lib/format";
 
 /* ------------------------------ 산업 팔레트 ------------------------------ */
 export const INDUSTRY_COLORS: Record<string, string> = {
@@ -9,7 +10,7 @@ export const INDUSTRY_COLORS: Record<string, string> = {
   "바이오·헬스케어": "#FF7FA4",
   "에너지·중공업": "#FFE27A",
   "소프트웨어·AI": "#5CE1E6",
-  금융: "#9DB0FF",
+  "금융·지주": "#9DB0FF",
   "소비재·유통": "#B6F26B",
   "통신·미디어": "#E58CFF",
   "철강·화학·소재": "#FF7A6B",
@@ -39,17 +40,24 @@ export const RELATIONSHIP_META: Record<string, RelationshipMeta> = {
   COMPETE: { code: "COMPETE", label: "경쟁", color: "#FF8A7A", directed: false, description: "같은 시장에서 점유율·가격을 다투는 관계." },
 };
 export const RELATIONSHIP_ORDER: RelationshipType[] = ["SUPPLY", "INVEST", "PARTNER", "COMPETE"];
+/**
+ * 지분 관계로 취급할 유형 코드. relationship_type 시드가 아직 없어 코드가 바뀔 수 있으므로
+ * 화면(투자·지분 트리)이 문자열을 직접 비교하지 않고 이 배열만 참조하게 한다.
+ */
+export const OWNERSHIP_TYPES: RelationshipType[] = ["INVEST"];
 
-export function relationshipMeta(code: RelationshipType): RelationshipMeta {
-  return (
-    RELATIONSHIP_META[code] ?? {
+/** name 은 서버가 relationship_type.name 을 응답에 실어 주면 하드코딩 라벨 대신 쓰기 위한 자리다. */
+export function relationshipMeta(code: RelationshipType, name?: string | null): RelationshipMeta {
+  const base =
+    RELATIONSHIP_META[code] ??
+    ({
       code,
       label: String(code),
       color: "#AAB3C2",
       directed: false,
       description: "정의되지 않은 관계 유형",
-    }
-  );
+    } satisfies RelationshipMeta);
+  return name ? { ...base, label: name } : base;
 }
 
 /* ------------------------------ 감성 / 영향 방향 ------------------------------ */
@@ -76,8 +84,19 @@ export function marketLabel(market: Market) {
   if (market === "NASDAQ") return "NASDAQ";
   return market;
 }
-export function marketCurrency(market: Market) {
-  return market === "NASDAQ" ? "USD" : "KRW";
+/** 시장별 거래 통화. 미국·일본·중국 상장 종목을 원화로 표기하지 않도록 시장 코드를 전부 적는다. */
+const MARKET_CURRENCY: Record<string, CurrencyCode> = {
+  KOSPI: "KRW",
+  KOSDAQ: "KRW",
+  NASDAQ: "USD",
+  NYSE: "USD",
+  AMEX: "USD",
+  TSE: "JPY",
+  SSE: "CNY",
+  SZSE: "CNY",
+};
+export function marketCurrency(market: Market): CurrencyCode {
+  return MARKET_CURRENCY[market] ?? "KRW";
 }
 
 /** 점수(0~100)를 라벨로 */

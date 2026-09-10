@@ -2,9 +2,9 @@
  * 목업 우주 빌더 — data.ts 의 시드를 API 명세 형태의 데이터셋으로 조립한다.
  * 결정론적 난수를 쓰므로 새로고침해도 같은 결과가 나오고, 스냅샷 ID 는 1시간 단위로 바뀐다.
  */
-import type { Candle, ImpactDirection, Market, RelationshipType, Sentiment } from "@/api/types";
+import type { AltitudeWindow, Candle, ImpactDirection, LatestGraphNode, Market, RelationshipType, Sentiment } from "@/api/types";
 import { gaussian, hashString, seededRandom, stableUuid } from "@/lib/rng";
-import { COMPANY_SEEDS, INDUSTRY_DESCRIPTIONS, RELATION_SEEDS, type IndustryName } from "./data";
+import { COMPANY_SEEDS, INDUSTRY_DESCRIPTIONS, LISTED_SHARES, RELATION_SEEDS, type IndustryName } from "./data";
 
 export interface MockIndustry {
   industryId: string;
@@ -16,12 +16,17 @@ export interface MockIndustry {
 export interface MockCompany {
   companyId: string;
   name: string;
-  nameEn: string;
+  /** 영문명이 국문명과 같으면 DB 에 따로 담지 않는다고 보고 null 로 둔다 (선택 필드 검증용) */
+  nameEn: string | null;
   stockCode: string;
   market: Market;
   industry: IndustryName;
   industryId: string;
   description: string;
+  /** 목업 검색이 흉내 내는 company_alias */
+  aliases: string[];
+  /** company 테이블에 없는 값 — 목업에서만 채워 화면 자리를 검증한다 */
+  listedShares: number;
 }
 export interface MockEdge {
   relationshipId: string;
@@ -58,7 +63,8 @@ export interface MockNews {
 export interface MockComment {
   commentId: string;
   companyId: string;
-  userId: string;
+  /** users.user_id 는 BIGSERIAL — 목업도 정수를 쓴다 */
+  userId: number;
   nickname: string;
   content: string;
   createdAt: string;
@@ -83,15 +89,26 @@ export const INDUSTRIES: MockIndustry[] = INDUSTRY_NAMES.map((name) => ({
 }));
 const INDUSTRY_BY_NAME = new Map(INDUSTRIES.map((i) => [i.name, i]));
 
-export const COMPANIES: MockCompany[] = COMPANY_SEEDS.map(([name, nameEn, stockCode, market, industry, description]) => ({
+/** 시드에 없는 기업의 상장주식수 — 종목코드 해시로 정해 새로고침해도 같은 값이 나오게 한다 */
+function fallbackShares(stockCode: string, market: Market) {
+  const r = seededRandom(hashString(`shares:${stockCode}`))();
+  const krw = market === "KOSPI" || market === "KOSDAQ";
+  const base = krw ? 8_000_000 : 40_000_000;
+  const scale = Math.exp(r * 4.2);
+  return Math.round((base * scale) / 1000) * 1000;
+}
+
+export const COMPANIES: MockCompany[] = COMPANY_SEEDS.map(([name, nameEn, stockCode, market, industry, description, aliases]) => ({
   companyId: stableUuid(`company:${market}:${stockCode}`),
   name,
-  nameEn,
+  nameEn: nameEn === name ? null : nameEn,
   stockCode,
   market,
   industry,
   industryId: INDUSTRY_BY_NAME.get(industry)!.industryId,
   description,
+  aliases: aliases ?? [],
+  listedShares: LISTED_SHARES[stockCode] ?? fallbackShares(stockCode, market),
 }));
 COMPANIES.forEach((c) => {
   INDUSTRY_BY_NAME.get(c.industry)!.companyCount += 1;
@@ -390,9 +407,41 @@ export function stockSeries(company: MockCompany): Candle[] {
   return out;
 }
 
+/**
+ * 등락률 기간 → 기준 종가를 고를 때 되짚을 캔들 수.
+ * 주가 탭은 mockApi.stockPrices 가 준 items = all.slice(-n) 의 첫 캔들(= all[L-n])을 기준으로 삼는다.
+ * 은하 뷰 고도와 주가 탭 등락률이 어긋나지 않도록 같은 n(1M=22·3M=65)을 그대로 되짚는다.
+ * 1D 는 주가 탭에 대응 기간이 없어 직전 거래일(캔들 2개)로 둔다.
+ */
+const CHANGE_BACK: Record<AltitudeWindow, number> = { "1D": 2, "1M": 22, "3M": 65 };
+
+/**
+ * 기간별 등락률(퍼센트) — 마지막 종가 대비 기준일 종가.
+ * stockSeries 가 시드 난수라 같은 기업이면 늘 같은 값이고, 구간을 채울 만큼 시계열이 없으면 null 이다.
+ */
+export function priceChanges(company: MockCompany): NonNullable<LatestGraphNode["priceChange"]> {
+  const s = stockSeries(company);
+  const last = s.at(-1);
+  const out: NonNullable<LatestGraphNode["priceChange"]> = {};
+  (Object.keys(CHANGE_BACK) as AltitudeWindow[]).forEach((w) => {
+    const prev = s[s.length - CHANGE_BACK[w]];
+    out[w] = last && prev && prev.closePrice > 0 ? round2(((last.closePrice - prev.closePrice) / prev.closePrice) * 100) : null;
+  });
+  return out;
+}
+
+/** 최근 종가 × 상장주식수. company 테이블에 컬럼이 생기면 서버 값으로 대체된다. */
+export function marketCapOf(company: MockCompany) {
+  const last = stockSeries(company).at(-1);
+  if (!last) return null;
+  return Math.round(last.closePrice * company.listedShares);
+}
+
 /* ------------------------------------------------------------------ */
 /* 커뮤니티 댓글                                                          */
 /* ------------------------------------------------------------------ */
+/** 시드 댓글 작성자 id — 실제 가입 사용자(1부터 증가)와 겹치지 않게 큰 수에서 시작한다 */
+const SEED_USER_ID_BASE = 1000;
 const NICKS = ["orbit_660", "graph_reader", "ner_lab", "tsv_watch", "성운관측자", "hbm_holder", "배터리덕후", "밸류체인", "공시읽는사람", "장기투자자K", "퀀트지망생", "supplychain_kim"];
 const COMMENT_TMPL = [
   "{A} 관련 뉴스가 최근에 확 늘었네요. 관계 점수도 같이 오르는지 지켜보고 있습니다.",
@@ -421,7 +470,7 @@ function buildComments(): MockComment[] {
       out.push({
         commentId: stableUuid(`comment:${c.companyId}:${i}`),
         companyId: c.companyId,
-        userId: stableUuid(`user:seed:${nickIdx}`),
+        userId: SEED_USER_ID_BASE + nickIdx,
         nickname: NICKS[nickIdx],
         content: fill(COMMENT_TMPL[Math.floor(rng() * COMMENT_TMPL.length)], c, nb ?? null, ""),
         createdAt: new Date(created).toISOString(),

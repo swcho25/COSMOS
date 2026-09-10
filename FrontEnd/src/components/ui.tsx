@@ -4,10 +4,11 @@ import { IMPACT_META, RELATIONSHIP_ORDER, SENTIMENT_META, industryColor, relatio
 import { initials } from "@/lib/format";
 import { logoUrl } from "@/lib/logos";
 import { ROLE_META, roleColor, type RoleKey } from "@/lib/roles";
+import { LAB } from "@/three/toon";
 
 /* ------------------------------ 로고 아바타 ------------------------------ */
 
-export function CompanyAvatar({ name, stockCode, industry, size = 44, radius }: { name: string; stockCode?: string; industry?: string; size?: number; radius?: number }) {
+export function CompanyAvatar({ name, stockCode, industry, size = 44, radius }: { name: string; stockCode?: string | null; industry?: string | null; size?: number; radius?: number }) {
   const [broken, setBroken] = useState(false);
   const url = logoUrl(stockCode);
   const hasLogo = Boolean(url) && !broken;
@@ -33,8 +34,9 @@ export function SentimentBadge({ value, compact = false }: { value: Sentiment; c
     </span>
   );
 }
-export function ImpactBadge({ value }: { value: ImpactDirection }) {
-  const m = IMPACT_META[value] ?? IMPACT_META.NEUTRAL;
+/** impactDirection 은 선택 필드(NULL 허용)라 값이 없으면 중립으로 읽는다. */
+export function ImpactBadge({ value }: { value: ImpactDirection | null | undefined }) {
+  const m = (value && IMPACT_META[value]) ?? IMPACT_META.NEUTRAL;
   return (
     <span className="badge" style={{ background: m.bg, color: m.fg }}>
       <i className="dot" style={{ background: m.color }} />
@@ -93,14 +95,17 @@ export function ScoreBar({ score, color }: { score: number; color?: string }) {
 
 /* ------------------------------ 관계 유형 범례 ------------------------------ */
 /**
- * 간선은 한 가지 주황 빔이므로 선 모양으로 구분한다: 방향 있음 = 실선 + 화살, 방향 없음 = 점선.
+ * 간선의 방향을 선 모양으로 나타낸다: 방향 있음 = 실선 + 화살, 방향 없음 = 점선.
+ * 빔 색은 영향 방향이 정하므로(긍정 파랑·부정 빨강·중립 보라) 실제 간선을 가리킬 때는 color 로 그 색을 넘긴다.
+ * 특정 간선이 아닌 자리(유형 범례)는 기본값인 중립 보라로 둬서 색이 방향을 잘못 주장하지 않게 한다.
  * 유형색은 빔이 아니라 기업을 호버했을 때 이웃 행성의 링·칩 태그에 나타나므로, 범례 칩 앞의 색 점이 그 대응을 알려 준다
+ * PathStrip(최단 경로 스트립)도 같은 글리프로 홉 사이 방향을 나타내므로 export 한다.
  */
-function EdgeGlyph({ directed }: { directed: boolean }) {
+export function EdgeGlyph({ directed, color = LAB.beamNeutral }: { directed: boolean; color?: string }) {
   return (
     <svg className="edge-glyph" width="22" height="10" viewBox="0 0 22 10" aria-hidden>
-      <line x1="1" y1="5" x2={directed ? 15 : 21} y2="5" stroke="#ffa24c" strokeWidth="2" strokeLinecap="round" strokeDasharray={directed ? undefined : "2.5 3"} />
-      {directed && <path d="M14 1.5 L19.5 5 L14 8.5" fill="none" stroke="#ffa24c" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />}
+      <line x1="1" y1="5" x2={directed ? 15 : 21} y2="5" stroke={color} strokeWidth="2" strokeLinecap="round" strokeDasharray={directed ? undefined : "2.5 3"} />
+      {directed && <path d="M14 1.5 L19.5 5 L14 8.5" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />}
     </svg>
   );
 }

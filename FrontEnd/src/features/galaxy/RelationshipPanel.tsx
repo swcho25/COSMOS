@@ -1,6 +1,6 @@
 import type { MetricWindow } from "@/api/types";
 import { Empty, Icon, ImpactBadge, ScoreBar, Skeleton, TypeBadge } from "@/components/ui";
-import { fmtDateTime, fmtRelative, fmtScore } from "@/lib/format";
+import { fmtDateTime, fmtPctFrom01, fmtRelative, fmtScore, pct01 } from "@/lib/format";
 import { relationshipMeta, scoreBand } from "@/lib/meta";
 import { useRelationship, useRelationshipEvidence } from "@/lib/queries";
 import { useGalaxy } from "@/store/galaxy";
@@ -84,7 +84,7 @@ export default function RelationshipPanel({ relationshipId, onClose, onPickCompa
             <div className="stat-grid mt-16">
               <div className="stat">
                 <div className="lab">신뢰도</div>
-                <div className="v num">{Math.round(r.confidence * 100)}%</div>
+                <div className="v num">{fmtPctFrom01(r.confidence)}</div>
               </div>
               <div className="stat">
                 <div className="lab">근거 문서</div>
@@ -108,11 +108,9 @@ export default function RelationshipPanel({ relationshipId, onClose, onPickCompa
               {items.map((e) => (
                 <article key={e.newsId} className="news-card">
                   <div className="row between">
-                    <span className="meta num">
-                      {e.publisher} · {fmtRelative(e.publishedAt)}
-                    </span>
+                    <span className="meta num">{[e.publisher, fmtRelative(e.publishedAt)].filter(Boolean).join(" · ")}</span>
                     <span className="meta num" title="관계 점수 기여도">
-                      기여 {Math.round(e.contributionScore * 100)} · 신뢰 {Math.round(e.confidence * 100)}%
+                      기여 {fmtPctFrom01(e.contributionScore, "")} · 신뢰 {fmtPctFrom01(e.confidence)}
                     </span>
                   </div>
                   <div className="title">{e.title}</div>
@@ -121,7 +119,7 @@ export default function RelationshipPanel({ relationshipId, onClose, onPickCompa
                   </div>
                   <div className="foot">
                     <span className="bar" style={{ flex: 1 }}>
-                      <i style={{ width: `${Math.round(e.contributionScore * 100)}%`, background: meta.color }} />
+                      <i style={{ width: `${pct01(e.contributionScore)}%`, background: meta.color }} />
                     </span>
                     <a href={e.originalUrl} target="_blank" rel="noreferrer" className="link-btn row" style={{ gap: 4 }}>
                       원문 <Icon.External />

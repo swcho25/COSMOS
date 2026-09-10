@@ -14,7 +14,7 @@ npm run typecheck
 
 | 경로 | 내용 |
 | --- | --- |
-| `/` | 전체 은하. 산업 성단 위 기업 항성과 관계 간선. 노드 클릭 → 워프 → 기업 중심 관계망(depth 궤도) + 우측 인텔리전스 패널(뉴스·주가·게시판). 관계선 클릭 → 관계 상세·근거 뉴스 패널. `Ctrl+K` 기업 검색, `?company={id}` 로 진입 가능 |
+| `/` | 전체 은하. 연관도가 높은 기업일수록 가까이 놓이는 나선 은하 원반(허브가 핵, 팔을 따라 별가루)과 관계 간선. 노드 클릭 → 워프 → 기업 중심 관계망(depth 궤도) + 우측 인텔리전스 패널(뉴스·주가·게시판). 관계선 클릭 → 관계 상세·근거 뉴스 패널. `Ctrl+K` 기업 검색, `?company={id}` 로 진입 가능 |
 | `/news` | 좌측 뉴스 레일 + 우측 관계 지도(선택 뉴스 관련 기업 ±1홉) + 영향도 랭킹·최강 전이 경로·근거 문장. 노드 클릭 시 좌측이 그 기업 뉴스로 전환 |
 | `/companies` | 관심 기업, 기업 디렉터리(검색·시장·산업), 투자·지분 관계 트리 |
 | `/me` | 내 정보·관심 기업·스크랩·분석 가중치 (프로필 메뉴에서 진입) |
@@ -22,7 +22,9 @@ npm run typecheck
 
 카메라는 두 모드입니다. **궤도 모드**(기본)는 드래그 회전·휠 확대, **탐색 모드**는 우주선처럼 직접 날아다닙니다 — `W A S D` 이동, `Q E` 위아래, `Shift` 가속, 드래그로 시선, 휠로 전진. `F` 키 또는 하단 중앙 버튼으로 전환하며 두 모드 모두 기업 클릭으로 워프합니다.
 
-간선은 `score`(0~100)가 높을수록 굵고 밝고 빠르게 흐르며, 색은 관계 유형(공급·투자·협력·경쟁), 펄스 색은 `impactDirection`(부정이면 붉게)을 나타냅니다. 방향이 있는 관계는 source → target 으로 흐르고, 무방향 관계는 양 끝에서 흐릅니다.
+관계를 읽는 도구: 관계선을 호버하면 유형·방향·점수·근거 수 툴팁이 뜨고, 기업을 호버하면 1홉 이웃에 관계 유형 색 링(방향 쐐기 포함)과 이름표 역할 태그(공급사·고객·투자자·피투자·협력·경쟁)가 붙습니다. 기업 중심 뷰에는 1홉 요약 스트립이 있어 역할별로 걸러 볼 수 있고, `Shift+클릭`으로 기준 기업을 고정하면 다른 기업 호버 시 최단 경로가 상단에 표시됩니다. 기업을 누르면 관련 행성이 그 기업을 중심으로 빨려 들어가 궤도에 안착합니다.
+
+간선은 `score`(0~100)가 높을수록 굵고 밝고 빠르게 흐르며, 색은 `impactDirection`(긍정 파랑 · 부정 빨강 · 중립 보라)을 나타냅니다. 관계 유형은 색이 아니라 펄스 방향(방향 관계)과 점선(무방향 관계)으로 구분합니다. 방향이 있는 관계는 source → target 으로 흐르고, 무방향 관계는 양 끝에서 흐릅니다.
 
 ## 데이터 모드
 
@@ -50,8 +52,37 @@ src/
 
 `public/company-logos/` 의 로고는 `npm run logos:fetch` 로 수집합니다 (`scripts/fetch-logos.mjs`). 종목코드·티커별 대표 도메인(국내 계열사는 그룹 도메인 병행)을 Clearbit → 사이트 apple-touch-icon → Google favicon → DuckDuckGo 아이콘 → 사이트 favicon → logo.dev 순으로 시도해 저장하고, 결과 목록을 `src/lib/logo-codes.json` 에 씁니다. 파일이 없는 기업은 3D 노드와 아바타에 모노그램이 표시됩니다. 수집된 로고는 각 기업의 상표이며, logo.dev 폴백은 공개 문서용 키를 쓰므로 실제 서비스에서는 자체 키와 출처 표기가 필요합니다.
 
-## 백엔드에 확인이 필요한 항목
+## 백엔드에 확인이 필요한 항목 (프론트의 가정)
 
-- `relationshipType` 코드 목록. 현재 `SUPPLY` `INVEST` `PARTNER` `COMPETE` 를 가정하며, 그 외 코드는 회색으로 표시됩니다 (`src/lib/meta.ts`).
-- 기업 중심 그래프(`/api/graphs/companies/{id}`)의 노드에 `industryName`·`market` 이 없어 전체 그래프를 한 번 받아 클라이언트에서 조인합니다. 응답에 두 필드를 추가하면 조인이 불필요합니다.
-- 화면구성도의 게시판(글 제목·카테고리·댓글)은 명세의 단일 계층 댓글 API 로 축소해 구현했습니다. 주가 탭의 시가총액·PER 도 명세에 없어 OHLCV 기반 지표와 뉴스·관계 지표로 대체했습니다.
+`docs/api-specification.md`·`docs/database-design.md`·`V1__create_initial_schema.sql` 을 기준으로 맞췄고, 그래도 남는 빈칸은 아래처럼 가정했습니다. 목업(`VITE_API_MODE=mock`)은 가정대로 값을 채워 화면을 보여 주고, live 모드는 값이 없으면 그 자리를 접습니다.
+
+**기업 기준 정보**
+
+- **시가총액·상장주식수**: `company` 테이블에도 기업 상세 응답에도 없습니다. `CompanyDetail.marketCap` · `listedShares` 를 선택 필드로만 열어 두었고, 주가 탭의 '시가총액' 칸은 값이 올 때만 나타납니다(목업은 `최근 종가 × 상장주식수` 로 채웁니다). ① `company` 에 컬럼을 추가할지 ② 별도 시계열로 둘지 ③ 상세 응답에 실을지 확인이 필요합니다. 값이 없는 동안은 '평균 거래대금(종가×거래량)' 으로 대신합니다.
+- **시장 코드와 통화**: 가격 표기 통화를 `company.market` 에서 파생합니다(KOSPI·KOSDAQ→₩, NASDAQ·NYSE·AMEX→$, TSE→¥, SSE·SZSE→CN¥ / `src/lib/meta.ts` `marketCurrency`). 목록에 없는 코드는 원화로 폴백하니, 수집 대상 시장 코드 목록이 확정되면 알려 주세요.
+- **업종코드·대표자·설립일·홈페이지**: DDL 에 컬럼이 없어 산업 분류는 `industry`/`company_industry` 만으로 표현한다고 가정합니다. 표준 업종코드(KSIC·GICS)·`ceo_name`·`founded_on`·`homepage_url` 을 추가할 계획이 있는지 확인이 필요합니다.
+- **`industry.name` 실제 목록**: V1 에 시드가 없어 목업 11종(`src/mock/data.ts`)을 씁니다. 산업 팔레트(`src/lib/meta.ts` `INDUSTRY_COLORS`)가 이 이름에 맞춰져 있어, 실제 산업명이 정해지면 두 곳을 같이 맞춰야 합니다.
+- **`company.status`(ACTIVE·상장폐지 등)** 를 목록·상세 응답에 포함할지. 오면 목록 표에서 비활성 기업을 흐리게 처리할 계획입니다.
+- **`company_alias`**: `alias_type` 값 목록과 실제 별칭 데이터가 없어 목업 별칭은 프론트가 임의로 큐레이션했습니다(검색 결과 폭이 실제와 달라질 수 있습니다). 실 백엔드는 `keyword` 하나만 받으므로 프론트 변경은 없습니다.
+
+**공시**
+
+- 명세 서비스 범위가 "공시는 관계 분석에 사용하지만 화면에 문서 자체를 공개하지 않는다" 이고 조회 엔드포인트도 없어, **공시 목록·상세·뉴스/공시 구분 배지는 구현하지 않았습니다.** 공시를 노출할 계획이 있다면 목록·상세 엔드포인트와 공개 범위(`report_name`·`filing_date`·`disclosure_type`·`correction_status`·DART 링크)를 알려 주세요. 확정되면 `NewsItem.documentType` 추가 + 뉴스 목록 필터 칩에 '공시' 를 더하는 것이 최소 경로입니다(지금 넣으면 항상 `NEWS` 인 죽은 필드가 됩니다).
+
+**관계·그래프**
+
+- **`relationship_type.code` 목록**: 시드가 없어 `SUPPLY` `INVEST` `PARTNER` `COMPETE` 를 가정하며, 그 외 코드는 회색 폴백으로 표시됩니다(`src/lib/meta.ts`). 특히 **지분 관계 코드가 `INVEST` 가 맞는지** 확인이 필요합니다 — 기업 화면의 '투자·지분 관계' 트리가 `OWNERSHIP_TYPES` 상수 한 곳만 보고 동작하므로, 코드가 다르면 그 배열만 고치면 됩니다. 응답에 `relationshipTypeName`(한글 라벨)이 실리면 `relationshipMeta(code, name)` 로 서버 라벨을 그대로 쓸 수 있습니다.
+- **관계 점수 범위**: `relationship_score_current.score` 에 CHECK 가 없어 0~100 스케일을 가정합니다(ScoreBar·'100점 기준' 표기). 상한이 다르면 표기를 바꿔야 합니다. `window_type` 도 `7D`·`30D`·`90D` 3종으로 가정합니다.
+- **관계 점수 이력**: `relationship_score_history` 는 있지만 조회 엔드포인트가 없습니다. 열어 주시면 관계 패널의 '관계 점수' 아래에 추이 차트를 붙일 수 있습니다. 그래프 응답에 `formulaVersion`·`modelVersion` 을 포함할지도 확인이 필요합니다.
+- **`graphs/latest` 노드에 `priceChange`(1D·1M·3M) 포함 또는 일괄 조회 엔드포인트 필요**: 은하 뷰가 기업의 기간 등락률로 행성 높이를 정합니다(위 = 상승, 아래 = 하락). 지금은 `LatestGraphNode.priceChange` 를 선택 필드로 열어 두고 목업이 주가 시계열에서 채우며, 값이 없는 기업은 원반 평면에 남습니다. 노드 수가 수백이라 기업별 `stock-prices` 를 개별 호출할 수는 없으니 ① 그래프 응답에 세 기간 등락률을 실어 주시거나 ② 여러 기업의 등락률을 한 번에 주는 엔드포인트가 필요합니다.
+- **기업 중심 그래프**(`/api/graphs/companies/{id}`)의 노드에 `industryName`·`market` 이 없어 전체 그래프를 한 번 받아 클라이언트에서 조인합니다. 응답에 두 필드를 추가하면 조인이 불필요합니다.
+
+**사용자·공통**
+
+- **`userId` 는 64비트 정수**(`users.user_id BIGSERIAL`)로 맞췄습니다. `companyId`·`newsId`·`relationshipId`·`commentId`·`industryId`·`snapshotId` 는 UUID 문자열 그대로라고 가정합니다.
+- **`users/me` 에 `role`** 을 포함할지. 관리자 화면이 MVP 밖이라 지금은 타입에 넣지 않았습니다.
+- **댓글 `edited`**: DDL 에 컬럼이 없어 백엔드가 `created_at ≠ updated_at` 으로 파생한다고 가정합니다. 내용 길이는 명세대로 1~500자로 맞췄습니다(입력창에 카운터 표시).
+- **선택 필드는 `null`**: DDL 에서 NULL 을 허용하는 필드(`nameEn`·`stockCode`·`description`·`summary`·`publisher`·`publishedAt`·`sentimentScore`·`confidence`·`impactDirection`·`contributionScore`·`relevanceScore` 등)를 모두 nullable 로 선언하고, 화면은 `-` 로 비우거나 구분점째 접습니다.
+- **날짜 표시 시간대**: `database-design.md` 규칙대로 UTC 를 **브라우저 시간대**로 변환해 표시합니다(기존 KST 고정 해제). 심사·데모를 항상 KST 로 보여 줘야 한다면 이 가정이 뒤집힙니다.
+- **`stock_price.trading_at` 의 저장 규칙**: 거래일은 '몇 시'가 아니라 '어느 거래일'이라 시간대 변환 없이 **UTC 기준 날짜**로 읽습니다(`fmtTradingDate`). 시장 현지 종가 시각(KRX 06:30Z·NYSE 20:00Z)으로 저장하든 날짜 전용 UTC 자정으로 저장하든 날짜가 밀리지 않지만, **시장 현지 자정**(예: `2026-09-10T00:00+09:00`)으로 저장하면 하루 밀립니다. 어느 쪽인지 알려 주세요.
+- 화면구성도의 게시판(글 제목·카테고리·댓글)은 명세의 단일 계층 댓글 API 로 축소해 구현했습니다.

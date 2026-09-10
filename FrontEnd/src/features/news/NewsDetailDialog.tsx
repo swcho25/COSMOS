@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import type { NewsDetail } from "@/api/types";
-import { fmtDateTime } from "@/lib/format";
+import { fmtDateTime, fmtPctFrom01 } from "@/lib/format";
 import { SENTIMENT_META } from "@/lib/meta";
 import { Icon, SentimentBadge, Skeleton } from "@/components/ui";
 
@@ -64,7 +64,7 @@ export default function NewsDetailDialog({ open, news, activeCompanyId, onClose,
               {news.evidence.map((e, i) => (
                 <div key={i} className="evidence">
                   <q>{e.sentence}</q>
-                  <div className="meta num mt-8">신뢰도 {Math.round(e.confidence * 100)}%</div>
+                  <div className="meta num mt-8">신뢰도 {fmtPctFrom01(e.confidence)}</div>
                 </div>
               ))}
             </div>
@@ -84,7 +84,7 @@ export default function NewsDetailDialog({ open, news, activeCompanyId, onClose,
                   <i style={{ background: SENTIMENT_META[r.sentiment].color }} />
                   {r.name}
                   <b className="num" style={{ opacity: 0.7 }}>
-                    {Math.round(r.relevanceScore * 100)}
+                    {fmtPctFrom01(r.relevanceScore, "")}
                   </b>
                 </button>
               ))}
