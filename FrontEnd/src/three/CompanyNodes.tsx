@@ -67,6 +67,15 @@ const DRAG_SLOP = 6;
  * live 는 그 노드가 속한 버퍼 — 씬이 둘(은하·미니) 겹쳐 있어도 자기 것이 아닌 드래그에는 반응하지 않게 하는 주인 표식이다.
  */
 const DRAG = { id: null as string | null, index: -1, x: 0, y: 0, active: false, cursor: "", live: null as LiveTransform | null };
+/**
+ * 드래그 관성 — 행성은 커서를 그대로 따라가지 않는다. 커서 이동의 일부(DRAG_SENS)만 목표점으로 삼고,
+ * 스프링(약한 언더댐핑)으로 목표를 향해 미끄러지며, 손을 뗀 뒤에도 남은 관성으로 안착한다.
+ * 목적은 정밀 배치가 아니라 "만지면 반응한다"는 인터랙티브한 감각이다.
+ */
+const DRAG_SENS = 0.6;
+const GLIDE_K = 22; // 스프링 강성 — 클수록 빨리 따라온다
+const GLIDE_ZETA = 0.72; // 감쇠비 — 1 미만이라 살짝 넘치고 되돌아온다
+const GLIDE = { live: null as LiveTransform | null, index: -1, active: false, target: new THREE.Vector3(), vel: new THREE.Vector3(), origin: new THREE.Vector3() };
 /** built 별 "헤일로 위치를 마지막으로 올린 드래그 버전" */
 const HALO_SYNC = new WeakMap<object, { version: number }>();
 
@@ -347,6 +356,31 @@ export default function CompanyNodes({ model, emphasis, hoveredId, onHover, onCl
   const grad = toonGradient(3);
 
   useFrame((state, dt) => {
+    // 드래그 관성 — 목표점을 향한 스프링. 손을 뗀 뒤에도 속도가 남아 있는 동안 계속 미끄러진다
+    if (GLIDE.active && GLIDE.live === live) {
+      const h = Math.min(dt, 0.05);
+      const o = GLIDE.index * 3;
+      const px = live.pos[o];
+      const py = live.pos[o + 1];
+      const pz = live.pos[o + 2];
+      const c = 2 * GLIDE_ZETA * Math.sqrt(GLIDE_K);
+      const v = GLIDE.vel;
+      v.x += ((GLIDE.target.x - px) * GLIDE_K - v.x * c) * h;
+      v.y += ((GLIDE.target.y - py) * GLIDE_K - v.y * c) * h;
+      v.z += ((GLIDE.target.z - pz) * GLIDE_K - v.z * c) * h;
+      live.pos[o] = px + v.x * h;
+      live.pos[o + 1] = py + v.y * h;
+      live.pos[o + 2] = pz + v.z * h;
+      dragState.version += 1;
+      // 손을 뗀 뒤 목표에 충분히 가까워지고 느려지면 스냅해서 멈춘다
+      if (!DRAG.active && GLIDE.target.distanceToSquared(TMP.set(live.pos[o], live.pos[o + 1], live.pos[o + 2])) < 1e-4 && v.lengthSq() < 1e-4) {
+        live.pos[o] = GLIDE.target.x;
+        live.pos[o + 1] = GLIDE.target.y;
+        live.pos[o + 2] = GLIDE.target.z;
+        GLIDE.active = false;
+        GLIDE.live = null;
+      }
+    }
     const k = 1 - Math.pow(0.001, dt);
     // 배지·칩 페이드는 더 빠르게 (0.3s 안에 거의 끝난다)
     const kFast = 1 - Math.pow(0.0001, dt);
@@ -593,6 +627,13 @@ export default function CompanyNodes({ model, emphasis, hoveredId, onHover, onCl
       dragState.dirty.clear();
       if (DRAG.id) dragState.dirty.add(DRAG.id);
       DRAG_POS.fromArray(live.pos, DRAG.index * 3);
+      // 관성 상태 준비 — 목표는 현재 자리, 속도 0 (이전 글라이드가 남아 있으면 이 노드로 넘어온다)
+      GLIDE.live = live;
+      GLIDE.index = DRAG.index;
+      GLIDE.active = true;
+      GLIDE.origin.copy(DRAG_POS);
+      GLIDE.target.copy(DRAG_POS);
+      GLIDE.vel.set(0, 0, 0);
       camera.getWorldDirection(DRAG_DIR);
       DRAG_PLANE.setFromNormalAndCoplanarPoint(DRAG_DIR, DRAG_POS);
       // 잡은 지점(누른 자리)을 기준으로 오프셋을 잡는다 — 행성이 커서 아래로 순간이동하지도, 슬롭만큼 뒤처지지도 않게
@@ -608,11 +649,9 @@ export default function CompanyNodes({ model, emphasis, hoveredId, onHover, onCl
         start();
       }
       if (!hitPlane(ev.clientX, ev.clientY)) return;
-      const o = DRAG.index * 3;
-      live.pos[o] = DRAG_HIT.x - DRAG_OFF.x;
-      live.pos[o + 1] = DRAG_HIT.y - DRAG_OFF.y;
-      live.pos[o + 2] = DRAG_HIT.z - DRAG_OFF.z;
-      dragState.version += 1;
+      // 커서가 가리키는 자리와 시작 자리 사이의 일부만 목표로 삼는다 — 실제 이동은 useFrame 의 스프링이 맡는다
+      DRAG_HIT.sub(DRAG_OFF).sub(GLIDE.origin).multiplyScalar(DRAG_SENS);
+      GLIDE.target.copy(GLIDE.origin).add(DRAG_HIT);
     };
     const onUp = () => {
       if (DRAG.live !== live) return;
