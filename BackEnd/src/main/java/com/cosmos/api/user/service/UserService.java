@@ -19,6 +19,16 @@ public class UserService {
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
 
+    @Transactional(readOnly = true)
+    public boolean isEmailAvailable(String email) {
+        return !userRepository.existsByEmail(email.toLowerCase(Locale.ROOT));
+    }
+
+    @Transactional(readOnly = true)
+    public boolean isNicknameAvailable(String nickname) {
+        return !userRepository.existsByNickname(nickname);
+    }
+
     @Transactional
     public UserResponse signup(SignupRequest request) {
         String email = request.email().toLowerCase(Locale.ROOT);
