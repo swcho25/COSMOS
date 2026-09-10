@@ -22,6 +22,9 @@ dependencies {
 	implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
 	implementation 'org.springframework.boot:spring-boot-starter-validation'
 	implementation 'org.springframework.boot:spring-boot-starter-webmvc'
+	implementation 'org.springframework.boot:spring-boot-starter-data-redis'
+	// .env 파일을 환경변수처럼 읽어준다 (시크릿을 소스에 두지 않기 위함)
+	implementation 'me.paulschwarz:spring-dotenv:4.0.0'
 	implementation 'org.springframework.security:spring-security-crypto'
 	compileOnly 'org.projectlombok:lombok'
 	runtimeOnly 'org.postgresql:postgresql'
@@ -39,4 +42,7 @@ dependencies {
 
 tasks.named('test') {
 	useJUnitPlatform()
+	// 테스트는 .env 없이도 항상 실행되어야 하므로 서명 키를 여기서 주입한다.
+	// 테스트 전용 값이라 실제 서비스에는 쓰이지 않는다.
+	environment 'JWT_SECRET', 'test-only-secret-not-used-in-real-service-0123456789abcdef'
 }
