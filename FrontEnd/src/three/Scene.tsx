@@ -9,7 +9,6 @@ import { hashString } from "@/lib/rng";
 import { neighborRoles } from "@/lib/roles";
 import { useGalaxy } from "@/store/galaxy";
 import AltitudeDriver from "./AltitudeDriver";
-import AltitudeTails from "./AltitudeTails";
 import Backdrop from "./Backdrop";
 import CompanyNodes from "./CompanyNodes";
 import EdgeArrows from "./EdgeArrows";
@@ -336,12 +335,7 @@ function Content({ galaxy, system, next = null, callout, warpRef }: ContentProps
             {/* 별가루는 은하 뷰에만, 격자보다 먼저 그려 가장 뒤에 깔린다 */}
             {dust && <GalaxyDust seed={dust.seed} radius={dust.radius} spiral={dust.spiral} warpRef={warpRef} />}
             {/* 주가 고도는 은하 뷰에만 — 기업 중심 뷰의 궤도는 depth 가 정하므로 높이에 다른 의미를 얹지 않는다 */}
-            {model.kind === "galaxy" && (
-              <>
-                <AltitudeDriver model={model} />
-                <AltitudeTails model={model} />
-              </>
-            )}
+            {model.kind === "galaxy" && <AltitudeDriver model={model} />}
             <RelationLines
               model={model}
               edges={model.edges}
