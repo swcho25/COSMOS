@@ -5,12 +5,14 @@ import { Bloom, ChromaticAberration, EffectComposer, Vignette } from "@react-thr
 import * as THREE from "three";
 import type { SceneEdge, SceneModel, Vec3 } from "@/lib/graph";
 import { hoverPath } from "@/lib/path";
+import { hashString } from "@/lib/rng";
 import { neighborRoles } from "@/lib/roles";
 import { useGalaxy } from "@/store/galaxy";
 import Backdrop from "./Backdrop";
 import CompanyNodes from "./CompanyNodes";
 import EdgeArrows from "./EdgeArrows";
 import FlyControls from "./FlyControls";
+import GalaxyDust from "./GalaxyDust";
 import GhostNodes from "./GhostNodes";
 import GravityGrid from "./GravityGrid";
 import RelationLines from "./RelationLines";
@@ -31,14 +33,14 @@ function poseFor(model: SceneModel | null, kind: "galaxy" | "system", aspect = 1
   if (!model || !model.nodes.length) return FALLBACK_POSE[kind];
   let r = 10;
   model.nodes.forEach((n) => {
-    // 은하는 입체(구), 기업 중심 뷰는 바닥 궤도(x·z) 기준으로 바깥 반지름을 잡는다
-    r = Math.max(r, (kind === "galaxy" ? Math.hypot(n.pos[0], n.pos[1], n.pos[2]) : Math.hypot(n.pos[0], n.pos[2])) + n.size * 2);
+    // 은하도 이제 납작한 원반이라 두 뷰 모두 바닥면(x·z) 기준으로 바깥 반지름을 잡는다
+    r = Math.max(r, Math.hypot(n.pos[0], n.pos[2]) + n.size * 2);
   });
   // 세로로 긴 화면은 가로가 먼저 잘리므로 종횡비만큼 물러난다
   const fit = Math.tan((52 * Math.PI) / 360) * Math.min(1, aspect);
-  const dist = (r / fit) * (kind === "galaxy" ? 0.98 : 0.82);
-  // 은하는 살짝 위에서 비스듬히 보아 앞뒤 성단이 겹겹이 보이게 한다
-  const elev = kind === "galaxy" ? 0.3 : 0.34;
+  const dist = (r / fit) * (kind === "galaxy" ? 0.72 : 0.82);
+  // 은하는 약 30° 위에서 비스듬히 — 원반이 타원으로 보이면서 핵의 허브가 다른 행성에 가리지 않는다
+  const elev = kind === "galaxy" ? 0.5 : 0.34;
   return { pos: [0, dist * elev, dist * Math.sqrt(1 - elev * elev)], tgt: [0, kind === "galaxy" ? 0 : -2, 0] };
 }
 /**
@@ -297,6 +299,12 @@ function Content({ galaxy, system, next = null, callout, warpRef }: ContentProps
   }, [hoveredId, hoveredEdgeId, navMode, pinnedId]);
 
   const calloutNode = callout && model ? model.nodeById.get(callout.companyId) : undefined;
+  // 별가루 시드는 구성원 목록에서 뽑는다 — 노드 수만 같고 내용이 다른 스냅샷·필터가 같은 별가루를 재생하지 않게.
+  // 성단은 산업 하나당 하나라 clusters.length<=1 이 곧 layoutGalaxy 의 single(팔 인력 off) 조건이다
+  const dust = useMemo(
+    () => (model?.kind === "galaxy" ? { seed: hashString(model.nodes.map((nd) => nd.id).join(",")), spiral: model.clusters.length > 1, radius: model.extent.maxR } : null),
+    [model],
+  );
 
   return (
     <>
@@ -312,6 +320,8 @@ function Content({ galaxy, system, next = null, callout, warpRef }: ContentProps
       <group onPointerMissed={(e) => e.button === 0 && clearSelection()}>
         {model && emphasis && (
           <group key={model.kind + (model.centerId ?? "")}>
+            {/* 별가루는 은하 뷰에만, 격자보다 먼저 그려 가장 뒤에 깔린다 */}
+            {dust && <GalaxyDust seed={dust.seed} radius={dust.radius} spiral={dust.spiral} warpRef={warpRef} />}
             {/* 바닥 격자는 빔보다 먼저 그린다 (renderOrder 0). keyed group 안이라 뷰가 바뀌면 평평한 면에서 다시 패인다 */}
             <GravityGrid model={model} warpRef={warpRef} hoveredId={hoveredId} />
             <RelationLines
