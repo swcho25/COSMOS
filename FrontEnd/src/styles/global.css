@@ -12,8 +12,8 @@
   --border-strong: rgba(255, 255, 255, 0.14);
   --text: #f7f9fc;
   --text-2: #d7deea;
-  --text-3: #aab3c2;
-  --text-4: #8b95a1;
+  --text-3: #c9d1de;
+  --text-4: #a2acba;
   --primary: #6d8cff;
   --primary-2: #829cff;
   --primary-3: #a8baff;
@@ -118,6 +118,18 @@ button:disabled {
   box-shadow: var(--shadow-card);
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
+}
+/* components/ui.tsx 의 <Kpi> 는 여러 화면에서 재사용되므로 스타일도 전역에 둔다 */
+.kpi {
+  padding: 16px 18px;
+  border-radius: 14px;
+}
+.kpi .kpi-v {
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: -1px;
+  margin-top: 6px;
+  line-height: 1.1;
 }
 .kick {
   font-family: var(--mono);

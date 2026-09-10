@@ -49,7 +49,7 @@
 }
 .dir-tools .field {
   min-height: 40px;
-  width: 280px;
+  flex: 1 1 220px;
 }
 .dir-tools select {
   background: var(--field);
@@ -57,6 +57,12 @@
   border-radius: 10px;
   padding: 9px 12px;
   font-size: 13px;
+  color: var(--text);
+}
+/* 펼쳤을 때의 옵션 목록도 명시적으로 어둡게 지정한다 — 그렇지 않으면 브라우저 기본 흰 배경 위에
+   옅은 글자가 얹혀 마우스를 올려야만 겨우 읽히는 문제가 생긴다 */
+.dir-tools select option {
+  background: var(--panel-solid);
   color: var(--text);
 }
 .dir-table {
@@ -83,6 +89,22 @@
 }
 .dir-table tr.row-btn:hover td {
   background: rgba(255, 255, 255, 0.03);
+}
+.dir-table th.sortable {
+  cursor: pointer;
+  user-select: none;
+}
+.dir-table th.sortable:hover {
+  color: var(--text);
+}
+.dir-table th.sortable .sort-arrow {
+  display: inline-block;
+  margin-left: 4px;
+  opacity: 0.5;
+}
+.dir-table th.sortable.on .sort-arrow {
+  opacity: 1;
+  color: var(--primary-2);
 }
 .dir-table .co {
   display: flex;
@@ -159,6 +181,15 @@
   font-family: var(--font);
   fill: var(--text);
 }
+/* 기업 미리보기 모달 — 은하로 워프하지 않고 요약만 볼 때 사용 */
+.dialog.company-preview {
+  width: min(560px, 100%);
+}
+.company-preview .kpi {
+  flex: 1;
+  min-width: 130px;
+}
+
 @media (max-width: 900px) {
   .dir-table th:nth-child(3),
   .dir-table td:nth-child(3),

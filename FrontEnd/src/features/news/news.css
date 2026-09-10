@@ -12,6 +12,34 @@
   display: flex;
   flex-direction: column;
 }
+.news-rail .search-field {
+  width: 100%;
+  margin-bottom: 14px;
+}
+/*
+ * 산업 필터 — 칩 여러 개가 차지하던 자리를 눈에 덜 띄는 셀렉트 하나로 줄인다.
+ * 배경을 불투명하게 지정해야 한다 — 옅은 반투명 배경만 주면 브라우저 기본(흰색) select 배경이
+ * 그대로 비쳐서, 펼쳤을 때 옵션 목록이 흰 바탕에 옅은 글자로 표시되어 마우스를 올려야만 보이던 문제가 있었다.
+ */
+.news-rail .industry-select {
+  flex: none;
+  background: var(--field);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 5px 8px;
+  font-size: 12px;
+  color: var(--text-3);
+  max-width: 130px;
+}
+.news-rail .industry-select:hover,
+.news-rail .industry-select:focus {
+  color: var(--text);
+  border-color: var(--border-strong);
+}
+.news-rail .industry-select option {
+  background: var(--panel-solid);
+  color: var(--text-2);
+}
 .news-rail .list {
   flex: 1;
   overflow-y: auto;
@@ -20,6 +48,24 @@
 }
 .news-rail .news-card {
   cursor: pointer;
+}
+/* 뉴스 제목이 목록에서 가장 눈에 먼저 들어오도록 요약보다 크고 굵게 둔다 */
+.news-rail .news-card .title {
+  font-size: 16.5px;
+  font-weight: 700;
+  line-height: 1.4;
+  margin-top: 2px;
+}
+.news-rail .news-card .summary {
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--text-4);
+}
+/* 뉴스 상세 모달 */
+.dialog.news-detail {
+  width: min(640px, 100%);
+  max-height: 82vh;
+  overflow-y: auto;
 }
 .crumbs {
   display: flex;
@@ -60,17 +106,6 @@
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 12px;
-}
-.kpi {
-  padding: 16px 18px;
-  border-radius: 14px;
-}
-.kpi .kpi-v {
-  font-size: 28px;
-  font-weight: 700;
-  letter-spacing: -1px;
-  margin-top: 6px;
-  line-height: 1.1;
 }
 .map-card {
   margin-top: 14px;

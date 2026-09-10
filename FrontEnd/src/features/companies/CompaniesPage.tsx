@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import type { Market } from "@/api/types";
 import { fmtDateTime } from "@/lib/format";
@@ -6,6 +6,7 @@ import { useCompanyDirectory, useIndustries, useLatestGraph, useToggleWatch, use
 import { useSession } from "@/store/session";
 import { useUi } from "@/store/ui";
 import { CompanyAvatar, Empty, Icon, IndustryBadge, MarketTag, ScoreBar, Skeleton } from "@/components/ui";
+import CompanyPreviewDialog from "./CompanyPreviewDialog";
 import OwnershipView from "./OwnershipView";
 import "./companies.css";
 
@@ -16,21 +17,33 @@ const MARKETS: { v: Market | ""; label: string }[] = [
   { v: "NASDAQ", label: "NASDAQ" },
 ];
 
+type SortKey = "count" | "score";
+type SortState = { key: SortKey; dir: "asc" | "desc" } | null;
+
 /** 기업 (화면구성도 ⑩·⑪). 목록 / 투자·지분 관계 토글. 행을 누르면 전체 은하의 기업 패널이 열린다. */
 export default function CompaniesPage() {
   const navigate = useNavigate();
   const authed = useSession((s) => s.status === "authed");
   const openAuth = useUi((s) => s.openAuth);
   const [view, setView] = useState<"list" | "ownership">("list");
+  const [keywordInput, setKeywordInput] = useState("");
   const [keyword, setKeyword] = useState("");
   const [market, setMarket] = useState<Market | "">("");
   const [industryId, setIndustryId] = useState("");
+  const [sort, setSort] = useState<SortState>(null);
+  const [previewId, setPreviewId] = useState<string | null>(null);
+
+  // 입력마다 요청이 나가지 않도록 디바운스한다 (live 모드에서 백엔드 호출 폭주 방지)
+  useEffect(() => {
+    const t = setTimeout(() => setKeyword(keywordInput.trim()), 300);
+    return () => clearTimeout(t);
+  }, [keywordInput]);
 
   const industries = useIndustries();
   const universe = useLatestGraph(null);
   const watchlist = useWatchlist();
   const toggleWatch = useToggleWatch();
-  const dir = useCompanyDirectory({ keyword: keyword.trim() || undefined, market: market || undefined, industryId: industryId || undefined, size: 40 });
+  const dir = useCompanyDirectory({ keyword: keyword || undefined, market: market || undefined, industryId: industryId || undefined, size: 40 });
   const rows = useMemo(() => dir.data?.pages.flatMap((p) => p.items) ?? [], [dir.data]);
 
   /** 스냅샷에서 기업별 관계 수·최고 점수 집계 */
@@ -47,7 +60,25 @@ export default function CompaniesPage() {
     return m;
   }, [universe.data]);
 
-  const open = (id: string) => navigate(`/?company=${id}`);
+  /** 목록 클릭은 곧바로 은하로 이동하지 않고 가벼운 미리보기를 연다. 관계망 탐색은 미리보기에서 선택한다. */
+  const openPreview = (id: string) => setPreviewId(id);
+  const goToGalaxy = (id: string) => {
+    setPreviewId(null);
+    navigate(`/?company=${id}`);
+  };
+
+  /** 지금 불러온 목록 안에서만 정렬한다 — 서버가 관계 수·점수 정렬을 지원하지 않아 전체 정렬은 아직 불가능하다 */
+  const toggleSort = (key: SortKey) => setSort((s) => (s?.key === key ? (s.dir === "desc" ? { key, dir: "asc" } : null) : { key, dir: "desc" }));
+  const sortedRows = useMemo(() => {
+    if (!sort) return rows;
+    return rows
+      .slice()
+      .sort((a, b) => {
+        const av = sort.key === "count" ? stats.get(a.companyId)?.count ?? 0 : stats.get(a.companyId)?.max ?? 0;
+        const bv = sort.key === "count" ? stats.get(b.companyId)?.count ?? 0 : stats.get(b.companyId)?.max ?? 0;
+        return sort.dir === "asc" ? av - bv : bv - av;
+      });
+  }, [rows, stats, sort]);
 
   return (
     <div className="page">
@@ -63,24 +94,24 @@ export default function CompaniesPage() {
         </span>
       </div>
 
-      {/* 관심 기업 */}
-      <section className="card watch-card" aria-label="내 관심 기업">
-        <div className="row between wrap">
-          <div>
-            <div className="kick">my watchlist</div>
-            <h2 className="sect" style={{ marginTop: 6, fontSize: 20 }}>
-              내 관심 기업 <span className="num" style={{ color: "var(--primary-2)" }}>{watchlist.data?.items.length ?? 0}</span>
-            </h2>
+      {/* 관심 기업 — 비로그인 상태에서는 관심 기업이라는 개념 자체가 없으므로 섹션을 통째로 숨긴다 */}
+      {authed && (
+        <section className="card watch-card" aria-label="내 관심 기업">
+          <div className="row between wrap">
+            <div>
+              <div className="kick">my watchlist</div>
+              <h2 className="sect" style={{ marginTop: 6, fontSize: 20 }}>
+                내 관심 기업 <span className="num" style={{ color: "var(--primary-2)" }}>{watchlist.data?.items.length ?? 0}</span>
+              </h2>
+            </div>
+            <span className="meta">프로필 메뉴 › 내 페이지에서 관리</span>
           </div>
-          <span className="meta">{authed ? "프로필 메뉴 › 내 페이지에서 관리" : "로그인하면 관심 기업을 저장할 수 있습니다"}</span>
-        </div>
-        {authed ? (
-          watchlist.data?.items.length ? (
+          {watchlist.data?.items.length ? (
             <div className="watch-grid">
               {watchlist.data.items.map((w) => {
                 const s = stats.get(w.companyId);
                 return (
-                  <button key={w.companyId} type="button" className="watch-item" onClick={() => open(w.companyId)}>
+                  <button key={w.companyId} type="button" className="watch-item" onClick={() => openPreview(w.companyId)}>
                     <CompanyAvatar name={w.name} stockCode={w.stockCode} industry={w.primaryIndustry.name} size={40} />
                     <span className="grow">
                       <b>{w.name}</b>
@@ -94,18 +125,9 @@ export default function CompaniesPage() {
             </div>
           ) : (
             <Empty>아직 관심 기업이 없습니다. 아래 목록의 ★ 을 눌러 추가하세요.</Empty>
-          )
-        ) : (
-          <div className="row mt-12" style={{ gap: 10 }}>
-            <button type="button" className="btn btn-p btn-sm" onClick={() => openAuth("login")}>
-              로그인
-            </button>
-            <button type="button" className="btn btn-g btn-sm" onClick={() => openAuth("signup")}>
-              회원가입
-            </button>
-          </div>
-        )}
-      </section>
+          )}
+        </section>
+      )}
 
       {/* 디렉터리 */}
       <section className="card dir-card" aria-label="기업 목록">
@@ -133,13 +155,13 @@ export default function CompaniesPage() {
         </div>
 
         {view === "ownership" ? (
-          <OwnershipView graph={universe.data ?? null} onPick={open} />
+          <OwnershipView graph={universe.data ?? null} onPick={openPreview} />
         ) : (
           <>
             <div className="dir-tools">
               <label className="field">
                 <Icon.Search />
-                <input placeholder="기업명·영문명·종목코드" value={keyword} onChange={(e) => setKeyword(e.target.value)} />
+                <input placeholder="기업명·영문명·종목코드" value={keywordInput} onChange={(e) => setKeywordInput(e.target.value)} />
               </label>
               <select value={market} onChange={(e) => setMarket(e.target.value as Market | "")} aria-label="시장">
                 {MARKETS.map((m) => (
@@ -157,7 +179,7 @@ export default function CompaniesPage() {
                 ))}
               </select>
               <span className="meta" style={{ marginLeft: "auto" }}>
-                {keyword.trim() ? "관련도순" : "기업명순"}
+                {sort ? `${sort.key === "count" ? "연결 관계" : "최고 관계 점수"} ${sort.dir === "desc" ? "높은순" : "낮은순"} · 불러온 목록 기준` : keyword ? "관련도순" : "기업명순"}
               </span>
             </div>
             <div style={{ overflowX: "auto" }}>
@@ -167,8 +189,14 @@ export default function CompaniesPage() {
                     <th>기업</th>
                     <th>산업</th>
                     <th>시장</th>
-                    <th className="right">연결 관계</th>
-                    <th style={{ width: 220 }}>최고 관계 점수</th>
+                    <th className={`right sortable ${sort?.key === "count" ? "on" : ""}`} onClick={() => toggleSort("count")} title="불러온 목록 안에서 정렬합니다">
+                      연결 관계
+                      <span className="sort-arrow">{sort?.key === "count" ? (sort.dir === "desc" ? "▼" : "▲") : "▲▼"}</span>
+                    </th>
+                    <th className={`sortable ${sort?.key === "score" ? "on" : ""}`} style={{ width: 220 }} onClick={() => toggleSort("score")} title="불러온 목록 안에서 정렬합니다">
+                      최고 관계 점수
+                      <span className="sort-arrow">{sort?.key === "score" ? (sort.dir === "desc" ? "▼" : "▲") : "▲▼"}</span>
+                    </th>
                     <th className="right">관심</th>
                   </tr>
                 </thead>
@@ -188,10 +216,10 @@ export default function CompaniesPage() {
                       </td>
                     </tr>
                   )}
-                  {rows.map((c) => {
+                  {sortedRows.map((c) => {
                     const s = stats.get(c.companyId);
                     return (
-                      <tr key={c.companyId} className="row-btn" onClick={() => open(c.companyId)} tabIndex={0} onKeyDown={(e) => e.key === "Enter" && open(c.companyId)}>
+                      <tr key={c.companyId} className="row-btn" onClick={() => openPreview(c.companyId)} tabIndex={0} onKeyDown={(e) => e.key === "Enter" && openPreview(c.companyId)}>
                         <td>
                           <div className="co">
                             <CompanyAvatar name={c.name} stockCode={c.stockCode} industry={c.primaryIndustry.name} size={36} />
@@ -242,7 +270,7 @@ export default function CompaniesPage() {
               </table>
             </div>
             <div className="dir-foot">
-              <span className="meta">행을 선택하면 전체 은하에서 해당 기업의 관계망과 우측 인텔리전스 패널이 열립니다.</span>
+              <span className="meta">행을 선택하면 요약 미리보기가 열립니다. 미리보기의 "은하에서 관계 보기"를 누르면 전체 은하의 관계망과 우측 인텔리전스 패널로 이동합니다.</span>
               {dir.hasNextPage && (
                 <button type="button" className="btn btn-g btn-sm" onClick={() => dir.fetchNextPage()} disabled={dir.isFetchingNextPage}>
                   {dir.isFetchingNextPage ? "불러오는 중…" : "더 보기"}
@@ -252,6 +280,8 @@ export default function CompaniesPage() {
           </>
         )}
       </section>
+
+      <CompanyPreviewDialog companyId={previewId} onClose={() => setPreviewId(null)} onOpenGalaxy={goToGalaxy} />
     </div>
   );
 }
