@@ -29,7 +29,7 @@ export interface SceneNode {
    */
   tier: number;
 }
-/** 은하 뷰의 산업 성단 하나 — 중력 우물 격자가 분지를 파는 기준 */
+/** 은하 뷰의 산업 성단 하나 — 성단 중심·반지름·질량 (별가루 나선 여부 등 성단 단위 표현의 기준) */
 export interface SceneCluster {
   industry: string;
   center: Vec3;
@@ -135,7 +135,7 @@ function relax(nodes: SceneNode[], edges: GraphEdge[], anchor: Map<string, Vec3>
   }
 }
 
-/** 노드 크기(nodeSize)에서 가중 연결도를 되돌린 값 — 성단 질량과 중력 우물(gravity.ts)이 같은 척도를 쓰도록 한 곳에 둔다 */
+/** 노드 크기(nodeSize)에서 가중 연결도를 되돌린 값 — 랭크·성단 질량이 같은 척도를 쓰도록 한 곳에 둔다 */
 export function massOf(size: number) {
   const w = (size - 0.7) / 0.52;
   return w * w;
@@ -513,7 +513,7 @@ export function layoutGalaxy(graph: LatestGraph): SceneModel {
     });
   }
 
-  /* 7) 산업 성단 — 중력 우물의 기준. 관계로 흩어진 산업은 반지름이 커져 얕고 넓은 분지가 된다 */
+  /* 7) 산업 성단 — 중심·반지름·질량 요약. 관계로 흩어진 산업은 반지름이 커진다 */
   const byIndustry = new Map<string, SceneNode[]>();
   nodes.forEach((nd) => {
     if (!byIndustry.has(nd.industry)) byIndustry.set(nd.industry, []);

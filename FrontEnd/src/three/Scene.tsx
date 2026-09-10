@@ -14,7 +14,6 @@ import EdgeArrows from "./EdgeArrows";
 import FlyControls from "./FlyControls";
 import GalaxyDust from "./GalaxyDust";
 import GhostNodes from "./GhostNodes";
-import GravityGrid from "./GravityGrid";
 import RelationLines from "./RelationLines";
 import RoleRings from "./RoleRings";
 import Warp from "./Warp";
@@ -327,8 +326,6 @@ function Content({ galaxy, system, next = null, callout, warpRef }: ContentProps
           <group key={model.kind + (model.centerId ?? "")}>
             {/* 별가루는 은하 뷰에만, 격자보다 먼저 그려 가장 뒤에 깔린다 */}
             {dust && <GalaxyDust seed={dust.seed} radius={dust.radius} spiral={dust.spiral} warpRef={warpRef} />}
-            {/* 바닥 격자는 빔보다 먼저 그린다 (renderOrder 0). keyed group 안이라 뷰가 바뀌면 평평한 면에서 다시 패인다 */}
-            <GravityGrid model={model} warpRef={warpRef} hoveredId={hoveredId} />
             <RelationLines
               model={model}
               edges={model.edges}

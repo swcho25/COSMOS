@@ -3,7 +3,7 @@ import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import { ARMS, ARM_SPREAD, DISC_Y, R_CORE, R_MAX, armTheta } from "@/lib/galaxyShape";
 import { gaussian, seededRandom } from "@/lib/rng";
-import { isLowEnd } from "./gravity";
+import { isLowEnd } from "./perf";
 import { dotTexture } from "./textures";
 import { glowTexture } from "./toon";
 

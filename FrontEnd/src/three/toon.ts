@@ -23,9 +23,6 @@ export const LAB = {
   beamNegative: "#ff4d6d",
   beamNeutral: "#a06bff",
   accent: "#6d8cff",
-  /** 중력 우물 격자 — 평평한 바닥의 남보라, 깊은 분지 바닥의 청백 */
-  grid: "#4a55b8",
-  gridDeep: "#9fd0ff",
   planets: {
     teal: { name: "틸 — 대륙형", ocean: "#2fb8c9", oceanDeep: "#2394ad", land: "#7be495", landHi: "#b6f2c0", ring: "#bdedff" },
     violet: { name: "바이올렛 — 고리형", ocean: "#6e55e8", oceanDeep: "#5642c4", land: "#c48bff", landHi: "#e2c4ff", ring: "#e6d3ff" },
