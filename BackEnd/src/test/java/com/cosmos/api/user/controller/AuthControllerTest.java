@@ -19,9 +19,14 @@ import org.springframework.test.web.servlet.ResultActions;
 import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.databind.ObjectMapper;
 
+/**
+ * 회원가입 API 테스트.
+ * 가입 성공(201), 비밀번호 암호화 저장, 이메일·닉네임 중복(409),
+ * 입력 규칙 위반(400)이 명세대로 동작하는지 검증한다.
+ */
 @SpringBootTest
 @AutoConfigureMockMvc
-@Transactional
+@Transactional // 각 테스트가 끝나면 DB 변경을 되돌려서 테스트끼리 영향을 주지 않게 한다
 class AuthControllerTest {
 
     @Autowired
@@ -33,6 +38,7 @@ class AuthControllerTest {
     @Autowired
     UserRepository userRepository;
 
+    // 테스트 공통: 회원가입 요청을 보내고 결과를 돌려준다
     private ResultActions signup(String email, String password, String nickname) throws Exception {
         SignupRequest request = new SignupRequest(email, password, nickname);
         return mockMvc.perform(post("/api/auth/signup")
@@ -40,6 +46,8 @@ class AuthControllerTest {
                 .content(objectMapper.writeValueAsString(request)));
     }
 
+    // 상황: 올바른 값으로 가입 요청 (이메일에 대문자 포함)
+    // 기대: 201 + 회원 정보 반환, 이메일은 소문자로 바뀌어 저장
     @Test
     @DisplayName("회원가입 성공 시 201과 회원 정보를 반환하고, 이메일은 소문자로 정규화된다")
     void signup_success() throws Exception {
@@ -50,6 +58,8 @@ class AuthControllerTest {
                 .andExpect(jsonPath("$.nickname").value("우주탐험가"));
     }
 
+    // 상황: 가입 후 DB에 저장된 비밀번호를 직접 확인
+    // 기대: 입력한 평문("password1")이 아니라 BCrypt 해시($2로 시작)가 저장됨
     @Test
     @DisplayName("비밀번호는 평문이 아닌 BCrypt 해시로 저장된다")
     void password_is_hashed() throws Exception {
@@ -57,9 +67,11 @@ class AuthControllerTest {
 
         User saved = userRepository.findByEmail("hash@test.com").orElseThrow();
         assertThat(saved.getPassword()).isNotEqualTo("password1");
-        assertThat(saved.getPassword()).startsWith("$2"); // BCrypt 프리픽스
+        assertThat(saved.getPassword()).startsWith("$2"); // BCrypt 해시의 고정 앞글자
     }
 
+    // 상황: dup@test.com으로 가입된 상태에서 DUP@test.com으로 다시 가입 시도
+    // 기대: 대소문자만 달라도 같은 이메일 → 409 + EMAIL_DUPLICATED
     @Test
     @DisplayName("이미 가입된 이메일이면 대소문자가 달라도 409 EMAIL_DUPLICATED를 반환한다")
     void signup_duplicate_email() throws Exception {
@@ -70,6 +82,8 @@ class AuthControllerTest {
                 .andExpect(jsonPath("$.code").value("EMAIL_DUPLICATED"));
     }
 
+    // 상황: 같은 닉네임으로 두 번째 가입 시도 (이메일은 다름)
+    // 기대: 409 + NICKNAME_DUPLICATED
     @Test
     @DisplayName("이미 사용 중인 닉네임이면 409 NICKNAME_DUPLICATED를 반환한다")
     void signup_duplicate_nickname() throws Exception {
@@ -80,6 +94,8 @@ class AuthControllerTest {
                 .andExpect(jsonPath("$.code").value("NICKNAME_DUPLICATED"));
     }
 
+    // 상황: 숫자가 하나도 없는 비밀번호로 가입 시도
+    // 기대: 400 + VALIDATION_FAILED, fieldErrors에 password가 지목됨
     @Test
     @DisplayName("비밀번호에 숫자가 없으면 400과 password 필드 에러를 반환한다")
     void signup_invalid_password() throws Exception {

@@ -19,6 +19,23 @@ public class UserService {
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
 
+    /** 이메일 사용 가능 여부. 저장된 이메일은 전부 소문자이므로 소문자로 바꿔 비교한다. */
+    @Transactional(readOnly = true)
+    public boolean isEmailAvailable(String email) {
+        return !userRepository.existsByEmail(email.toLowerCase(Locale.ROOT));
+    }
+
+    /** 닉네임 사용 가능 여부. */
+    @Transactional(readOnly = true)
+    public boolean isNicknameAvailable(String nickname) {
+        return !userRepository.existsByNickname(nickname);
+    }
+
+    /**
+     * 회원가입 순서: 이메일 소문자 정규화 → 중복 검사 → 비밀번호 암호화 → 저장.
+     * 중복 검사를 통과해도 극히 드물게 동시 가입이 겹칠 수 있는데,
+     * 그때는 DB의 유니크 인덱스가 최종 방어선이 된다.
+     */
     @Transactional
     public UserResponse signup(SignupRequest request) {
         String email = request.email().toLowerCase(Locale.ROOT);
