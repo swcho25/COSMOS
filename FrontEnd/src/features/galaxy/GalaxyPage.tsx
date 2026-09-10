@@ -10,6 +10,7 @@ import { useGalaxy } from "@/store/galaxy";
 import { Icon, TypeLegend } from "@/components/ui";
 import CompanyPanel from "./CompanyPanel";
 import HopSummary from "./HopSummary";
+import PathStrip from "./PathStrip";
 import RelationshipPanel from "./RelationshipPanel";
 import SceneTip, { type PointerPos } from "./SceneTip";
 import SearchPalette from "./SearchPalette";
@@ -201,6 +202,8 @@ export default function GalaxyPage() {
       )}
       {/* 브레드크럼 아래: 중심 기업의 1홉 역할 요약 (칩을 누르면 그 역할만 남긴다) */}
       <HopSummary model={systemModel} />
+      {/* 상단 중앙: 최단 경로 스트립 — 기업 중심 뷰는 중심 기준, 은하 뷰는 Shift+클릭 핀 기준 (자기 모델로 재계산, Canvas 와 결합도 0) */}
+      <PathStrip model={focusId ? systemModel : galaxyModel} />
 
       {/* 좌하단: 상태 */}
       <div className="hud hud-status">
@@ -235,7 +238,7 @@ export default function GalaxyPage() {
         <div className="hud hud-help">
           {navMode === "fly"
             ? "W A S D 이동 · Q E 위아래 · Shift 가속 · 드래그로 시선 · 휠로 전진 · 기업을 누르면 워프"
-            : "드래그로 회전 · 휠로 확대 · 기업을 누르면 워프, 관계선을 누르면 근거를 봅니다"}
+            : "드래그로 회전 · 휠로 확대 · 기업을 누르면 워프, 관계선을 누르면 근거를 봅니다 · Shift+클릭으로 경로 기준 고정"}
         </div>
       )}
 

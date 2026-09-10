@@ -95,8 +95,9 @@ export function ScoreBar({ score, color }: { score: number; color?: string }) {
 /**
  * 간선은 한 가지 주황 빔이므로 선 모양으로 구분한다: 방향 있음 = 실선 + 화살, 방향 없음 = 점선.
  * 유형색은 빔이 아니라 기업을 호버했을 때 이웃 행성의 링·칩 태그에 나타나므로, 범례 칩 앞의 색 점이 그 대응을 알려 준다
+ * PathStrip(최단 경로 스트립)도 같은 글리프로 홉 사이 방향을 나타내므로 export 한다.
  */
-function EdgeGlyph({ directed }: { directed: boolean }) {
+export function EdgeGlyph({ directed }: { directed: boolean }) {
   return (
     <svg className="edge-glyph" width="22" height="10" viewBox="0 0 22 10" aria-hidden>
       <line x1="1" y1="5" x2={directed ? 15 : 21} y2="5" stroke="#ffa24c" strokeWidth="2" strokeLinecap="round" strokeDasharray={directed ? undefined : "2.5 3"} />

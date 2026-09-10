@@ -140,6 +140,63 @@
   white-space: nowrap;
 }
 
+/* 상단 중앙: 최단 경로 스트립 — Shift+클릭 핀(은하 뷰) 또는 depth≥2 호버(기업 중심 뷰) */
+.hud-path {
+  left: 50%;
+  top: 132px;
+  transform: translateX(-50%);
+  max-width: min(760px, calc(100vw - 480px));
+}
+/* 기업 중심 뷰에서는 브레드크럼(hud-crumb)·1홉 요약(hud-hop)이 왼쪽 상단에 쌓이므로 그 아래로 더 내린다 */
+.hud-path.with-crumb {
+  top: 146px;
+}
+.path-strip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 8px 12px;
+  border-radius: 12px;
+  font-size: 13px;
+  color: var(--text-2);
+  background: rgba(10, 14, 24, 0.72);
+  border: 1px solid var(--border);
+  backdrop-filter: blur(8px);
+}
+.path-seg {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.path-node {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+}
+.path-edge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--text-3);
+  white-space: nowrap;
+}
+.path-sum {
+  padding-left: 4px;
+  white-space: nowrap;
+}
+.path-empty {
+  color: var(--text-4);
+}
+.pin-chip i {
+  font-style: normal;
+  margin-left: 2px;
+  opacity: 0.75;
+}
+
 /* 씬 툴팁 — 포인터 옆 어두운 카드. 클릭·호버를 가로채지 않는다 */
 .scene-tip {
   position: absolute;
@@ -217,6 +274,13 @@
   min-height: 14px;
   display: flex;
   align-items: center;
+}
+/* 노드 툴팁 하단 힌트 — Shift+클릭 발견성이 낮아 한 줄로 알려준다 */
+.scene-tip .tip-hint {
+  font-size: 11px;
+  color: var(--text-4);
+  border-top: 1px dashed var(--border);
+  padding-top: 6px;
 }
 
 /* 좌하단: 상태 카드 */
@@ -762,7 +826,8 @@
   }
   .hud-legend,
   .hud-help,
-  .hud-nav {
+  .hud-nav,
+  .hud-path {
     display: none;
   }
   .hud-panel-tag {

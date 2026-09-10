@@ -96,6 +96,8 @@ export default function SceneTip({ model, pointer }: Props) {
             </span>
           ))}
         </div>
+        {/* Shift+클릭 발견성이 낮아 노드 툴팁에도 힌트를 남긴다 — PathStrip 이 이 기준으로 최단 경로를 켠다 */}
+        <div className="tip-hint">Shift+클릭으로 경로 기준 고정</div>
       </div>
     );
   }
