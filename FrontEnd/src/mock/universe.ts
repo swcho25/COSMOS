@@ -2,7 +2,7 @@
  * 목업 우주 빌더 — data.ts 의 시드를 API 명세 형태의 데이터셋으로 조립한다.
  * 결정론적 난수를 쓰므로 새로고침해도 같은 결과가 나오고, 스냅샷 ID 는 1시간 단위로 바뀐다.
  */
-import type { Candle, ImpactDirection, Market, RelationshipType, Sentiment } from "@/api/types";
+import type { AltitudeWindow, Candle, ImpactDirection, LatestGraphNode, Market, RelationshipType, Sentiment } from "@/api/types";
 import { gaussian, hashString, seededRandom, stableUuid } from "@/lib/rng";
 import { COMPANY_SEEDS, INDUSTRY_DESCRIPTIONS, LISTED_SHARES, RELATION_SEEDS, type IndustryName } from "./data";
 
@@ -404,6 +404,29 @@ export function stockSeries(company: MockCompany): Candle[] {
     price = close;
   }
   priceCache.set(company.companyId, out);
+  return out;
+}
+
+/**
+ * 등락률 기간 → 기준 종가를 고를 때 되짚을 캔들 수.
+ * 주가 탭은 mockApi.stockPrices 가 준 items = all.slice(-n) 의 첫 캔들(= all[L-n])을 기준으로 삼는다.
+ * 은하 뷰 고도와 주가 탭 등락률이 어긋나지 않도록 같은 n(1M=22·3M=65)을 그대로 되짚는다.
+ * 1D 는 주가 탭에 대응 기간이 없어 직전 거래일(캔들 2개)로 둔다.
+ */
+const CHANGE_BACK: Record<AltitudeWindow, number> = { "1D": 2, "1M": 22, "3M": 65 };
+
+/**
+ * 기간별 등락률(퍼센트) — 마지막 종가 대비 기준일 종가.
+ * stockSeries 가 시드 난수라 같은 기업이면 늘 같은 값이고, 구간을 채울 만큼 시계열이 없으면 null 이다.
+ */
+export function priceChanges(company: MockCompany): NonNullable<LatestGraphNode["priceChange"]> {
+  const s = stockSeries(company);
+  const last = s.at(-1);
+  const out: NonNullable<LatestGraphNode["priceChange"]> = {};
+  (Object.keys(CHANGE_BACK) as AltitudeWindow[]).forEach((w) => {
+    const prev = s[s.length - CHANGE_BACK[w]];
+    out[w] = last && prev && prev.closePrice > 0 ? round2(((last.closePrice - prev.closePrice) / prev.closePrice) * 100) : null;
+  });
   return out;
 }
 

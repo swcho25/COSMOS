@@ -7,6 +7,7 @@ import { logoUrl } from "@/lib/logos";
 import { hashString } from "@/lib/rng";
 import { ROLE_META, ROLE_ORDER, roleColor, type RoleKey } from "@/lib/roles";
 import { useGalaxy } from "@/store/galaxy";
+import { altitudeState } from "./altitude";
 import { touch } from "./bufferUtil";
 import { cameraBusy } from "./cameraState";
 import { CHIP_H, CHIP_PILL, CHIP_STEM, chipFragment, chipHit, chipVertex } from "./chipShader";
@@ -495,7 +496,8 @@ export default function CompanyNodes({ model, emphasis, hoveredId, onHover, onCl
       halo = { version: dragState.version };
       HALO_SYNC.set(built, halo);
     }
-    if (morphing || halo.version !== dragState.version) {
+    // 고도 전이는 dragState.version 을 올리지 않고 y 만 옮긴다(간선 재생성을 피하려고) — 헤일로는 그동안 직접 따라가야 한다
+    if (morphing || altitudeState.animating || halo.version !== dragState.version) {
       halo.version = dragState.version;
       built.haloPos.needsUpdate = true;
     }

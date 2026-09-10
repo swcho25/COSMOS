@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import type { MetricWindow, PricePeriod, RelationshipType } from "@/api/types";
+import type { AltitudeWindow, MetricWindow, PricePeriod, RelationshipType } from "@/api/types";
 import { RELATIONSHIP_ORDER } from "@/lib/meta";
 import type { RoleKey } from "@/lib/roles";
 
@@ -30,6 +30,10 @@ interface GalaxyState {
   showLabels: boolean;
   /** 간선 예산: 켜면 점수 상위 관계만 기본 표시, 나머지는 노드 호버 때만 */
   edgeBudget: boolean;
+  /** 주가 고도: 켜면 은하 뷰의 행성이 기간 등락률만큼 원반 위·아래로 뜬다 (기업 중심 뷰에는 적용하지 않는다) */
+  altitudeOn: boolean;
+  /** 고도의 기준 기간 */
+  altitudeWindow: AltitudeWindow;
 
   /* ---- 패널 ---- */
   panelTab: PanelTab;
@@ -61,6 +65,8 @@ interface GalaxyState {
   toggleType(t: RelationshipType): void;
   toggleLabels(): void;
   toggleEdgeBudget(): void;
+  setAltitude(on: boolean): void;
+  setAltitudeWindow(w: AltitudeWindow): void;
   setPanelTab(t: PanelTab): void;
   setWindow(w: MetricWindow): void;
   setPricePeriod(p: PricePeriod): void;
@@ -90,6 +96,8 @@ export const useGalaxy = create<GalaxyState>((set, get) => ({
   activeTypes: new Set(RELATIONSHIP_ORDER),
   showLabels: true,
   edgeBudget: true,
+  altitudeOn: true,
+  altitudeWindow: "1M",
 
   panelTab: "news",
   window: "30D",
@@ -167,6 +175,12 @@ export const useGalaxy = create<GalaxyState>((set, get) => ({
   },
   toggleEdgeBudget() {
     set((s) => ({ edgeBudget: !s.edgeBudget }));
+  },
+  setAltitude(on) {
+    set({ altitudeOn: on });
+  },
+  setAltitudeWindow(w) {
+    set({ altitudeWindow: w });
   },
   toggleLabels() {
     set((s) => ({ showLabels: !s.showLabels }));

@@ -2,6 +2,7 @@ import { useEffect, useMemo } from "react";
 import { useFrame, type ThreeEvent } from "@react-three/fiber";
 import * as THREE from "three";
 import type { SceneEdge, SceneModel } from "@/lib/graph";
+import { altitudeGate } from "./altitude";
 import { touch } from "./bufferUtil";
 import { bezier, controlPoint, radiusOf } from "./edgeCurve";
 import type { Emphasis } from "./emphasis";
@@ -347,8 +348,15 @@ export default function RelationLines({ edges, emphasis, model, onHover, onSelec
       gate = { born: state.clock.elapsedTime, reveal: warpFx ? 0 : 1 };
       GATES.set(built, gate);
     }
-    const reveal = (gate.reveal = !warpFx ? 1 : morphState.plan ? 0 : Math.min(morphState.reveal, smoothstep(AGE_IN[0], AGE_IN[1], state.clock.elapsedTime - gate.born)));
-    const fade = warpFx ? morphState.fade : 1;
+    // 주가 고도 전이도 같은 게이트를 쓴다 — 행성이 높이를 바꾸는 동안 빔을 끄고(fade·reveal 0), 다 옮긴 뒤 한 번 다시 구워 리빌한다.
+    // 워프 연출과 같은 축이라 둘 중 더 감춘 쪽을 따른다. 미니 씬(warpFx=false)은 어느 쪽에도 반응하지 않는다
+    const alt = warpFx ? altitudeGate() : { fade: 1, reveal: 1 };
+    const reveal = (gate.reveal = !warpFx
+      ? 1
+      : morphState.plan
+        ? 0
+        : Math.min(morphState.reveal, alt.reveal, smoothstep(AGE_IN[0], AGE_IN[1], state.clock.elapsedTime - gate.born)));
+    const fade = warpFx ? Math.min(morphState.fade, alt.fade) : 1;
     tubeUniforms.uFade.value = fade;
     haloUniforms.uFade.value = fade;
     tubeUniforms.uReveal.value = reveal;

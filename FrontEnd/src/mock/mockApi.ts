@@ -21,6 +21,7 @@ import {
   marketCapOf,
   metricsFor,
   otherEnd,
+  priceChanges,
   stockSeries,
   windowDays,
   type MockComment,
@@ -501,7 +502,8 @@ export const mockApi: CosmosApi = {
       return {
         ...snap,
         personalized: weight !== null && weight !== 50,
-        nodes: nodes.map((c) => ({ companyId: c.companyId, name: c.name, stockCode: c.stockCode, market: c.market, industryName: c.industry })),
+        // priceChange 는 은하 뷰의 행성 높이(주가 고도)가 읽는다 — 목업은 같은 시계열에서 뽑아 화면과 주가 탭이 어긋나지 않는다
+        nodes: nodes.map((c) => ({ companyId: c.companyId, name: c.name, stockCode: c.stockCode, market: c.market, industryName: c.industry, priceChange: priceChanges(c) })),
         edges,
       };
     },

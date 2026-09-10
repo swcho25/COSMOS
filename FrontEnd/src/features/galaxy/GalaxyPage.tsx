@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import { useSearchParams } from "react-router-dom";
+import type { AltitudeWindow } from "@/api/types";
 import { useQueryClient } from "@tanstack/react-query";
 import Scene, { type Callout } from "@/three/Scene";
 import { layoutGalaxy, layoutSystemCached } from "@/lib/graph";
@@ -16,6 +17,9 @@ import RelationshipPanel from "./RelationshipPanel";
 import SceneTip, { type PointerPos } from "./SceneTip";
 import SearchPalette from "./SearchPalette";
 import "./galaxy.css";
+
+/** 주가 고도의 기준 기간 — 은하 뷰 행성 높이가 이 기간의 등락률을 쓴다 */
+const ALTITUDE_WINDOWS: AltitudeWindow[] = ["1D", "1M", "3M"];
 
 /** 빔 색 범례 — toon.beamColorFor 와 같은 색·같은 순서라야 범례가 씬을 설명한다 */
 const IMPACT_LEGEND = [
@@ -55,6 +59,10 @@ export default function GalaxyPage() {
   const showLabels = useGalaxy((s) => s.showLabels);
   const edgeBudget = useGalaxy((s) => s.edgeBudget);
   const toggleEdgeBudget = useGalaxy((s) => s.toggleEdgeBudget);
+  const altitudeOn = useGalaxy((s) => s.altitudeOn);
+  const altitudeWindow = useGalaxy((s) => s.altitudeWindow);
+  const setAltitude = useGalaxy((s) => s.setAltitude);
+  const setAltitudeWindow = useGalaxy((s) => s.setAltitudeWindow);
   const setIndustry = useGalaxy((s) => s.setIndustry);
   const setMinScore = useGalaxy((s) => s.setMinScore);
   const toggleType = useGalaxy((s) => s.toggleType);
@@ -310,11 +318,25 @@ export default function GalaxyPage() {
                   {minScore}
                 </span>
               </div>
+              {/* 주가 고도 — 행성 높이가 곧 기간 등락률이다 (은하 뷰 전용) */}
+              <div className="alt-row">
+                <button type="button" className={`toggle ${altitudeOn ? "on" : ""}`} onClick={() => setAltitude(!altitudeOn)} title="기간 등락률만큼 행성을 원반 위·아래로 띄웁니다">
+                  주가 고도
+                </button>
+                <div className="seg" role="tablist" aria-label="주가 고도 기간">
+                  {ALTITUDE_WINDOWS.map((w) => (
+                    <button key={w} type="button" role="tab" aria-selected={altitudeWindow === w} className={altitudeWindow === w ? "on" : ""} onClick={() => setAltitudeWindow(w)}>
+                      {w}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="meta legend-hint">위쪽 = 상승, 아래쪽 = 하락 (선택 기간 등락률)</div>
             </div>
           ) : (
             <button type="button" className="hud-tag" onClick={toggleLegend} title="관계 유형 · 최소 점수 필터 펼치기">
               필터 · 범례
-              {(minScore > 0 || activeTypes.size < 4 || !edgeBudget) && <i className="dot" style={{ background: "var(--primary-2)" }} />}
+              {(minScore > 0 || activeTypes.size < 4 || !edgeBudget || !altitudeOn) && <i className="dot" style={{ background: "var(--primary-2)" }} />}
             </button>
           )}
         </div>

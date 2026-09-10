@@ -3,6 +3,7 @@ import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import type { SceneModel } from "@/lib/graph";
 import { useGalaxy } from "@/store/galaxy";
+import { altitudeGate } from "./altitude";
 import { bezier, controlPoint, radiusOf } from "./edgeCurve";
 import type { Emphasis } from "./emphasis";
 import { dragState, liveFor, morphState } from "./morph";
@@ -114,7 +115,9 @@ export default function EdgeArrows({ model, emphasis }: Props) {
       place();
     }
     const warping = useGalaxy.getState().phase === "warp";
-    m.visible = m.count > 0 && !warping && !morphState.plan && morphState.reveal >= 0.99;
+    // 주가 고도 전이 중에는 빔이 꺼져 있고 끝점도 이동 끝에 한 번만 갱신된다 — 화살촉만 옛 자리에 남지 않게 함께 숨긴다
+    const alt = altitudeGate();
+    m.visible = m.count > 0 && !warping && !morphState.plan && morphState.reveal >= 0.99 && alt.fade >= 0.99 && alt.reveal >= 0.99;
   });
 
   return (

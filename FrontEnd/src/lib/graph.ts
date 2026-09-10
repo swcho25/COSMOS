@@ -2,7 +2,7 @@
  * 그래프 레이아웃 — 3D 씬에 올릴 노드 좌표를 계산한다.
  * 모두 결정론적이라 같은 스냅샷이면 같은 자리다 (새로고침·재조회에도 흔들리지 않는다).
  */
-import type { CompanyGraph, GraphEdge, LatestGraph, Market, RelationshipType } from "@/api/types";
+import type { CompanyGraph, GraphEdge, LatestGraph, LatestGraphNode, Market, RelationshipType } from "@/api/types";
 import { ARMS, ARM_SPREAD, CORE_Y, DISC_Y, R_CORE, R_MAX, armTheta, nearestArm } from "./galaxyShape";
 import { INDUSTRY_COLORS, industryColor, relationshipMeta } from "./meta";
 import { gaussian, hashString, seededRandom } from "./rng";
@@ -29,6 +29,11 @@ export interface SceneNode {
    * 멀리서는 0 만, 가까이 갈수록 1·2 등급의 칩이 나타난다.
    */
   tier: number;
+  /**
+   * 기간별 주가 등락률(%) — 은하 뷰의 행성 높이(three/altitude.ts)가 읽는다.
+   * 기업 중심 뷰는 응답에 이 필드가 없어 undefined 이고, 그 뷰에서는 고도를 쓰지 않는다.
+   */
+  priceChange?: LatestGraphNode["priceChange"];
 }
 /** 은하 뷰의 산업 성단 하나 — 성단 중심·반지름·질량 (별가루 나선 여부 등 성단 단위 표현의 기준) */
 export interface SceneCluster {
@@ -511,6 +516,7 @@ export function layoutGalaxy(graph: LatestGraph): SceneModel {
       depth: 0,
       degree: cnt.get(c.companyId) ?? 0,
       tier: i < 12 ? 0 : i < 50 ? 1 : 2,
+      priceChange: c.priceChange,
     });
   }
 

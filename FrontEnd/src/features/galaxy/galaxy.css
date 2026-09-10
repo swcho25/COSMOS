@@ -427,6 +427,20 @@
   align-items: center;
   gap: 10px;
 }
+/* 주가 고도 — 토글과 기간 세그먼트를 한 줄에 (세그먼트가 남는 폭을 채운다) */
+.legend-card .alt-row {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 10px;
+}
+.legend-card .alt-row .seg {
+  padding: 3px;
+}
+.legend-card .alt-row .seg button {
+  padding: 5px 8px;
+  font-size: 12px;
+}
 .legend-card input[type="range"] {
   width: 100%;
   accent-color: var(--primary);

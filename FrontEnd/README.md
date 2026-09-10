@@ -74,6 +74,7 @@ src/
 - **`relationship_type.code` 목록**: 시드가 없어 `SUPPLY` `INVEST` `PARTNER` `COMPETE` 를 가정하며, 그 외 코드는 회색 폴백으로 표시됩니다(`src/lib/meta.ts`). 특히 **지분 관계 코드가 `INVEST` 가 맞는지** 확인이 필요합니다 — 기업 화면의 '투자·지분 관계' 트리가 `OWNERSHIP_TYPES` 상수 한 곳만 보고 동작하므로, 코드가 다르면 그 배열만 고치면 됩니다. 응답에 `relationshipTypeName`(한글 라벨)이 실리면 `relationshipMeta(code, name)` 로 서버 라벨을 그대로 쓸 수 있습니다.
 - **관계 점수 범위**: `relationship_score_current.score` 에 CHECK 가 없어 0~100 스케일을 가정합니다(ScoreBar·'100점 기준' 표기). 상한이 다르면 표기를 바꿔야 합니다. `window_type` 도 `7D`·`30D`·`90D` 3종으로 가정합니다.
 - **관계 점수 이력**: `relationship_score_history` 는 있지만 조회 엔드포인트가 없습니다. 열어 주시면 관계 패널의 '관계 점수' 아래에 추이 차트를 붙일 수 있습니다. 그래프 응답에 `formulaVersion`·`modelVersion` 을 포함할지도 확인이 필요합니다.
+- **`graphs/latest` 노드에 `priceChange`(1D·1M·3M) 포함 또는 일괄 조회 엔드포인트 필요**: 은하 뷰가 기업의 기간 등락률로 행성 높이를 정합니다(위 = 상승, 아래 = 하락). 지금은 `LatestGraphNode.priceChange` 를 선택 필드로 열어 두고 목업이 주가 시계열에서 채우며, 값이 없는 기업은 원반 평면에 남습니다. 노드 수가 수백이라 기업별 `stock-prices` 를 개별 호출할 수는 없으니 ① 그래프 응답에 세 기간 등락률을 실어 주시거나 ② 여러 기업의 등락률을 한 번에 주는 엔드포인트가 필요합니다.
 - **기업 중심 그래프**(`/api/graphs/companies/{id}`)의 노드에 `industryName`·`market` 이 없어 전체 그래프를 한 번 받아 클라이언트에서 조인합니다. 응답에 두 필드를 추가하면 조인이 불필요합니다.
 
 **사용자·공통**

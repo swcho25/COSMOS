@@ -8,6 +8,8 @@ import { hoverPath } from "@/lib/path";
 import { hashString } from "@/lib/rng";
 import { neighborRoles } from "@/lib/roles";
 import { useGalaxy } from "@/store/galaxy";
+import AltitudeDriver from "./AltitudeDriver";
+import AltitudeTails from "./AltitudeTails";
 import Backdrop from "./Backdrop";
 import CompanyNodes from "./CompanyNodes";
 import EdgeArrows from "./EdgeArrows";
@@ -17,6 +19,7 @@ import GhostNodes from "./GhostNodes";
 import RelationLines from "./RelationLines";
 import RoleRings from "./RoleRings";
 import Warp from "./Warp";
+import { targetY } from "./altitude";
 import { cameraBusy } from "./cameraState";
 import { computeEmphasis } from "./emphasis";
 import { dragState, liveFor, morphState, planMorph, sampleMorph } from "./morph";
@@ -31,9 +34,15 @@ const FALLBACK_POSE: Record<"galaxy" | "system", Pose> = {
 function poseFor(model: SceneModel | null, kind: "galaxy" | "system", aspect = 1.6): Pose {
   if (!model || !model.nodes.length) return FALLBACK_POSE[kind];
   let r = 10;
+  // 주가 고도가 켜져 있으면 행성이 원반 위·아래로 최대 ±ALT_SPAN 만큼 떠 있다 — 그 높이도 프레임에 들어와야 한다
+  const alt = useGalaxy.getState();
+  const useAltitude = kind === "galaxy" && alt.altitudeOn;
   model.nodes.forEach((n) => {
     // 은하도 이제 납작한 원반이라 두 뷰 모두 바닥면(x·z) 기준으로 바깥 반지름을 잡는다
-    r = Math.max(r, Math.hypot(n.pos[0], n.pos[2]) + n.size * 2);
+    const planar = Math.hypot(n.pos[0], n.pos[2]) + n.size * 2;
+    // 30° 부감에서 높이 1 은 화면 세로를 평면 1 보다 약 1.7 배(cos30/sin30) 많이 먹는다 — 여유를 봐 2 배로 잡는다
+    const h = (Math.abs(useAltitude ? targetY(n, alt.altitudeWindow) : n.pos[1]) + n.size * 2) * 2;
+    r = Math.max(r, useAltitude ? Math.hypot(planar, h) : planar);
   });
   // 세로로 긴 화면은 가로가 먼저 잘리므로 종횡비만큼 물러난다
   const fit = Math.tan((52 * Math.PI) / 360) * Math.min(1, aspect);
@@ -326,6 +335,13 @@ function Content({ galaxy, system, next = null, callout, warpRef }: ContentProps
           <group key={model.kind + (model.centerId ?? "")}>
             {/* 별가루는 은하 뷰에만, 격자보다 먼저 그려 가장 뒤에 깔린다 */}
             {dust && <GalaxyDust seed={dust.seed} radius={dust.radius} spiral={dust.spiral} warpRef={warpRef} />}
+            {/* 주가 고도는 은하 뷰에만 — 기업 중심 뷰의 궤도는 depth 가 정하므로 높이에 다른 의미를 얹지 않는다 */}
+            {model.kind === "galaxy" && (
+              <>
+                <AltitudeDriver model={model} />
+                <AltitudeTails model={model} />
+              </>
+            )}
             <RelationLines
               model={model}
               edges={model.edges}
