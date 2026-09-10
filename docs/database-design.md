@@ -196,6 +196,7 @@ erDiagram
     COMPANY_METRIC_HISTORY {
         UUID company_id PK, FK
         TIMESTAMP measured_at PK
+        VARCHAR window_type PK
         INTEGER news_mention_count
         INTEGER positive_count
         INTEGER negative_count
