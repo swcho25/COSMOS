@@ -24,8 +24,21 @@ export default function OwnershipView({ graph, onPick }: Props) {
     invest.forEach((e) => m.set(e.sourceCompanyId, (m.get(e.sourceCompanyId) ?? 0) + 1));
     return [...m.entries()].sort((a, b) => b[1] - a[1]).map(([id, n]) => ({ id, n, name: info.get(id)?.name ?? id }));
   }, [invest, info]);
+  const holderIds = useMemo(() => new Set(holders.map((h) => h.id)), [holders]);
   const [holder, setHolder] = useState<string | null>(null);
   const root = holder ?? holders[0]?.id ?? null;
+
+  /**
+   * 다른 기업을 보유하고 있는 기업(=holders 에 있는 기업)을 누르면 그 기업 기준으로 트리를 다시 펼치고,
+   * 더 이상 보유가 없는 말단 기업을 누르면 미리보기를 연다. 매번 은하로 이탈하지 않고 계열구조를 계속 탐색할 수 있게 한다.
+   */
+  const handleNodeClick = (id: string) => {
+    if (id !== root && holderIds.has(id)) {
+      setHolder(id);
+      return;
+    }
+    onPick(id);
+  };
 
   const tree = useMemo(() => {
     if (!root) return null;
@@ -98,7 +111,20 @@ export default function OwnershipView({ graph, onPick }: Props) {
             <Node x={colX[0]} y={rootY + 20} w={boxW} h={boxH} name={rootNode.name} sub={[rootNode.industryName, rootNode.stockCode].filter(Boolean).join(" · ")} color={industryColor(rootNode.industryName)} root onClick={() => onPick(rootNode.companyId)} />
             {tree.rows.map((r) => {
               const n = info.get(r.id);
-              return <Node key={`n-${r.parent}-${r.id}`} x={colX[r.depth]} y={r.y + 20} w={boxW} h={boxH} name={n?.name ?? r.id} sub={n ? [n.industryName, n.stockCode].filter(Boolean).join(" · ") : ""} color={industryColor(n?.industryName)} onClick={() => onPick(r.id)} />;
+              return (
+                <Node
+                  key={`n-${r.parent}-${r.id}`}
+                  x={colX[r.depth]}
+                  y={r.y + 20}
+                  w={boxW}
+                  h={boxH}
+                  name={n?.name ?? r.id}
+                  sub={n ? [n.industryName, n.stockCode].filter(Boolean).join(" · ") : ""}
+                  color={industryColor(n?.industryName)}
+                  expandable={holderIds.has(r.id)}
+                  onClick={() => handleNodeClick(r.id)}
+                />
+              );
             })}
           </svg>
         )}
@@ -107,15 +133,52 @@ export default function OwnershipView({ graph, onPick }: Props) {
         <span className="meta row" style={{ gap: 6 }}>
           <i className="dot" style={{ background: meta.color }} /> 화살표 = 지배 방향 · 굵기와 숫자 = 관계 점수
         </span>
-        <span className="meta">노드를 누르면 전체 은하의 기업 패널로 이동합니다. 지분율은 백엔드 관계 상세에 포함되면 표시됩니다.</span>
+        <span className="meta">
+          <b style={{ color: "var(--text-3)" }}>▸</b> 표시가 있는 기업(다른 기업을 보유 중)을 누르면 그 기업 기준으로 계속 펼치고, 그 외 기업을 누르면 미리보기가 열립니다. 지분율은 백엔드 관계 상세에 포함되면 표시됩니다.
+        </span>
       </div>
     </div>
   );
 }
 
-function Node({ x, y, w, h, name, sub, color, root, onClick }: { x: number; y: number; w: number; h: number; name: string; sub: string; color: string; root?: boolean; onClick: () => void }) {
+function Node({
+  x,
+  y,
+  w,
+  h,
+  name,
+  sub,
+  color,
+  root,
+  expandable,
+  onClick,
+}: {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  name: string;
+  sub: string;
+  color: string;
+  root?: boolean;
+  expandable?: boolean;
+  onClick: () => void;
+}) {
   return (
-    <g className="own-node" transform={`translate(${x},${y})`} onClick={onClick} role="button" tabIndex={0}>
+    <g
+      className="own-node"
+      transform={`translate(${x},${y})`}
+      onClick={onClick}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onClick();
+        }
+      }}
+      role="button"
+      tabIndex={0}
+      aria-label={expandable ? `${name}, 이 기업 기준으로 다시 펼치기` : `${name}, 미리보기 열기`}
+    >
       <rect width={w} height={h} rx={12} strokeWidth={root ? 1.5 : 1} style={root ? { stroke: color } : undefined} />
       <rect x={0} y={0} width={5} height={h} rx={2} fill={color} />
       <text x={16} y={17} fontSize="13" fontWeight={700}>
@@ -124,6 +187,11 @@ function Node({ x, y, w, h, name, sub, color, root, onClick }: { x: number; y: n
       <text x={16} y={32} fontSize="11" fill="#8B95A1">
         {sub}
       </text>
+      {expandable && (
+        <text x={w - 16} y={h / 2 + 4} fontSize="12" fill="#8B95A1" textAnchor="end" aria-hidden="true">
+          ▸
+        </text>
+      )}
     </g>
   );
 }

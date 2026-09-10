@@ -4,12 +4,13 @@ import { useQueryClient } from "@tanstack/react-query";
 import type { GraphEdge, LatestGraph, NewsDetail, NewsRelatedCompany, Sentiment } from "@/api/types";
 import MiniScene from "@/three/MiniScene";
 import { layoutNewsSubgraph } from "@/lib/graph";
-import { fmtDateTime, fmtPctFrom01, fmtRelative } from "@/lib/format";
-import { SENTIMENTS, SENTIMENT_META, industryColor, marketLabel, relationshipMeta } from "@/lib/meta";
+import { fmtDateTime, fmtRelative } from "@/lib/format";
+import { SENTIMENTS, SENTIMENT_META, marketLabel, relationshipMeta } from "@/lib/meta";
 import { useCompany, useIndustries, useLatestGraph, useNewsDetail, useNewsFeed, useToggleScrap, useToggleWatch } from "@/lib/queries";
 import { useSession } from "@/store/session";
 import { useUi } from "@/store/ui";
 import { CompanyAvatar, Empty, Icon, Kpi, ScoreBar, SentimentBadge, Skeleton, TypeBadge, TypeLegend } from "@/components/ui";
+import NewsDetailDialog from "./NewsDetailDialog";
 import "./news.css";
 
 /**
@@ -29,11 +30,20 @@ export default function NewsPage() {
   const [sentiment, setSentiment] = useState<Sentiment | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [expand, setExpand] = useState(true);
+  const [keywordInput, setKeywordInput] = useState("");
+  const [keyword, setKeyword] = useState("");
+  const [showDetail, setShowDetail] = useState(false);
+
+  // 입력마다 요청이 나가지 않도록 디바운스한다 (live 모드에서 백엔드 호출 폭주 방지)
+  useEffect(() => {
+    const t = setTimeout(() => setKeyword(keywordInput.trim()), 300);
+    return () => clearTimeout(t);
+  }, [keywordInput]);
 
   const industries = useIndustries();
   const universe = useLatestGraph(null);
   const company = useCompany(companyId);
-  const feed = useNewsFeed({ companyId: companyId ?? undefined, industryId: companyId ? undefined : industryId ?? undefined, sentiment: sentiment ?? undefined, size: 20 });
+  const feed = useNewsFeed({ companyId: companyId ?? undefined, industryId: companyId ? undefined : industryId ?? undefined, sentiment: sentiment ?? undefined, keyword: keyword || undefined, size: 20 });
   const items = useMemo(() => feed.data?.pages.flatMap((p) => p.items) ?? [], [feed.data]);
 
   // 목록이 바뀌면 첫 기사를 선택한다
@@ -85,7 +95,15 @@ export default function NewsPage() {
           <i className="dot" />
           {universe.data ? `스냅샷 ${fmtDateTime(universe.data.asOfAt)} 기준 · 1시간 단위 갱신` : "스냅샷 확인 중"}
         </span>
-        <button type="button" className="btn btn-g btn-sm" onClick={() => qc.invalidateQueries({ queryKey: ["news"] })}>
+        <button
+          type="button"
+          className="btn btn-g btn-sm"
+          onClick={() => {
+            qc.invalidateQueries({ queryKey: ["news"] });
+            qc.invalidateQueries({ queryKey: ["graph", "latest"] });
+            toast("최신 뉴스·관계 데이터로 새로고침했습니다.", "success");
+          }}
+        >
           <Icon.Refresh /> 새로고침
         </button>
       </div>
@@ -114,6 +132,10 @@ export default function NewsPage() {
                   </div>
                 </div>
               </div>
+              <label className="field search-field mt-12">
+                <Icon.Search />
+                <input placeholder="제목으로 뉴스 검색" value={keywordInput} onChange={(e) => setKeywordInput(e.target.value)} aria-label="뉴스 검색" />
+              </label>
               <div className="row wrap mt-12" style={{ gap: 7 }}>
                 <button type="button" className={`chip chip-sm ${sentiment === null ? "on" : ""}`} onClick={() => setSentiment(null)}>
                   전체
@@ -135,20 +157,21 @@ export default function NewsPage() {
                     최신 금융 뉴스
                   </h2>
                 </div>
+                <select className="industry-select" value={industryId ?? ""} onChange={(e) => setIndustryId(e.target.value || null)} aria-label="산업 필터">
+                  <option value="">전체 산업</option>
+                  {industries.data?.items
+                    .filter((i) => i.companyCount > 0)
+                    .map((i) => (
+                      <option key={i.industryId} value={i.industryId}>
+                        {i.name}
+                      </option>
+                    ))}
+                </select>
               </div>
-              <div className="row wrap mt-12" style={{ gap: 7 }}>
-                <button type="button" className={`chip chip-sm ${industryId === null ? "on" : ""}`} onClick={() => setIndustryId(null)}>
-                  전체
-                </button>
-                {industries.data?.items
-                  .filter((i) => i.companyCount > 0)
-                  .map((i) => (
-                    <button key={i.industryId} type="button" className={`chip chip-sm ${industryId === i.industryId ? "on" : ""}`} onClick={() => setIndustryId(industryId === i.industryId ? null : i.industryId)}>
-                      <i style={{ background: industryColor(i.name) }} />
-                      {i.name}
-                    </button>
-                  ))}
-              </div>
+              <label className="field search-field mt-12">
+                <Icon.Search />
+                <input placeholder="제목으로 뉴스 검색" value={keywordInput} onChange={(e) => setKeywordInput(e.target.value)} aria-label="뉴스 검색" />
+              </label>
             </>
           )}
 
@@ -215,7 +238,14 @@ export default function NewsPage() {
                     <button
                       type="button"
                       className={`btn btn-g btn-sm ${company.data.watched ? "on" : ""}`}
-                      onClick={() => (authed ? toggleWatch.mutate({ companyId: company.data!.companyId, watched: company.data!.watched }) : openAuth("login"))}
+                      onClick={() =>
+                        authed
+                          ? toggleWatch.mutate(
+                              { companyId: company.data!.companyId, watched: company.data!.watched },
+                              { onSuccess: (now) => toast(now ? "관심 기업으로 등록했습니다." : "관심 기업에서 해제했습니다.", "success") },
+                            )
+                          : openAuth("login")
+                      }
                       style={{ color: company.data.watched ? "var(--primary-2)" : undefined }}
                     >
                       <Icon.Star filled={company.data.watched} /> {company.data.watched ? "관심 기업" : "관심 기업 +"}
@@ -235,9 +265,9 @@ export default function NewsPage() {
                       >
                         <Icon.Bookmark filled={detail.data.scrapped} /> {detail.data.scrapped ? "스크랩됨" : "스크랩"}
                       </button>
-                      <a className="btn btn-g btn-sm" href={detail.data.originalUrl} target="_blank" rel="noreferrer">
-                        원문 보기 <Icon.External />
-                      </a>
+                      <button type="button" className="btn btn-g btn-sm" onClick={() => setShowDetail(true)}>
+                        상세 정보 ↗
+                      </button>
                     </>
                   )
                 )}
@@ -319,7 +349,7 @@ export default function NewsPage() {
               </div>
             </div>
 
-            <div className="card">
+            <div className="card full">
               <div className="kick">주요 경로</div>
               <div className="row between mt-8">
                 <h2 className="sect" style={{ fontSize: 20 }}>
@@ -356,53 +386,11 @@ export default function NewsPage() {
                 기사 영향도에 관계 점수(0~1)를 곱해 가장 큰 곱을 갖는 경로를 표시합니다. 프로토타입 계산식이며 투자 판단 자료가 아닙니다.
               </div>
             </div>
-
-            <div className="card">
-              <div className="kick">상세 정보</div>
-              <div className="row between mt-8">
-                <h2 className="sect" style={{ fontSize: 20 }}>
-                  선택한 뉴스
-                </h2>
-                {detail.data && <SentimentBadge value={detail.data.relatedCompanies[0]?.sentiment ?? "NEUTRAL"} />}
-              </div>
-              {detail.data ? (
-                <>
-                  <div className="mt-12" style={{ fontSize: 15, fontWeight: 600, lineHeight: 1.45 }}>
-                    {detail.data.title}
-                  </div>
-                  <div className="mt-8" style={{ fontSize: 14, lineHeight: 1.65, color: "var(--text-3)" }}>
-                    {detail.data.summary}
-                  </div>
-                  <div className="kick mt-16">근거 문장</div>
-                  <div className="ev-list">
-                    {detail.data.evidence.map((e, i) => (
-                      <div key={i} className="evidence">
-                        <q>{e.sentence}</q>
-                        <div className="meta num mt-8">신뢰도 {fmtPctFrom01(e.confidence)}</div>
-                      </div>
-                    ))}
-                  </div>
-                  <div className="kick mt-16">관련 기업</div>
-                  <div className="row wrap mt-8" style={{ gap: 8 }}>
-                    {detail.data.relatedCompanies.map((r) => (
-                      <button key={r.companyId} type="button" className={`chip chip-sm ${r.companyId === companyId ? "on" : ""}`} onClick={() => setCompany(r.companyId)}>
-                        <i style={{ background: SENTIMENT_META[r.sentiment].color }} />
-                        {r.name}
-                        <b className="num" style={{ opacity: 0.7 }}>
-                          {fmtPctFrom01(r.relevanceScore, "")}
-                        </b>
-                      </button>
-                    ))}
-                  </div>
-                  <div className="meta mt-8">칩의 숫자는 관련도, 점 색은 해당 기업 기준 감성입니다. 누르면 그 기업 뉴스로 전환됩니다.</div>
-                </>
-              ) : (
-                <Skeleton h={120} style={{ marginTop: 12 }} />
-              )}
-            </div>
           </div>
         </section>
       </div>
+
+      <NewsDetailDialog open={showDetail} news={detail.data} activeCompanyId={companyId} onClose={() => setShowDetail(false)} onPickCompany={setCompany} />
     </div>
   );
 }
