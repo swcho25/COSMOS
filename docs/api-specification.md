@@ -81,7 +81,7 @@
 - 공시는 관계 분석에 사용하지만 서비스 화면에 문서 자체를 공개하지 않는다.
 - 스크랩은 뉴스만 지원한다.
 - 전체 관계 그래프는 KOSPI 100과 NASDAQ 100의 최대 200개 기업을 대상으로 한다.
-- 기업 중심 그래프는 최대 3단계, 최대 100개 노드로 제한한다.
+- 기업 중심 그래프는 최대 3단계까지 탐색한다.
 - 그래프 API는 `PUBLISHED` 상태의 최신 스냅샷을 사용한다.
 
 ## 2. API 목록
@@ -1373,16 +1373,6 @@ HDFS의 기사 본문 전체는 제공하지 않으며 사용자는 `originalUrl
 <td>3</td>
 <td>3</td>
 </tr>
-<tr>
-<td>neighborsPerNode</td>
-<td>3</td>
-<td>5</td>
-</tr>
-<tr>
-<td>maxNodes</td>
-<td>100</td>
-<td>100</td>
-</tr>
 </table>
 #### Response — 200 OK
 ```json
@@ -1470,11 +1460,6 @@ HDFS의 기사 본문 전체는 제공하지 않으며 사용자는 `originalUrl
 <td>아니요</td>
 <td>선택 산업에 속한 기업만 조회</td>
 </tr>
-<tr>
-<td>edgesPerCompany</td>
-<td>아니요</td>
-<td>기본·최대 5</td>
-</tr>
 </table>
 #### Response — 200 OK
 ```json
@@ -1506,7 +1491,6 @@ HDFS의 기사 본문 전체는 제공하지 않으며 사용자는 `originalUrl
 ```
 #### Notes
 - 기본 노드는 KOSPI 100과 NASDAQ 100 소속 최대 200개다.
-- 관계선은 기업별 점수 상위 5개로 제한한다.
 - 그래프는 1시간 단위로 검증 후 교체한다.
 - 화면은 새 `snapshotId`를 확인한 뒤 사용자 선택으로 갱신할 수 있다.
 #### Errors
