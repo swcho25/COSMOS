@@ -197,9 +197,8 @@ export default function CompaniesPage() {
                             <CompanyAvatar name={c.name} stockCode={c.stockCode} industry={c.primaryIndustry.name} size={36} />
                             <div>
                               <b>{c.name}</b>
-                              <span className="meta num">
-                                {c.stockCode} · {c.nameEn}
-                              </span>
+                              {/* 종목코드·영문명은 선택 필드라 없는 값은 구분점째로 접는다 */}
+                              <span className="meta num">{[c.stockCode, c.nameEn].filter(Boolean).join(" · ")}</span>
                             </div>
                           </div>
                         </td>

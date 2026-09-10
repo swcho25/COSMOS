@@ -139,7 +139,7 @@ function WatchCard() {
             <button type="button" className="grow" style={{ textAlign: "left" }} onClick={() => navigate(`/?company=${w.companyId}`)}>
               <b>{w.name}</b>
               <span className="meta num">
-                {w.stockCode} · {w.primaryIndustry.name} · {fmtRelative(w.watchedAt)} 등록
+                {[w.stockCode, w.primaryIndustry.name, `${fmtRelative(w.watchedAt)} 등록`].filter(Boolean).join(" · ")}
               </span>
             </button>
             <button type="button" className="btn btn-g btn-xs" onClick={() => toggle.mutate({ companyId: w.companyId, watched: true })} aria-label="관심 해제">

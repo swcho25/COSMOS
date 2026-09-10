@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import type { LatestGraph } from "@/api/types";
-import { industryColor, relationshipMeta } from "@/lib/meta";
+import { OWNERSHIP_TYPES, industryColor, relationshipMeta } from "@/lib/meta";
 import { Empty } from "@/components/ui";
 
 interface Props {
@@ -16,7 +16,8 @@ const ROW = 58;
  * 지주사(보유 기업)를 고르면 그 기업이 보유한 기업들과, 그 기업들이 다시 보유한 기업까지 2단계를 펼친다.
  */
 export default function OwnershipView({ graph, onPick }: Props) {
-  const invest = useMemo(() => graph?.edges.filter((e) => e.relationshipType === "INVEST") ?? [], [graph]);
+  // 지분 관계 코드는 meta.ts 한 곳에서만 정의한다 (relationship_type 시드가 확정되면 그곳만 고친다)
+  const invest = useMemo(() => graph?.edges.filter((e) => OWNERSHIP_TYPES.includes(e.relationshipType)) ?? [], [graph]);
   const info = useMemo(() => new Map(graph?.nodes.map((n) => [n.companyId, n]) ?? []), [graph]);
   const holders = useMemo(() => {
     const m = new Map<string, number>();
@@ -53,7 +54,7 @@ export default function OwnershipView({ graph, onPick }: Props) {
   if (!graph) return <div className="own-wrap">그래프 스냅샷을 불러오는 중…</div>;
   if (!holders.length) return <Empty>스냅샷에 투자·지분 유형 관계가 없습니다.</Empty>;
 
-  const meta = relationshipMeta("INVEST");
+  const meta = relationshipMeta(OWNERSHIP_TYPES[0]);
   const colX = [40, 380, 720];
   const boxW = 240;
   const boxH = 40;
@@ -94,10 +95,10 @@ export default function OwnershipView({ graph, onPick }: Props) {
                 </g>
               );
             })}
-            <Node x={colX[0]} y={rootY + 20} w={boxW} h={boxH} name={rootNode.name} sub={`${rootNode.industryName} · ${rootNode.stockCode}`} color={industryColor(rootNode.industryName)} root onClick={() => onPick(rootNode.companyId)} />
+            <Node x={colX[0]} y={rootY + 20} w={boxW} h={boxH} name={rootNode.name} sub={[rootNode.industryName, rootNode.stockCode].filter(Boolean).join(" · ")} color={industryColor(rootNode.industryName)} root onClick={() => onPick(rootNode.companyId)} />
             {tree.rows.map((r) => {
               const n = info.get(r.id);
-              return <Node key={`n-${r.parent}-${r.id}`} x={colX[r.depth]} y={r.y + 20} w={boxW} h={boxH} name={n?.name ?? r.id} sub={n ? `${n.industryName} · ${n.stockCode}` : ""} color={industryColor(n?.industryName)} onClick={() => onPick(r.id)} />;
+              return <Node key={`n-${r.parent}-${r.id}`} x={colX[r.depth]} y={r.y + 20} w={boxW} h={boxH} name={n?.name ?? r.id} sub={n ? [n.industryName, n.stockCode].filter(Boolean).join(" · ") : ""} color={industryColor(n?.industryName)} onClick={() => onPick(r.id)} />;
             })}
           </svg>
         )}

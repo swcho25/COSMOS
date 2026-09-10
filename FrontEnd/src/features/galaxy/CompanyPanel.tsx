@@ -3,7 +3,7 @@ import type { CompanyComment, MetricWindow, PricePeriod, Sentiment } from "@/api
 import { API_MODE } from "@/api";
 import { CompanyAvatar, Empty, Icon, IndustryBadge, SentimentBadge, Skeleton } from "@/components/ui";
 import PriceChart, { Sparkbars } from "@/components/PriceChart";
-import { fmtCompact, fmtDateTime, fmtNumber, fmtPct, fmtPrice, fmtRelative } from "@/lib/format";
+import { fmtCompact, fmtCompactPrice, fmtDateTime, fmtNumber, fmtPct, fmtPctFrom01, fmtPrice, fmtRelative, fmtTradingDate } from "@/lib/format";
 import { SENTIMENTS, SENTIMENT_META, marketCurrency } from "@/lib/meta";
 import {
   useCompany,
@@ -61,9 +61,7 @@ export default function CompanyPanel({ companyId, onClose, onPickCompany }: Prop
           {c ? (
             <>
               <div className="name">{c.name}</div>
-              <div className="meta num sub">
-                {c.stockCode} · {c.market} · {c.nameEn}
-              </div>
+              <div className="meta num sub">{[c.stockCode, c.market, c.nameEn].filter(Boolean).join(" · ")}</div>
             </>
           ) : (
             <>
@@ -104,7 +102,7 @@ export default function CompanyPanel({ companyId, onClose, onPickCompany }: Prop
       </div>
       <div className="panel-body scroll">
         {tab === "news" && <NewsTab companyId={companyId} onPickCompany={onPickCompany} />}
-        {tab === "price" && c && <PriceTab companyId={companyId} market={c.market} />}
+        {tab === "price" && c && <PriceTab companyId={companyId} market={c.market} marketCap={c.marketCap ?? null} listedShares={c.listedShares ?? null} />}
         {tab === "board" && c && <BoardTab companyId={companyId} companyName={c.name} />}
       </div>
     </aside>
@@ -143,9 +141,7 @@ function NewsTab({ companyId, onPickCompany }: { companyId: string; onPickCompan
             <div className="row between">
               <div className="row" style={{ gap: 8 }}>
                 <SentimentBadge value={n.sentiment} />
-                <span className="meta num">
-                  {n.publisher} · {fmtRelative(n.publishedAt)}
-                </span>
+                <span className="meta num">{[n.publisher, fmtRelative(n.publishedAt)].filter(Boolean).join(" · ")}</span>
               </div>
               <button
                 type="button"
@@ -192,7 +188,7 @@ function NewsTab({ companyId, onPickCompany }: { companyId: string; onPickCompan
 const PERIODS: PricePeriod[] = ["1M", "3M", "6M", "1Y"];
 const WINDOWS: MetricWindow[] = ["7D", "30D", "90D"];
 
-function PriceTab({ companyId, market }: { companyId: string; market: string }) {
+function PriceTab({ companyId, market, marketCap, listedShares }: { companyId: string; market: string; marketCap: number | null; listedShares: number | null }) {
   const period = useGalaxy((s) => s.pricePeriod);
   const setPeriod = useGalaxy((s) => s.setPricePeriod);
   const window = useGalaxy((s) => s.window);
@@ -200,7 +196,7 @@ function PriceTab({ companyId, market }: { companyId: string; market: string }) 
   const prices = useStockPrices(companyId, period);
   const year = useStockPrices(companyId, "1Y");
   const metrics = useCompanyMetrics(companyId, window);
-  const history = useMetricsHistory(companyId, window);
+  const history = useMetricsHistory(companyId, { window });
   const currency = marketCurrency(market);
   const items = prices.data?.items ?? [];
   const last = items.at(-1);
@@ -209,6 +205,8 @@ function PriceTab({ companyId, market }: { companyId: string; market: string }) 
   const hi52 = year.data ? Math.max(...year.data.items.map((c) => c.highPrice)) : null;
   const lo52 = year.data ? Math.min(...year.data.items.map((c) => c.lowPrice)) : null;
   const avgVol = items.length ? items.reduce((s, c) => s + c.tradingVolume, 0) / items.length : null;
+  // 시가총액이 없는 동안 기간의 체감 규모를 보여 주는 파생값 (종가 × 거래량 평균)
+  const avgTurnover = items.length ? items.reduce((s, c) => s + c.closePrice * c.tradingVolume, 0) / items.length : null;
   const mentionSeries = useMemo(() => history.data?.items.map((p) => p.newsMentionCount) ?? [], [history.data]);
   const periodLabel = { "1M": "최근 1개월", "3M": "최근 3개월", "6M": "최근 6개월", "1Y": "최근 1년" }[period];
 
@@ -234,13 +232,25 @@ function PriceTab({ companyId, market }: { companyId: string; market: string }) 
       </div>
       <div className="mt-12">{items.length ? <PriceChart data={items} color="auto" /> : <Skeleton h={150} />}</div>
       <div className="stat-grid mt-16">
+        {/* 시가총액·상장주식수는 백엔드가 값을 줄 때만 나타난다 (company 테이블에 아직 없는 컬럼) */}
+        {marketCap != null && (
+          <div className="stat">
+            <div className="lab">시가총액</div>
+            <div className="v num">{fmtCompactPrice(marketCap, currency)}</div>
+            {listedShares != null && <div className="meta num mt-8">상장주식수 {fmtCompact(listedShares)}주</div>}
+          </div>
+        )}
         <div className="stat">
           <div className="lab">평균 거래량</div>
           <div className="v num">{fmtCompact(avgVol)}</div>
         </div>
         <div className="stat">
+          <div className="lab">평균 거래대금</div>
+          <div className="v num">{fmtCompactPrice(avgTurnover, currency)}</div>
+        </div>
+        <div className="stat">
           <div className="lab">마지막 거래일</div>
-          <div className="v num">{last ? fmtDateTime(last.tradingAt).slice(0, 13) : "-"}</div>
+          <div className="v num">{fmtTradingDate(last?.tradingAt)}</div>
         </div>
         <div className="stat">
           <div className="lab">52주 최고</div>
@@ -276,7 +286,9 @@ function PriceTab({ companyId, market }: { companyId: string; market: string }) 
         </div>
         <div className="stat">
           <div className="lab">뉴스 분위기</div>
-          <div className="v num">{metrics.data?.sentimentScore != null ? `${Math.round(metrics.data.sentimentScore * 100)}` : "-"} <span className="lab">/100</span></div>
+          <div className="v num">
+            {fmtPctFrom01(metrics.data?.sentimentScore, "")} <span className="lab">/100</span>
+          </div>
           <div className="meta num mt-8">
             <span style={{ color: "var(--pos-fg)" }}>긍정 {fmtNumber(metrics.data?.positiveCount)}</span> · <span style={{ color: "var(--neg-fg)" }}>부정 {fmtNumber(metrics.data?.negativeCount)}</span>
           </div>
@@ -302,6 +314,9 @@ function PriceTab({ companyId, market }: { companyId: string; market: string }) 
 /* ------------------------------------------------------------------ */
 /* 게시판 탭 (기업 커뮤니티 댓글)                                          */
 /* ------------------------------------------------------------------ */
+/** 명세: 댓글 내용은 공백 제외 1~500자 */
+const COMMENT_MAX = 500;
+
 function BoardTab({ companyId, companyName }: { companyId: string; companyName: string }) {
   const comments = useCompanyComments(companyId);
   const user = useSession((s) => s.user);
@@ -325,8 +340,11 @@ function BoardTab({ companyId, companyName }: { companyId: string; companyName: 
           disabled={!user}
           onChange={(e) => setDraft(e.target.value)}
           onFocus={() => !user && openAuth("login")}
-          maxLength={1000}
+          maxLength={COMMENT_MAX}
         />
+        <span className="meta num" style={{ alignSelf: "flex-end", padding: "0 8px 6px" }}>
+          {draft.length}/{COMMENT_MAX}
+        </span>
         <button
           type="button"
           className="btn btn-p btn-xs"
@@ -397,9 +415,12 @@ function CommentItem({ comment, mine }: { comment: CompanyComment; mine: boolean
       {editing ? (
         <div className="mt-8">
           <div className="field" style={{ padding: "0 12px" }}>
-            <textarea rows={3} value={text} onChange={(e) => setText(e.target.value)} maxLength={1000} />
+            <textarea rows={3} value={text} onChange={(e) => setText(e.target.value)} maxLength={COMMENT_MAX} />
           </div>
           <div className="row mt-8" style={{ justifyContent: "flex-end", gap: 6 }}>
+            <span className="meta num grow">
+              {text.length}/{COMMENT_MAX}
+            </span>
             <button type="button" className="btn btn-g btn-xs" onClick={() => (setEditing(false), setText(comment.content))}>
               취소
             </button>

@@ -5,7 +5,6 @@
 import type { CosmosApi } from "@/api/contract";
 import { ApiError, tokenStore } from "@/api/client";
 import type * as T from "@/api/types";
-import { stableUuid } from "@/lib/rng";
 import {
   ADJACENCY,
   COMPANIES,
@@ -19,6 +18,7 @@ import {
   SEED_COMMENTS,
   currentSnapshot,
   isDirected,
+  marketCapOf,
   metricsFor,
   otherEnd,
   stockSeries,
@@ -59,7 +59,8 @@ function paginate<T>(all: T[], params?: { cursor?: string; size?: number }, max 
 /* 저장소 (localStorage)                                                */
 /* ------------------------------------------------------------------ */
 interface StoredUser {
-  userId: string;
+  /** users.user_id 는 BIGSERIAL 정수다 */
+  userId: number;
   email: string;
   password: string;
   nickname: string;
@@ -74,11 +75,12 @@ interface StoredComment extends MockComment {
   deleted?: boolean;
 }
 
+/** userId 가 UUID 문자열에서 정수로 바뀌어 이전 저장분과 호환되지 않으므로 키 네임스페이스를 올린다 */
 const LS = {
-  users: "cosmos.mock.users",
-  session: "cosmos.mock.session",
-  user: (id: string) => `cosmos.mock.user.${id}`,
-  comments: "cosmos.mock.comments",
+  users: "cosmos.mock.v2.users",
+  session: "cosmos.mock.v2.session",
+  user: (id: number) => `cosmos.mock.v2.user.${id}`,
+  comments: "cosmos.mock.v2.comments",
 };
 
 function read<T>(key: string, fallback: T): T {
@@ -97,7 +99,7 @@ function write(key: string, value: unknown) {
   }
 }
 
-const DEMO_USER: StoredUser = { userId: stableUuid("user:demo"), email: "demo@cosmos.dev", password: "cosmos123", nickname: "우주탐험가" };
+const DEMO_USER: StoredUser = { userId: 1, email: "demo@cosmos.dev", password: "cosmos123", nickname: "우주탐험가" };
 function users(): StoredUser[] {
   const list = read<StoredUser[]>(LS.users, []);
   if (!list.some((u) => u.userId === DEMO_USER.userId)) {
@@ -106,10 +108,10 @@ function users(): StoredUser[] {
   }
   return list;
 }
-function userState(userId: string): UserState {
+function userState(userId: number): UserState {
   return read<UserState>(LS.user(userId), { watch: {}, scraps: {}, newsWeight: null, weightUpdatedAt: null });
 }
-function saveUserState(userId: string, s: UserState) {
+function saveUserState(userId: number, s: UserState) {
   write(LS.user(userId), s);
 }
 
@@ -117,7 +119,8 @@ function saveUserState(userId: string, s: UserState) {
 function currentUser(): StoredUser | null {
   const token = tokenStore.get();
   if (!token?.startsWith("mock.")) return null;
-  const [, userId] = token.split(".");
+  const userId = Number(token.split(".")[1]);
+  if (!Number.isInteger(userId)) return null;
   return users().find((u) => u.userId === userId) ?? null;
 }
 function requireUser(): StoredUser {
@@ -125,7 +128,7 @@ function requireUser(): StoredUser {
   if (!u) fail(401, tokenStore.get() ? "TOKEN_INVALID" : "TOKEN_EXPIRED", "로그인이 필요합니다.");
   return u;
 }
-function issueToken(userId: string) {
+function issueToken(userId: number) {
   const token = `mock.${userId}.${Date.now()}`;
   tokenStore.set(token);
   return token;
@@ -227,7 +230,7 @@ export const mockApi: CosmosApi = {
     },
     async refresh() {
       await latency(90);
-      const sessionUser = read<string | null>(LS.session, null);
+      const sessionUser = read<number | null>(LS.session, null);
       if (!sessionUser || !users().some((u) => u.userId === sessionUser)) fail(401, "TOKEN_EXPIRED", "세션이 만료되었습니다.");
       return { accessToken: issueToken(sessionUser) };
     },
@@ -241,7 +244,9 @@ export const mockApi: CosmosApi = {
       const list = users();
       if (list.some((u) => u.email.toLowerCase() === email.toLowerCase())) fail(409, "EMAIL_DUPLICATED", "이미 사용 중인 이메일입니다.");
       if (list.some((u) => u.nickname === nickname)) fail(409, "NICKNAME_DUPLICATED", "이미 사용 중인 닉네임입니다.");
-      const user: StoredUser = { userId: stableUuid(`user:${email.toLowerCase()}`), email, password, nickname: nickname.trim() };
+      // BIGSERIAL 처럼 1부터 증가하는 정수를 발급한다 (DEMO_USER 가 1)
+      const nextId = list.reduce((mx, u) => Math.max(mx, u.userId), 0) + 1;
+      const user: StoredUser = { userId: nextId, email, password, nickname: nickname.trim() };
       list.push(user);
       write(LS.users, list);
       return { userId: user.userId, email: user.email, nickname: user.nickname };
@@ -354,11 +359,14 @@ export const mockApi: CosmosApi = {
       if (kw) {
         const scored = items
           .map((c) => {
-            const hay = [c.name, c.nameEn, c.stockCode].map((s) => s.toLowerCase());
+            const hay = [c.name, c.nameEn, c.stockCode].filter((v): v is string => Boolean(v)).map((v) => v.toLowerCase());
+            const alias = c.aliases.map((v) => v.toLowerCase());
             let score = 0;
-            if (hay.some((h) => h === kw)) score = 3;
-            else if (hay.some((h) => h.startsWith(kw))) score = 2;
-            else if (hay.some((h) => h.includes(kw))) score = 1;
+            if (hay.some((h) => h === kw)) score = 4;
+            else if (hay.some((h) => h.startsWith(kw))) score = 3;
+            else if (hay.some((h) => h.includes(kw))) score = 2;
+            // 별칭(company_alias) 매치는 정식 명칭보다 한 단계 낮은 가중치로 둔다
+            else if (alias.some((h) => h === kw || h.startsWith(kw) || h.includes(kw))) score = 1;
             return { c, score };
           })
           .filter((x) => x.score > 0)
@@ -384,6 +392,8 @@ export const mockApi: CosmosApi = {
         description: c.description,
         industries: [{ industryId: c.industryId, name: c.industry, primary: true }],
         watched: Boolean(watch[c.companyId]),
+        listedShares: c.listedShares,
+        marketCap: marketCapOf(c),
       };
     },
     async metrics(companyId, window = "30D") {
@@ -392,17 +402,22 @@ export const mockApi: CosmosApi = {
       const m = metricsFor(companyId, window);
       return { companyId, window, ...m, measuredAt: currentSnapshot().asOfAt };
     },
-    async metricsHistory(companyId, window = "30D") {
+    async metricsHistory(companyId, params) {
       await latency(160);
       if (!COMPANY_BY_ID.has(companyId)) fail(404, "COMPANY_NOT_FOUND", "기업을 찾을 수 없습니다.");
-      const days = windowDays(window);
-      const end = new Date();
-      end.setUTCHours(0, 0, 0, 0);
+      const window = params?.window ?? "30D";
+      const today = new Date();
+      today.setUTCHours(0, 0, 0, 0);
+      // from·to 가 오면 그 구간을, 없으면 window 일수만큼 오늘까지 생성한다
+      const to = params?.to ? Date.parse(`${params.to}T00:00:00Z`) : today.getTime();
+      const from = params?.from ? Date.parse(`${params.from}T00:00:00Z`) : to - (windowDays(window) - 1) * DAY;
+      if (Number.isNaN(from) || Number.isNaN(to)) fail(400, "VALIDATION_FAILED", "from·to 는 YYYY-MM-DD 형식이어야 합니다.");
       const items: T.MetricPoint[] = [];
-      for (let i = days - 1; i >= 0; i -= 1) {
-        const at = end.getTime() - i * DAY + DAY - 1;
-        const m = metricsFor(companyId, "7D", at);
-        items.push({ measuredAt: new Date(at).toISOString(), ...m, sentimentScore: m.sentimentScore ?? 0.5 });
+      // 지나치게 긴 구간을 요청해도 목업이 멈추지 않도록 1년으로 자른다
+      const start = Math.max(from, to - 365 * DAY);
+      for (let at = start; at <= to; at += DAY) {
+        const m = metricsFor(companyId, "7D", at + DAY - 1);
+        items.push({ measuredAt: new Date(at + DAY - 1).toISOString(), ...m });
       }
       return { companyId, window, items };
     },
@@ -605,7 +620,7 @@ export const mockApi: CosmosApi = {
       const u = requireUser();
       if (!COMPANY_BY_ID.has(companyId)) fail(404, "COMPANY_NOT_FOUND", "기업을 찾을 수 없습니다.");
       const text = content.trim();
-      if (!text || text.length > 1000) fail(400, "VALIDATION_FAILED", "댓글은 1~1000자여야 합니다.", [{ field: "content", message: "길이 오류" }]);
+      if (!text || text.length > 500) fail(400, "VALIDATION_FAILED", "댓글은 1~500자여야 합니다.", [{ field: "content", message: "길이 오류" }]);
       const now = new Date().toISOString();
       const c: StoredComment = { commentId: crypto.randomUUID(), companyId, userId: u.userId, nickname: u.nickname, content: text, createdAt: now, updatedAt: now, edited: false };
       upsertComment(c);
@@ -616,9 +631,9 @@ export const mockApi: CosmosApi = {
       const u = requireUser();
       const c = allComments().find((x) => x.commentId === commentId);
       if (!c) fail(404, "COMMENT_NOT_FOUND", "댓글을 찾을 수 없습니다.");
-      if (c.userId !== u.userId) fail(403, "FORBIDDEN", "본인 댓글만 수정할 수 있습니다.");
+      if (c.userId !== u.userId) fail(403, "COMMENT_FORBIDDEN", "본인 댓글만 수정할 수 있습니다.");
       const text = content.trim();
-      if (!text || text.length > 1000) fail(400, "VALIDATION_FAILED", "댓글은 1~1000자여야 합니다.", [{ field: "content", message: "길이 오류" }]);
+      if (!text || text.length > 500) fail(400, "VALIDATION_FAILED", "댓글은 1~500자여야 합니다.", [{ field: "content", message: "길이 오류" }]);
       const next: StoredComment = { ...c, content: text, updatedAt: new Date().toISOString(), edited: true };
       upsertComment(next);
       return { commentId, content: text, createdAt: next.createdAt, updatedAt: next.updatedAt, edited: true };
@@ -627,8 +642,8 @@ export const mockApi: CosmosApi = {
       await latency(120);
       const u = requireUser();
       const c = allComments().find((x) => x.commentId === commentId);
-      if (!c) return;
-      if (c.userId !== u.userId) fail(403, "FORBIDDEN", "본인 댓글만 삭제할 수 있습니다.");
+      if (!c) fail(404, "COMMENT_NOT_FOUND", "댓글을 찾을 수 없습니다.");
+      if (c.userId !== u.userId) fail(403, "COMMENT_FORBIDDEN", "본인 댓글만 삭제할 수 있습니다.");
       upsertComment({ ...c, deleted: true });
     },
   },

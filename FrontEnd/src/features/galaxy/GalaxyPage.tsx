@@ -140,7 +140,7 @@ export default function GalaxyPage() {
   const callout: Callout | null = useMemo(() => {
     const n = focusNews.data?.pages[0]?.items[0];
     if (!focusId || !n || phase !== "system" || calloutHidden) return null;
-    return { companyId: focusId, kicker: "latest news signal", title: n.title, meta: `${n.publisher} · ${fmtRelative(n.publishedAt)}`, onClose: hideCallout };
+    return { companyId: focusId, kicker: "latest news signal", title: n.title, meta: [n.publisher, fmtRelative(n.publishedAt)].filter(Boolean).join(" · "), onClose: hideCallout };
   }, [focusNews.data, focusId, phase, calloutHidden, hideCallout]);
 
   const focusName = focusId ? systemModel?.nodeById.get(focusId)?.name ?? lookup(focusId)?.name ?? "…" : null;

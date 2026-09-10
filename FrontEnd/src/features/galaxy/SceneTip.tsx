@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type RefObject } from "react";
 import { ImpactBadge, IndustryBadge, Skeleton, TypeBadge } from "@/components/ui";
-import { fmtScore } from "@/lib/format";
+import { fmtPctFrom01, fmtScore } from "@/lib/format";
 import type { SceneModel } from "@/lib/graph";
 import { scoreBand } from "@/lib/meta";
 import { useRelationship } from "@/lib/queries";
@@ -126,7 +126,7 @@ export default function SceneTip({ model, pointer }: Props) {
       <div className="tip-ev meta num">
         {detail ? (
           <>
-            근거 {detail.evidenceCount}건 · 신뢰 {Math.round(detail.confidence * 100)}%
+            근거 {detail.evidenceCount}건 · 신뢰 {fmtPctFrom01(detail.confidence)}
           </>
         ) : (
           <Skeleton h={12} w={120} />

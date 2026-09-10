@@ -8,7 +8,7 @@ import { LAB } from "@/three/toon";
 
 /* ------------------------------ 로고 아바타 ------------------------------ */
 
-export function CompanyAvatar({ name, stockCode, industry, size = 44, radius }: { name: string; stockCode?: string; industry?: string; size?: number; radius?: number }) {
+export function CompanyAvatar({ name, stockCode, industry, size = 44, radius }: { name: string; stockCode?: string | null; industry?: string | null; size?: number; radius?: number }) {
   const [broken, setBroken] = useState(false);
   const url = logoUrl(stockCode);
   const hasLogo = Boolean(url) && !broken;
@@ -34,8 +34,9 @@ export function SentimentBadge({ value, compact = false }: { value: Sentiment; c
     </span>
   );
 }
-export function ImpactBadge({ value }: { value: ImpactDirection }) {
-  const m = IMPACT_META[value] ?? IMPACT_META.NEUTRAL;
+/** impactDirection 은 선택 필드(NULL 허용)라 값이 없으면 중립으로 읽는다. */
+export function ImpactBadge({ value }: { value: ImpactDirection | null | undefined }) {
+  const m = (value && IMPACT_META[value]) ?? IMPACT_META.NEUTRAL;
   return (
     <span className="badge" style={{ background: m.bg, color: m.fg }}>
       <i className="dot" style={{ background: m.color }} />

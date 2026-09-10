@@ -22,6 +22,15 @@ export const tokenStore = {
   },
 };
 
+/**
+ * refresh 까지 실패해 세션이 끝났을 때 알릴 콜백.
+ * store 를 직접 import 하면 client ↔ store 순환 참조가 생기므로 등록 방식으로 둔다.
+ */
+let onSessionExpired: (() => void) | null = null;
+export function setSessionExpiredHandler(fn: (() => void) | null) {
+  onSessionExpired = fn;
+}
+
 const BASE = import.meta.env.VITE_API_BASE ?? "/api";
 
 type Query = object;
@@ -88,7 +97,9 @@ export async function request<T>(path: string, opts: RequestOptions = {}): Promi
   if (res.status === 401 && body?.code === "TOKEN_EXPIRED" && opts.retry !== false) {
     const next = await refreshAccessToken();
     if (next) return request<T>(path, { ...opts, retry: false });
+    // refresh 만료·무효 → 화면을 게스트 상태로 되돌려 보호 API 반복 401 을 끊는다
     tokenStore.set(null);
+    onSessionExpired?.();
   }
   throw new ApiError(res.status, body);
 }

@@ -79,7 +79,8 @@ export default function SearchPalette({ onPick }: Props) {
                         {c.nameEn}
                       </span>
                       <div className="meta num" style={{ marginTop: 2 }}>
-                        {c.stockCode} · <MarketTag market={c.market} />
+                        {c.stockCode ? `${c.stockCode} · ` : ""}
+                        <MarketTag market={c.market} />
                       </div>
                     </span>
                     <IndustryBadge name={c.primaryIndustry.name} />

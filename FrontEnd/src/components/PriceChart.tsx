@@ -75,7 +75,8 @@ export default function PriceChart({ data, height = 150, color = "#829CFF", show
           {showAxis &&
             geo.ticks.map((i, k) => (
               <text key={i} x={geo.x(i)} y={height - 6} fontSize="11" fill="#8B95A1" textAnchor={k === 0 ? "start" : k === 2 ? "end" : "middle"}>
-                {fmtShortDate(data[i].tradingAt)}
+                {/* 거래일은 브라우저 시간대로 옮기면 하루가 밀린다 — UTC 로 날짜 성분을 그대로 읽는다 */}
+                {fmtShortDate(data[i].tradingAt, "UTC")}
               </text>
             ))}
         </svg>

@@ -42,7 +42,7 @@ export const liveApi: CosmosApi = {
     list: (p) => request(`/companies${qs(p)}`),
     detail: (id) => request(`/companies/${id}`),
     metrics: (id, window) => request(`/companies/${id}/metrics${qs({ window })}`),
-    metricsHistory: (id, window) => request(`/companies/${id}/metrics/history${qs({ window })}`),
+    metricsHistory: (id, params) => request(`/companies/${id}/metrics/history${qs(params)}`),
     stockPrices: (id, period) => request(`/companies/${id}/stock-prices${qs({ period, interval: "1D" })}`),
     industries: () => request("/industries"),
   },

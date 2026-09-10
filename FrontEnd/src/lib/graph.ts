@@ -14,7 +14,8 @@ export interface SceneNode {
   name: string;
   industry: string;
   market: Market;
-  stockCode: string;
+  /** company.stock_code 는 DDL 상 NULL 허용 — 로고 조회에만 쓰고 표시에는 쓰지 않는다 */
+  stockCode: string | null;
   color: string;
   pos: Vec3;
   /** 월드 단위 반지름 */
@@ -551,7 +552,7 @@ export function layoutGalaxy(graph: LatestGraph): SceneModel {
 export const ORBIT = [0, 24, 44, 62];
 
 /** 기업 중심 배치가 산업·시장·종목코드를 채우는 데 쓰는 조회 함수 (전체 우주 스냅샷에서 만든다) */
-export type CompanyLookup = (id: string) => { industryName: string; market: Market; stockCode: string } | undefined;
+export type CompanyLookup = (id: string) => { industryName: string; market: Market; stockCode: string | null } | undefined;
 
 export function layoutSystem(graph: CompanyGraph, lookup: CompanyLookup): SceneModel {
   const rng = seededRandom(hashString(graph.snapshotId + graph.centerCompanyId));
@@ -617,7 +618,7 @@ export function layoutSystem(graph: CompanyGraph, lookup: CompanyLookup): SceneM
       name: n.name,
       industry: info?.industryName ?? "",
       market: info?.market ?? "",
-      stockCode: info?.stockCode ?? "",
+      stockCode: info?.stockCode ?? null,
       color: industryColor(info?.industryName),
       pos,
       size: d === 0 ? 3.4 : nodeSize(deg.get(n.companyId) ?? 0) * (d === 1 ? 1.15 : d === 2 ? 0.95 : 0.8),

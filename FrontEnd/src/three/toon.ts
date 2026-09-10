@@ -34,7 +34,7 @@ export const LAB = {
  * 영향 방향 → 관계 빔 색. 빔·화살촉·경로 스트립 글리프가 모두 이 한 곳을 보게 해서 색 규칙이 갈라지지 않게 한다.
  * 정의되지 않은 방향이나 값 누락은 중립 보라로 떨어뜨린다 — 색이 비거나 긍정·부정으로 오독되면 안 된다.
  */
-export function beamColorFor(impact: ImpactDirection | undefined): string {
+export function beamColorFor(impact: ImpactDirection | null | undefined): string {
   if (impact === "POSITIVE") return LAB.beamPositive;
   if (impact === "NEGATIVE") return LAB.beamNegative;
   return LAB.beamNeutral;
