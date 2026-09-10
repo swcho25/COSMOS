@@ -3,7 +3,7 @@
  * 모두 결정론적이라 같은 스냅샷이면 같은 자리다 (새로고침·재조회에도 흔들리지 않는다).
  */
 import type { CompanyGraph, GraphEdge, LatestGraph, Market, RelationshipType } from "@/api/types";
-import { ARMS, CORE_Y, DISC_Y, R_CORE, R_MAX, armTheta, nearestArm } from "./galaxyShape";
+import { ARMS, ARM_SPREAD, CORE_Y, DISC_Y, R_CORE, R_MAX, armTheta, nearestArm } from "./galaxyShape";
 import { INDUSTRY_COLORS, industryColor, relationshipMeta } from "./meta";
 import { gaussian, hashString, seededRandom } from "./rng";
 
@@ -205,8 +205,16 @@ const REP_D = 34;
 const REP_K = 0.9;
 /** 간선 스프링 세기 — 목표 거리는 점수 100 → 9, 점수 0 → 27 */
 const SPRING_K = 0.06;
-/** 팔 중심선으로 모으는 접선 인력 */
-const ARM_K = 0.05;
+/**
+ * 팔 중심선으로 모으는 접선 인력.
+ * 세면 모든 행성이 중심선 위 한 줄로 붙어 '그려 넣은 선' 처럼 보인다 — 초기 각도 분포(ARM_SPREAD)를
+ * 시뮬레이션이 다시 짜부라뜨리지 않을 만큼만 남긴다.
+ */
+const ARM_K = 0.018;
+/** 팔 인력을 아예 받지 않는 '팔 사이' 노드 비율 — 실제 은하처럼 팔 사이도 드물게 채운다 */
+const INTER_ARM_SHARE = 0.15;
+/** 랭크 반지름에 주는 시드 지터 폭 — 랭크대로 줄 세우면 반지름이 계단처럼 보인다 */
+const RADIUS_JITTER = 0.12;
 /** 랭크 반지름으로 되돌리는 반지름 스프링 (질량이 클수록 강하다) */
 const RADIUS_K = 0.03;
 /** 마지막 이 횟수 동안은 하드 최소 간격을 직접 밀어 지킨다 */
@@ -325,6 +333,8 @@ export function layoutGalaxy(graph: LatestGraph): SceneModel {
   const fz = new Float64Array(n);
   const mass = new Float64Array(n);
   const rad = new Float64Array(n);
+  // 팔 인력을 면제받는 노드 — 시드 난수라 같은 스냅샷이면 늘 같은 기업이 팔 사이에 남는다
+  const interArm = new Uint8Array(n);
   for (let i = 0; i < n; i += 1) {
     const c = ranked[i];
     const size = sizeOf.get(c.companyId)!;
@@ -336,9 +346,13 @@ export function layoutGalaxy(graph: LatestGraph): SceneModel {
       r = coreBase(i) * coreScale;
       th = coreAngle(i);
     } else {
+      // 랭크 반지름에 ±RADIUS_JITTER 를 섞어 랭크가 만드는 동심원 계단을 흐린다
       r = rStart + (rOuter - rStart) * Math.sqrt((i - coreCount) / Math.max(1, n - coreCount));
+      r = Math.max(rStart, Math.min(rOuter, r * (1 + (rng() * 2 - 1) * RADIUS_JITTER)));
+      interArm[i] = rng() < INTER_ARM_SHARE ? 1 : 0;
       const arm = armOf.get(c.industryName) ?? 0;
-      th = (single ? phase + (i / n) * Math.PI * 2 : armTheta(arm, r)) + gaussian(rng) * 0.25;
+      // 각도 산포는 반지름에 비례(ARM_SPREAD)해 팔이 바깥으로 갈수록 넓어진다
+      th = (single ? phase + (i / n) * Math.PI * 2 : armTheta(arm, r)) + gaussian(rng) * ARM_SPREAD(r);
     }
     rRank[i] = r;
     x[i] = Math.cos(th) * r;
@@ -419,6 +433,7 @@ export function layoutGalaxy(graph: LatestGraph): SceneModel {
     // c) 팔 인력 — 반지름은 그대로 두고 각도만 팔 중심선 쪽으로 접선 이동시킨다
     if (!single) {
       for (let i = coreCount; i < n; i += 1) {
+        if (interArm[i]) continue;
         const r = Math.hypot(x[i], z[i]);
         if (r < 1e-3) continue;
         const th = Math.atan2(z[i], x[i]);
@@ -461,6 +476,15 @@ export function layoutGalaxy(graph: LatestGraph): SceneModel {
           }
         }
       }
+    }
+    // f) 벌지 안쪽 금지선 — 강한 간선에 끌려 핵 사다리 안으로 가라앉은 노드는 고정된 핵 6개와 겹쳐도
+    //    하드 간격이 밀어낼 곳이 없다(핵은 움직이지 않는다). 팔 시작 반지름 밖으로 되돌려 벌지를 비운다
+    // 비핵 노드의 rRank 는 초기화에서 이미 rStart 이상으로 클램프되므로 금지선은 rStart 하나로 충분하다
+    for (let i = coreCount; i < n; i += 1) {
+      const r = Math.hypot(x[i], z[i]);
+      if (r >= rStart || r < 1e-3) continue;
+      x[i] = (x[i] / r) * rStart;
+      z[i] = (z[i] / r) * rStart;
     }
   }
 

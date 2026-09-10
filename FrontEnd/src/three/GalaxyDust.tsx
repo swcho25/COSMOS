@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, type MutableRefObject } from "react";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
-import { ARMS, DISC_Y, R_CORE, R_MAX, armTheta } from "@/lib/galaxyShape";
+import { ARMS, ARM_SPREAD, DISC_Y, R_CORE, R_MAX, armTheta } from "@/lib/galaxyShape";
 import { gaussian, seededRandom } from "@/lib/rng";
 import { isLowEnd } from "./gravity";
 import { dotTexture } from "./textures";
@@ -21,15 +21,27 @@ interface Props {
 /** 총 점 수 (저사양 기기는 절반 이하) */
 const TOTAL = 9000;
 const TOTAL_LOW = 4000;
-/** 핵 벌지·팔 사이 배경이 차지하는 몫 (TOTAL 기준, 나머지가 나선 팔) */
-const BULGE_SHARE = 1200 / TOTAL;
-const INTER_SHARE = 800 / TOTAL;
+/**
+ * 핵 벌지·팔 사이 배경이 차지하는 몫 (TOTAL 기준, 나머지가 나선 팔).
+ * 벌지를 줄이고 팔 사이를 늘려 "중심만 뭉친 덩어리" 가 아니라 원반 전체로 읽히게 한다.
+ */
+const BULGE_SHARE = 400 / TOTAL;
+const INTER_SHARE = 1400 / TOTAL;
 /** 반지름 방향 밀도 감쇠 길이 — 바깥으로 갈수록 성기다 (거절 샘플링) */
 const FALLOFF = 110;
 /** 별가루 층 두께 배율 — 행성보다 살짝 두껍게 퍼뜨려 원반에 부피감을 준다 */
 const DUST_Y = 1.4;
 /** 워프 중 알파 배율 */
 const WARP_ALPHA = 0.4;
+/** 전체 밝기 배율 — 별가루가 행성·간선을 덮지 않도록 한 단계 낮춘다 */
+const DUST_ALPHA = 0.8;
+/** 벌지는 여기에 한 번 더 곱해 은은하게 (핵이 하얗게 뭉개지지 않도록) */
+const BULGE_ALPHA = 0.6;
+/** 핵 글로우 두 겹의 알파와 지름 배율 (R_CORE 기준) */
+const GLOW_INNER_A = 0.14;
+const GLOW_OUTER_A = 0.05;
+const GLOW_INNER_D = R_CORE * 4.8;
+const GLOW_OUTER_D = R_CORE * 10;
 
 const COOL_A = new THREE.Color("#dfe8ff");
 const COOL_B = new THREE.Color("#9fb8ff");
@@ -84,20 +96,21 @@ export default function GalaxyDust({ seed = 0, radius = R_MAX, spiral = true, wa
       col[i * 3 + 1] = tmpColor.g;
       col[i * 3 + 2] = tmpColor.b;
       size[i] = px;
-      alpha[i] = a;
+      alpha[i] = a * DUST_ALPHA;
       seedAttr[i] = rng() * Math.PI * 2;
     };
 
     let o = 0;
     for (let i = 0; i < arms; i += 1, o += 1) {
       const r = sampleR();
-      // 팔은 안쪽에서 가늘고 바깥에서 흩어진다. 팔이 없는 뷰(spiral=false)에서는 행성처럼 원둘레에 고르게 뿌린다
-      const th = spiral ? armTheta(Math.floor(rng() * ARMS) % ARMS, r) + g3() * (0.12 + 0.0025 * r) : rng() * Math.PI * 2;
+      // 팔은 안쪽에서 가늘고 바깥에서 흩어진다 — 행성 배치와 같은 ARM_SPREAD 를 쓰되 조금 더 퍼뜨려 팔 경계를 흐린다.
+      // 팔이 없는 뷰(spiral=false)에서는 행성처럼 원둘레에 고르게 뿌린다
+      const th = spiral ? armTheta(Math.floor(rng() * ARMS) % ARMS, r) + g3() * ARM_SPREAD(r) * 1.3 : rng() * Math.PI * 2;
       put(o, Math.cos(th) * r, g3() * DISC_Y(r) * DUST_Y, Math.sin(th) * r, 0.6 + rng() * rng() * 2.0, 0.35 + rng() * 0.35);
     }
     for (let i = 0; i < bulge; i += 1, o += 1) {
       const s = R_CORE * 0.6;
-      put(o, g3() * s, g3() * 5, g3() * s, 0.9 + rng() * 1.7, 0.4 + rng() * 0.3);
+      put(o, g3() * s, g3() * 5, g3() * s, 0.9 + rng() * 1.7, (0.4 + rng() * 0.3) * BULGE_ALPHA);
     }
     for (let i = 0; i < inter; i += 1, o += 1) {
       const r = sampleR();
@@ -128,18 +141,18 @@ export default function GalaxyDust({ seed = 0, radius = R_MAX, spiral = true, wa
       u.uScale.value = state.size.height * 0.3;
     }
     const dim = 1 - (1 - WARP_ALPHA) * warp;
-    if (glowInner.current) glowInner.current.opacity = 0.35 * dim;
-    if (glowOuter.current) glowOuter.current.opacity = 0.12 * dim;
+    if (glowInner.current) glowInner.current.opacity = GLOW_INNER_A * dim;
+    if (glowOuter.current) glowOuter.current.opacity = GLOW_OUTER_A * dim;
   });
 
   return (
     <group renderOrder={0}>
       {/* 핵 글로우 — 안쪽 밝은 알맹이 + 바깥으로 번지는 헤일로 */}
-      <sprite scale={[R_CORE * 6.4, R_CORE * 6.4, 1]} raycast={() => null} renderOrder={0}>
-        <spriteMaterial ref={glowInner} map={glowTexture()} color={GLOW} transparent opacity={0.35} depthWrite={false} blending={THREE.AdditiveBlending} toneMapped={false} fog={false} />
+      <sprite scale={[GLOW_INNER_D, GLOW_INNER_D, 1]} raycast={() => null} renderOrder={0}>
+        <spriteMaterial ref={glowInner} map={glowTexture()} color={GLOW} transparent opacity={GLOW_INNER_A} depthWrite={false} blending={THREE.AdditiveBlending} toneMapped={false} fog={false} />
       </sprite>
-      <sprite scale={[R_CORE * 14, R_CORE * 14, 1]} raycast={() => null} renderOrder={0}>
-        <spriteMaterial ref={glowOuter} map={glowTexture()} color={GLOW} transparent opacity={0.12} depthWrite={false} blending={THREE.AdditiveBlending} toneMapped={false} fog={false} />
+      <sprite scale={[GLOW_OUTER_D, GLOW_OUTER_D, 1]} raycast={() => null} renderOrder={0}>
+        <spriteMaterial ref={glowOuter} map={glowTexture()} color={GLOW} transparent opacity={GLOW_OUTER_A} depthWrite={false} blending={THREE.AdditiveBlending} toneMapped={false} fog={false} />
       </sprite>
       <points geometry={geo} frustumCulled={false} raycast={() => null} renderOrder={0}>
         <shaderMaterial ref={mat} uniforms={uniforms} vertexShader={DUST_VERTEX} fragmentShader={DUST_FRAGMENT} transparent depthWrite={false} blending={THREE.AdditiveBlending} toneMapped={false} />
