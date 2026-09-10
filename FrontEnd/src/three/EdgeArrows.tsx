@@ -15,8 +15,12 @@ interface Props {
 
 /** 화살촉 상한 — 은하 예산(상위 8%, ≈40)·기업 중심 뷰 depth-1 전체에 충분하고, 예산 off 상태에서는 점수 상위만 */
 const MAX = 160;
-/** 화살촉이 붙는 최소 강조 — 기본 상태에서 '보이는' 간선(호버로 밝아진 것 포함)만 */
-const MIN_EMPH = 0.9;
+/**
+ * 화살촉이 붙는 최소 강조 — '밝은' 간선이 아니라 '보이는' 간선 기준.
+ * 기업 중심 뷰의 depth 2·3 간선은 기본 강조가 0.74·0.56(DEPTH_DIM)이라 0.9 로 자르면 바깥 궤도에 화살촉이 없어진다.
+ * 흐려 둔 상태(0.05·0.08·0.21)는 이 아래라 그대로 빠진다.
+ */
+const MIN_EMPH = 0.5;
 /** 콘 크기(월드) — 튜브 반지름의 배수, 멀리서도 보이도록 하한을 둔다 */
 const CONE_K = 2.6;
 const CONE_MIN = 0.36;
@@ -50,6 +54,7 @@ export default function EdgeArrows({ model, emphasis }: Props) {
     if (!m) return;
     const targets = model.edges.filter((e) => e.directed && (emphasis.edge.get(e.id) ?? 1) >= MIN_EMPH).sort((a, b) => b.score - a.score).slice(0, MAX);
     targets.forEach((e, i) => {
+      const emph = emphasis.edge.get(e.id) ?? 1;
       const s = e.score / 100;
       const scale = Math.max(CONE_MIN, radiusOf(s) * CONE_K);
       const dist = controlPoint(e.from, e.to, CTRL);
@@ -70,6 +75,8 @@ export default function EdgeArrows({ model, emphasis }: Props) {
       m.setMatrixAt(i, tmpObj.matrix);
       COLOR.copy(BEAM);
       if (e.impact === "NEGATIVE") COLOR.lerp(NEG, 0.55);
+      // 빔은 강조로 투명해지는데 화살촉은 불투명 재질이라, 어두운 배경 위에서 같은 정도로 물러나도록 색을 눌러 준다
+      COLOR.multiplyScalar(0.35 + 0.65 * emph);
       m.setColorAt(i, COLOR);
     });
     m.count = targets.length;
@@ -87,8 +94,9 @@ export default function EdgeArrows({ model, emphasis }: Props) {
 
   return (
     <instancedMesh ref={mesh} args={[geo, undefined, MAX]} frustumCulled={false} renderOrder={3} raycast={() => null}>
-      {/* 색은 인스턴스 색(setColorAt)이 곱해지므로 재질은 흰색 */}
-      <meshBasicMaterial color="#ffffff" toneMapped={false} />
+      {/* 색은 인스턴스 색(setColorAt)이 곱해지므로 재질은 흰색.
+          안개는 끈다 — 같은 간선의 튜브·헤일로·구슬 ShaderMaterial 이 안개를 받지 않아, 켜 두면 먼 성단에서 화살촉만 사라진다 */}
+      <meshBasicMaterial color="#ffffff" toneMapped={false} fog={false} />
     </instancedMesh>
   );
 }

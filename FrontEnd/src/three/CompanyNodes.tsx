@@ -5,7 +5,7 @@ import type { SceneModel, SceneNode } from "@/lib/graph";
 import { initials } from "@/lib/format";
 import { logoUrl } from "@/lib/logos";
 import { hashString } from "@/lib/rng";
-import { ROLE_META, roleColor, type RoleKey } from "@/lib/roles";
+import { ROLE_META, ROLE_ORDER, roleColor, type RoleKey } from "@/lib/roles";
 import { touch } from "./bufferUtil";
 import { CHIP_H, CHIP_PILL, CHIP_STEM, chipFragment, chipHit, chipVertex } from "./chipShader";
 import type { Emphasis } from "./emphasis";
@@ -152,6 +152,9 @@ export default function CompanyNodes({ model, emphasis, hoveredId, onHover, onCl
     const name = new Float32Array(n * 4);
     const c = new THREE.Color();
     const center = new THREE.Vector3();
+    // 역할 태그 라벨을 호버 시점에 처음 구우면 그 프레임에 2048² 이름 아틀라스가 통째로 다시 업로드되고 밉맵도 재생성된다.
+    // 어차피 한 번 일어나는 이 루프의 업로드에 합쳐 미리 구워 두면, 호버 때는 캐시 히트만 남는다
+    ROLE_ORDER.forEach((r) => ensureNameCell(ROLE_META[r].label));
     model.nodes.forEach((node, i) => {
       c.set(node.color);
       color[i * 3] = c.r;

@@ -142,6 +142,8 @@ export const useGalaxy = create<GalaxyState>((set, get) => ({
     set({ selectedEdgeId: null, hoveredId: null, hoveredEdgeId: null, pinnedId: null, roleFilter: null });
   },
   togglePin(id) {
+    // 워프 중에는 아직 이전 모델이 보이고 집을 수도 있다 — 그때 찍은 핀은 착지한 뷰에 없는 기업을 가리킨 채 남는다 (warpTo 와 같은 가드)
+    if (get().phase === "warp") return;
     set((s) => ({ pinnedId: s.pinnedId === id ? null : id }));
   },
   setRoleFilter(r) {
@@ -149,7 +151,8 @@ export const useGalaxy = create<GalaxyState>((set, get) => ({
   },
 
   setIndustry(id) {
-    set({ industryId: id, selectedEdgeId: null });
+    // 새 모델에는 없을 수 있는 상태(선택 간선·경로 핀·역할 필터)를 함께 턴다 — 핀이 남으면 crosshair 커서만 남고 경로가 잡히지 않는다
+    set({ industryId: id, selectedEdgeId: null, pinnedId: null, roleFilter: null });
   },
   setMinScore(v) {
     set({ minScore: Math.max(0, Math.min(100, v)) });

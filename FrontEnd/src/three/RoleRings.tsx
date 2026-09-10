@@ -60,12 +60,20 @@ export default function RoleRings({ model, hoveredId, roles }: Props) {
   useEffect(() => () => built.geo.dispose(), [built]);
 
   // 슬롯: 현재 링을 그리는 이웃 인덱스와 각 알파. roles 참조가 바뀌면 다시 채운다 (프레임 상태라 ref 에 둔다)
-  const slotsRef = useRef({ roles: null as Map<string, RoleKey> | null, idx: [] as number[], alpha: new Float32Array(MAX) });
+  const slotsRef = useRef({ model, roles: null as Map<string, RoleKey> | null, idx: [] as number[], alpha: new Float32Array(MAX) });
 
   useFrame((state, delta) => {
     const m = mesh.current;
     if (!m) return;
     const slots = slotsRef.current;
+    // 모델이 바뀌면(산업 필터 등) 슬롯에 남은 인덱스는 이전 모델 기준이다. 그룹 key 가 같아 리마운트되지 않으므로 여기서 비운다 —
+    // roles 가 null 인 채로 페이드 아웃 중이면 재충전 분기를 건너뛰어, 더 작아진 모델에서 model.nodes[ni] 가 undefined 가 된다
+    if (slots.model !== model) {
+      slots.model = model;
+      slots.roles = null;
+      slots.idx = [];
+      slots.alpha.fill(0);
+    }
     const dt = Math.min(delta, 0.05);
     // 0.15s 안에 거의 도달
     const k = 1 - Math.pow(0.0001, dt * 2);
