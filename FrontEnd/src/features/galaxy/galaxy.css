@@ -402,6 +402,25 @@
   color: var(--text-4);
   margin-top: -4px;
 }
+/* 영향 색 범례 — 한 줄, 항목 사이 가운뎃점은 CSS 로 넣어 마크업에 의미 없는 문자가 끼지 않게 */
+.legend-impact {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--text-4);
+  margin-top: -8px;
+}
+.legend-impact span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.legend-impact span + span::before {
+  content: "·";
+  margin-right: 3px;
+  opacity: 0.6;
+}
 .legend-card .row-ctl {
   display: grid;
   grid-template-columns: auto 1fr auto;

@@ -6,7 +6,7 @@ import { useGalaxy } from "@/store/galaxy";
 import { bezier, controlPoint, radiusOf } from "./edgeCurve";
 import type { Emphasis } from "./emphasis";
 import { morphState } from "./morph";
-import { LAB } from "./toon";
+import { beamColorFor } from "./toon";
 
 interface Props {
   model: SceneModel;
@@ -34,13 +34,11 @@ const Q = new THREE.Vector3();
 const DIR = new THREE.Vector3();
 const tmpObj = new THREE.Object3D();
 const COLOR = new THREE.Color();
-const BEAM = new THREE.Color(LAB.beam);
-const NEG = new THREE.Color(1.0, 0.42, 0.46);
 
 /**
- * 방향 간선의 target 끝 화살촉 — 빔과 같은 주황 콘 (InstancedMesh 1회).
+ * 방향 간선의 target 끝 화살촉 — 빔과 같은 색의 콘 (InstancedMesh 1회).
  * 펄스 방향은 눈으로 따라가야 읽히지만 화살촉은 정지 화면에서도 방향을 확정한다.
- * 색은 빔 규칙을 그대로 따른다(주황 + NEGATIVE 틴트) — 관계 유형 색은 노드 쪽 요소에만 쓴다.
+ * 색은 빔 규칙을 그대로 따른다(영향 방향별 파랑·빨강·보라) — 관계 유형 색은 노드 쪽 요소에만 쓴다.
  * 위치는 target 행성 표면 바로 바깥 — 짧은 간선에서 고정 t(0.93) 를 쓰면 콘이 행성 안에 묻히므로,
  * 끝점 거리에서 행성 반지름 + 콘 반 높이만큼 물러난 t 를 쓴다.
  */
@@ -73,8 +71,9 @@ export default function EdgeArrows({ model, emphasis }: Props) {
       tmpObj.scale.setScalar(scale);
       tmpObj.updateMatrix();
       m.setMatrixAt(i, tmpObj.matrix);
-      COLOR.copy(BEAM);
-      if (e.impact === "NEGATIVE") COLOR.lerp(NEG, 0.55);
+      // 빔과 달리 여기는 meshBasicMaterial 이라 three 가 출력 색공간 변환을 붙여 준다 —
+      // 그래서 THREE.Color 의 기본 sRGB→작업공간 변환을 그대로 태워야 화면에서 빔과 같은 색이 된다
+      COLOR.set(beamColorFor(e.impact));
       // 빔은 강조로 투명해지는데 화살촉은 불투명 재질이라, 어두운 배경 위에서 같은 정도로 물러나도록 색을 눌러 준다
       COLOR.multiplyScalar(0.35 + 0.65 * emph);
       m.setColorAt(i, COLOR);

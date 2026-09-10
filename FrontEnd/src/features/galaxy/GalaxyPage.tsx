@@ -8,6 +8,7 @@ import { industryColor } from "@/lib/meta";
 import { companyGraphQuery, useCompanyGraph, useIndustries, useLatestGraph, useNewsFeed, useSessionKey } from "@/lib/queries";
 import { useGalaxy } from "@/store/galaxy";
 import { Icon, TypeLegend } from "@/components/ui";
+import { LAB } from "@/three/toon";
 import CompanyPanel from "./CompanyPanel";
 import HopSummary from "./HopSummary";
 import PathStrip from "./PathStrip";
@@ -15,6 +16,13 @@ import RelationshipPanel from "./RelationshipPanel";
 import SceneTip, { type PointerPos } from "./SceneTip";
 import SearchPalette from "./SearchPalette";
 import "./galaxy.css";
+
+/** 빔 색 범례 — toon.beamColorFor 와 같은 색·같은 순서라야 범례가 씬을 설명한다 */
+const IMPACT_LEGEND = [
+  { label: "긍정", color: LAB.beamPositive },
+  { label: "부정", color: LAB.beamNegative },
+  { label: "중립", color: LAB.beamNeutral },
+];
 
 /** 호버 200ms 프리페치 — 워프 커밋(0.6s) 전에 목적지 배치가 준비되도록 미리 받아 둔다.
     hoveredId 구독을 이 조각에 가둬 호버마다 HUD 전체가 리렌더되지 않게 한다 */
@@ -286,6 +294,15 @@ export default function GalaxyPage() {
                 <TypeLegend active={activeTypes} onToggle={toggleType} />
               </div>
               <div className="meta legend-hint">굵을수록 점수가 높고, 점선은 방향이 없는 관계입니다</div>
+              {/* 색은 관계 유형이 아니라 영향 방향이다 — 유형 칩(색 점) 바로 아래 두면 오해하기 쉬워 굵기·점선 설명 뒤에 붙인다 */}
+              <div className="meta legend-impact" title="관계 빔 색 — 충격이 어느 쪽으로 전이되는지">
+                {IMPACT_LEGEND.map((it) => (
+                  <span key={it.label}>
+                    <i className="dot" style={{ background: it.color }} />
+                    {it.label}
+                  </span>
+                ))}
+              </div>
               <div className="row-ctl">
                 <span className="lab">최소 점수</span>
                 <input type="range" min={0} max={90} step={5} value={minScore} onChange={(e) => setMinScore(Number(e.target.value))} aria-label="관계 최소 점수" />

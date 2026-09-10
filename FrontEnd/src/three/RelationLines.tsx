@@ -5,7 +5,7 @@ import type { SceneEdge } from "@/lib/graph";
 import { bezier, controlPoint, radiusOf } from "./edgeCurve";
 import type { Emphasis } from "./emphasis";
 import { morphState } from "./morph";
-import { LAB } from "./toon";
+import { beamColorFor } from "./toon";
 
 /** 튜브 길이 방향 분할, 둘레 분할, 간선당 빛 구슬 수 */
 const SEGS = 22;
@@ -14,6 +14,7 @@ const PULSES = 2;
 const PICK_SEGS = 8;
 
 const P = new THREE.Vector3();
+const C = new THREE.Color();
 
 interface Props {
   edges: SceneEdge[];
@@ -57,7 +58,7 @@ const revealAt = (reveal: number, score01: number) => clamp01((reveal - (1 - sco
 
 /**
  * 관계 빔 — 아트 디렉션 랩의 튜브 빔을 은하 전체에 적용한 것.
- * - 모든 간선을 3D 튜브 하나(드로우콜 1회)로 병합해 그린다. 굵기는 점수, 색은 주황 한 가지
+ * - 모든 간선을 3D 튜브 하나(드로우콜 1회)로 병합해 그린다. 굵기는 점수, 색은 영향 방향(긍정 파랑·부정 빨강·중립 보라)
  * - 같은 지오메트리를 법선 방향으로 부풀린 두 번째 패스가 부드러운 헤일로가 된다
  * - 빛 구슬(펄스)은 포인트 레이어 하나로 그리고, 매 프레임 베지어 위를 따라 움직인다.
  *   방향 있는 관계는 source → target 으로, 무방향 관계는 양방향으로 흐르며 점선 튜브를 쓴다
@@ -85,10 +86,12 @@ export default function RelationLines({ edges, emphasis, onHover, onSelect, inte
     const aScore = new Float32Array(n * vPer);
     const aRadius = new Float32Array(n * vPer);
     const aFlow = new Float32Array(n * vPer);
-    const aNeg = new Float32Array(n * vPer);
+    const aColor = new Float32Array(n * vPer * 3);
     const aEmph = new Float32Array(n * vPer).fill(1);
     const index = new Uint32Array(n * iPer);
     const pickPos = new Float32Array(n * PICK_SEGS * 2 * 3);
+    /** 간선별 빔 색 — 튜브 정점과 구슬이 같은 값을 쓰도록 한 번만 파싱해 둔다 */
+    const rgb = new Float32Array(n * 3);
 
     edges.forEach((e, ei) => {
       const ctrl = new THREE.Vector3();
@@ -99,6 +102,12 @@ export default function RelationLines({ edges, emphasis, onHover, onSelect, inte
       radii[ei] = r;
       speeds[ei] = 0.05 + s * 0.14;
       phases[ei] = (ei * 0.6180339887) % 1;
+      // 이 셰이더는 톤매핑도 출력 색공간 변환도 거치지 않는다 — 넘긴 값이 곧 화면 sRGB 라서
+      // 선형화(THREE.Color 기본 변환)를 거치면 파랑·보라가 함께 어두운 청색으로 몰려 구분이 사라진다
+      C.setStyle(beamColorFor(e.impact), THREE.NoColorSpace);
+      rgb[ei * 3] = C.r;
+      rgb[ei * 3 + 1] = C.g;
+      rgb[ei * 3 + 2] = C.b;
 
       const curve = new THREE.QuadraticBezierCurve3(new THREE.Vector3().fromArray(e.from), ctrl, new THREE.Vector3().fromArray(e.to));
       const tube = new THREE.TubeGeometry(curve, SEGS, r, RADIAL, false);
@@ -118,7 +127,9 @@ export default function RelationLines({ edges, emphasis, onHover, onSelect, inte
         aScore[vBase + v] = s;
         aRadius[vBase + v] = r;
         aFlow[vBase + v] = e.directed ? 1 : 0;
-        aNeg[vBase + v] = e.impact === "NEGATIVE" ? 1 : 0;
+        aColor[(vBase + v) * 3] = rgb[ei * 3];
+        aColor[(vBase + v) * 3 + 1] = rgb[ei * 3 + 1];
+        aColor[(vBase + v) * 3 + 2] = rgb[ei * 3 + 2];
       }
       const iBase = ei * iPer;
       for (let k = 0; k < iPer; k += 1) index[iBase + k] = ti[k] + vBase;
@@ -146,7 +157,7 @@ export default function RelationLines({ edges, emphasis, onHover, onSelect, inte
     geo.setAttribute("aScore", new THREE.BufferAttribute(aScore, 1));
     geo.setAttribute("aRadius", new THREE.BufferAttribute(aRadius, 1));
     geo.setAttribute("aFlow", new THREE.BufferAttribute(aFlow, 1));
-    geo.setAttribute("aNeg", new THREE.BufferAttribute(aNeg, 1));
+    geo.setAttribute("aColor", new THREE.BufferAttribute(aColor, 3));
     const emphAttr = new THREE.BufferAttribute(aEmph, 1);
     emphAttr.setUsage(THREE.DynamicDrawUsage);
     geo.setAttribute("aEmph", emphAttr);
@@ -165,14 +176,20 @@ export default function RelationLines({ edges, emphasis, onHover, onSelect, inte
     pSize.setUsage(THREE.DynamicDrawUsage);
     const pAlpha = new THREE.BufferAttribute(new Float32Array(pn), 1);
     pAlpha.setUsage(THREE.DynamicDrawUsage);
-    const pNeg = new Float32Array(pn);
-    edges.forEach((e, ei) => {
-      for (let j = 0; j < PULSES; j += 1) pNeg[ei * PULSES + j] = e.impact === "NEGATIVE" ? 1 : 0;
-    });
+    // 구슬 글로우는 간선 색을 따라간다 (심은 크림색 고정) — 빔에서 떨어져 나온 빛으로 읽히게
+    const pColor = new Float32Array(pn * 3);
+    for (let ei = 0; ei < n; ei += 1) {
+      for (let j = 0; j < PULSES; j += 1) {
+        const k = (ei * PULSES + j) * 3;
+        pColor[k] = rgb[ei * 3];
+        pColor[k + 1] = rgb[ei * 3 + 1];
+        pColor[k + 2] = rgb[ei * 3 + 2];
+      }
+    }
     pulseGeo.setAttribute("position", pPos);
     pulseGeo.setAttribute("aSize", pSize);
     pulseGeo.setAttribute("aAlpha", pAlpha);
-    pulseGeo.setAttribute("aNeg", new THREE.BufferAttribute(pNeg, 1));
+    pulseGeo.setAttribute("aColor", new THREE.BufferAttribute(pColor, 3));
 
     return { geo, emphAttr, pick, ctrls, radii, speeds, phases, outward, pulseGeo, pPos, pSize, pAlpha, vPer };
   }, [edges]);
@@ -197,14 +214,9 @@ export default function RelationLines({ edges, emphasis, onHover, onSelect, inte
   }, [edges, emphasis, built]);
 
   // uFade·uReveal 은 강조(uDim)와 완전히 분리된 워프 게이트다 — 필터·호버로 흐려지는 것과 섞이면 안 된다
-  const tubeUniforms = useMemo(
-    () => ({ uColor: { value: new THREE.Color(LAB.beam) }, uDim: { value: 1 }, uInflate: { value: 0 }, uHalo: { value: 0 }, uFade: { value: 1 }, uReveal: { value: 1 } }),
-    [],
-  );
-  const haloUniforms = useMemo(
-    () => ({ uColor: { value: new THREE.Color(LAB.beamGlow) }, uDim: { value: 1 }, uInflate: { value: 1.7 }, uHalo: { value: 1 }, uFade: { value: 1 }, uReveal: { value: 1 } }),
-    [],
-  );
+  // 색은 정점 속성(aColor)이라 두 패스가 나눠 갖는 유니폼은 부풀림·헤일로 여부뿐이다
+  const tubeUniforms = useMemo(() => ({ uDim: { value: 1 }, uInflate: { value: 0 }, uHalo: { value: 0 }, uFade: { value: 1 }, uReveal: { value: 1 } }), []);
+  const haloUniforms = useMemo(() => ({ uDim: { value: 1 }, uInflate: { value: 1.7 }, uHalo: { value: 1 }, uFade: { value: 1 }, uReveal: { value: 1 } }), []);
   const pulseUniforms = useMemo(() => ({ uDim: { value: 1 }, uScale: { value: 600 } }), []);
 
   useFrame((state, delta) => {
@@ -321,18 +333,18 @@ const TUBE_VERTEX = /* glsl */ `
   attribute float aScore;
   attribute float aRadius;
   attribute float aFlow;
-  attribute float aNeg;
+  attribute vec3 aColor;
   attribute float aEmph;
   uniform float uInflate;
   varying float vT;
   varying float vT2;
   varying float vScore;
   varying float vFlow;
-  varying float vNeg;
+  varying vec3 vColor;
   varying float vEmph;
   varying vec3 vNormalV;
   void main(){
-    vT = aT; vT2 = aT2; vScore = aScore; vFlow = aFlow; vNeg = aNeg; vEmph = aEmph;
+    vT = aT; vT2 = aT2; vScore = aScore; vFlow = aFlow; vColor = aColor; vEmph = aEmph;
     // 헤일로 패스는 법선 방향으로 부풀린다
     vec3 p = position + normal * aRadius * uInflate;
     vNormalV = normalize(normalMatrix * normal);
@@ -340,7 +352,6 @@ const TUBE_VERTEX = /* glsl */ `
   }
 `;
 const TUBE_FRAGMENT = /* glsl */ `
-  uniform vec3 uColor;
   uniform float uDim;
   uniform float uHalo;
   uniform float uFade;
@@ -349,7 +360,7 @@ const TUBE_FRAGMENT = /* glsl */ `
   varying float vT2;
   varying float vScore;
   varying float vFlow;
-  varying float vNeg;
+  varying vec3 vColor;
   varying float vEmph;
   varying vec3 vNormalV;
   void main(){
@@ -362,10 +373,11 @@ const TUBE_FRAGMENT = /* glsl */ `
     float dash = vFlow > 0.5 ? 1.0 : mix(0.3, 1.0, step(0.5, fract(vT * 18.0)));
     // 끝점은 행성에 묻히도록 살짝 페이드
     float ends = smoothstep(0.0, 0.05, vT) * smoothstep(1.0, 0.95, vT);
-    vec3 col = mix(uColor, vec3(1.0, 0.42, 0.46), vNeg * 0.55);
+    vec3 col = vColor;
     if (uHalo > 0.5) {
       float a = 0.14 * (0.5 + 0.5 * vScore) * vEmph * vEmph * dash * ends * uDim * uFade * grow;
-      gl_FragColor = vec4(col, a);
+      // 헤일로는 본체와 같은 색을 가산 합성한다 — 조금만 흰색을 섞어 번짐이 색을 덧칠하지 않고 빛으로 읽히게
+      gl_FragColor = vec4(mix(col, vec3(1.0), 0.15), a);
       return;
     }
     // 플랫 컬러 + 살짝의 원통 음영 (툰 느낌)
@@ -380,12 +392,12 @@ const TUBE_FRAGMENT = /* glsl */ `
 const PULSE_VERTEX = /* glsl */ `
   attribute float aSize;
   attribute float aAlpha;
-  attribute float aNeg;
+  attribute vec3 aColor;
   uniform float uScale;
   varying float vAlpha;
-  varying float vNeg;
+  varying vec3 vColor;
   void main(){
-    vAlpha = aAlpha; vNeg = aNeg;
+    vAlpha = aAlpha; vColor = aColor;
     vec4 mv = modelViewMatrix * vec4(position, 1.0);
     gl_PointSize = aSize * (uScale / -mv.z);
     gl_Position = projectionMatrix * mv;
@@ -394,16 +406,15 @@ const PULSE_VERTEX = /* glsl */ `
 const PULSE_FRAGMENT = /* glsl */ `
   uniform float uDim;
   varying float vAlpha;
-  varying float vNeg;
+  varying vec3 vColor;
   void main(){
     if (vAlpha <= 0.002) discard;
     float d = length(gl_PointCoord - 0.5) * 2.0;
     if (d > 1.0) discard;
-    // 밝은 크림색 심 + 주황 글로우
+    // 밝은 크림색 심 + 간선 색 글로우 — 심을 색과 무관하게 두어야 어떤 색 빔에서도 구슬이 '빛나는 알갱이'로 보인다
     float core = smoothstep(0.36, 0.18, d);
     float glow = exp(-d * d * 3.2) * 0.55;
-    vec3 warm = mix(vec3(1.0, 0.64, 0.3), vec3(1.0, 0.4, 0.45), vNeg);
-    vec3 col = mix(warm, vec3(1.0, 0.95, 0.86), core);
+    vec3 col = mix(vColor, vec3(1.0, 0.95, 0.86), core);
     gl_FragColor = vec4(col * (core + glow), (core + glow) * vAlpha * uDim);
   }
 `;

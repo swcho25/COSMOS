@@ -5,6 +5,7 @@ import type { SceneEdge, SceneModel } from "@/lib/graph";
 import { relationshipMeta } from "@/lib/meta";
 import { hoverPath } from "@/lib/path";
 import { useGalaxy } from "@/store/galaxy";
+import { beamColorFor } from "@/three/toon";
 
 interface Props {
   /** 현재 뷰 모델 — 기업 중심 뷰면 systemModel, 은하 뷰면 galaxyModel. GalaxyPage 가 넘겨준다 (Canvas 와 결합도 0) */
@@ -59,7 +60,8 @@ export default function PathStrip({ model }: Props) {
                 <span className="path-seg" key={id}>
                   {edge && (
                     <span className="path-edge" title={`${relationshipMeta(edge.type).label} · ${fmtScore(edge.score)}점`}>
-                      <EdgeGlyph directed={edge.directed} />
+                      {/* 글리프 색은 씬의 빔과 같은 규칙 — 경로를 보다가 3D 로 눈을 옮겨도 같은 색이 같은 관계를 가리킨다 */}
+                      <EdgeGlyph directed={edge.directed} color={beamColorFor(edge.impact)} />
                       <b style={{ color: relationshipMeta(edge.type).color }}>{relationshipMeta(edge.type).label}</b>
                       <span className="num">{fmtScore(edge.score)}</span>
                     </span>
