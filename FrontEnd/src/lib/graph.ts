@@ -135,8 +135,8 @@ function relax(nodes: SceneNode[], edges: GraphEdge[], anchor: Map<string, Vec3>
   }
 }
 
-/** 노드 크기(nodeSize)에서 가중 연결도를 되돌린 값 — 질량으로 쓴다 */
-function massOf(size: number) {
+/** 노드 크기(nodeSize)에서 가중 연결도를 되돌린 값 — 성단 질량과 중력 우물(gravity.ts)이 같은 척도를 쓰도록 한 곳에 둔다 */
+export function massOf(size: number) {
   const w = (size - 0.7) / 0.52;
   return w * w;
 }

@@ -4,13 +4,14 @@ import { AdaptiveDpr, Html, OrbitControls } from "@react-three/drei";
 import { Bloom, ChromaticAberration, EffectComposer, Vignette } from "@react-three/postprocessing";
 import * as THREE from "three";
 import type { SceneEdge, SceneModel } from "@/lib/graph";
-import { shortestPath } from "@/lib/path";
+import { hoverPath } from "@/lib/path";
 import { neighborRoles } from "@/lib/roles";
 import { useGalaxy } from "@/store/galaxy";
 import Backdrop from "./Backdrop";
 import CompanyNodes from "./CompanyNodes";
 import EdgeArrows from "./EdgeArrows";
 import FlyControls from "./FlyControls";
+import GravityGrid from "./GravityGrid";
 import RelationLines from "./RelationLines";
 import RoleRings from "./RoleRings";
 import Warp from "./Warp";
@@ -223,16 +224,8 @@ function Content({ galaxy, system, callout, warpRef }: ContentProps) {
   const model = focusId ? system : galaxy;
   // 최소 점수·관계 유형 필터 — 경로·역할 계산은 예산(상위만)은 무시하고 이 필터만 지킨다
   const allowed = useMemo(() => (e: SceneEdge) => e.score >= minScore && activeTypes.has(e.type), [minScore, activeTypes]);
-  // 경로 기준: Shift+클릭 핀이 있으면 그 기업, 없으면 기업 중심 뷰의 중심. 핀이 없을 때는 depth ≥ 2 노드를 호버해야 경로가 켜진다
-  // (depth 1 은 중심과 바로 이어져 기존 이웃 강조로 충분하다)
-  const path = useMemo(() => {
-    if (!model || !hoveredId) return null;
-    const pinBase = pinnedId ?? (model.kind === "system" ? model.centerId : null);
-    if (!pinBase || hoveredId === pinBase) return null;
-    const hovered = model.nodeById.get(hoveredId);
-    if (!hovered || (!pinnedId && hovered.depth < 2)) return null;
-    return shortestPath(model, pinBase, hoveredId, allowed);
-  }, [model, hoveredId, pinnedId, allowed]);
+  // 경로 기준·게이트는 hoverPath 한 곳에 있다 — HUD 스트립(PathStrip)과 규칙이 어긋나지 않게
+  const path = useMemo(() => hoverPath(model, hoveredId, pinnedId, allowed)?.path ?? null, [model, hoveredId, pinnedId, allowed]);
   // 호버 노드의 이웃 역할 — 이웃 링(RoleRings)과 칩 역할 태그(CompanyNodes)가 같은 맵을 쓴다
   const roleTags = useMemo(() => (model && hoveredId && model.nodeById.has(hoveredId) ? neighborRoles(model, hoveredId, allowed) : null), [model, hoveredId, allowed]);
   const emphasis = useMemo(
@@ -264,6 +257,8 @@ function Content({ galaxy, system, callout, warpRef }: ContentProps) {
       <group onPointerMissed={(e) => e.button === 0 && clearSelection()}>
         {model && emphasis && (
           <group key={model.kind + (model.centerId ?? "")}>
+            {/* 바닥 격자는 빔보다 먼저 그린다 (renderOrder 0). keyed group 안이라 뷰가 바뀌면 평평한 면에서 다시 패인다 */}
+            <GravityGrid model={model} warpRef={warpRef} hoveredId={hoveredId} />
             <RelationLines edges={model.edges} emphasis={emphasis} onHover={setHoveredEdge} onSelect={selectEdge} intensity={model.kind === "galaxy" ? 0.85 : 1} hoveredEdgeId={hoveredEdgeId} />
             <EdgeArrows model={model} emphasis={emphasis} />
             <RoleRings model={model} hoveredId={hoveredId} roles={roleTags} />
