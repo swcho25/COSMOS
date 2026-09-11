@@ -63,7 +63,7 @@ const RAY = new THREE.Raycaster();
 const DRAG_SLOP = 6;
 /**
  * 드래그 진행 상태 — 포인터는 하나뿐이라 인스턴스별로 나눌 필요가 없고, useRef(...).current 를 훅 의존성으로 넘기면
- * react-hooks/refs 에 걸리므로 BUCKETS 처럼 모듈에 둔다.
+ * react-hooks/refs 에 걸리므로 CHIP_ORDER 처럼 모듈에 둔다.
  * id 는 포인터를 누른 후보 노드(아직 드래그는 아니다), active 는 슬롭을 넘겨 실제로 끄는 중이다.
  * live 는 그 노드가 속한 버퍼 — 씬이 둘(은하·미니) 겹쳐 있어도 자기 것이 아닌 드래그에는 반응하지 않게 하는 주인 표식이다.
  */
@@ -97,22 +97,58 @@ function armDrag(id: string, index: number, x: number, y: number, live: LiveTran
   // 앞선 드래그의 클릭 차단이 남아 있을 일은 없지만(rAF 에서 풀린다), 새 입력이 시작되면 확실히 턴다
   dragState.blockClick = false;
 }
-/** 화면 버킷 → 그 버킷을 차지한 노드 인덱스. 프레임마다 비우고 채우는 스크래치라 모듈에 둔다 */
-const BUCKETS = new Map<number, number>();
+/** 칩 겹침 판정용 후보 순서·채택 목록 — 프레임마다 비우고 채우는 스크래치라 모듈에 둔다 */
+const CHIP_ORDER: number[] = [];
+const CHIP_KEPT: number[] = [];
+/**
+ * 칩 겹침 걸러내기 — 우선순위(prio, 동률은 큰 행성이 되도록 크기를 소수부로 섞어 둔다) 순으로 훑으며,
+ * 이미 채택된 칩 사각형(rect: left, top, right, bottom)과 CHIP_GAP 안으로 겹치는 후보는 목표 알파를 0 으로 만든다.
+ * 후보(order)는 티어 LOD 를 통과한 수십 개뿐이라 제곱 비교로도 충분하다
+ */
+function cullOverlappingChips(order: number[], rect: Float32Array, prio: Float32Array, target: Float32Array) {
+  order.sort((x, y) => prio[y] - prio[x]);
+  CHIP_KEPT.length = 0;
+  for (const i of order) {
+    const o = i * 4;
+    const l = rect[o] - CHIP_GAP;
+    const tp = rect[o + 1] - CHIP_GAP;
+    const rr = rect[o + 2] + CHIP_GAP;
+    const b = rect[o + 3] + CHIP_GAP;
+    let hit = false;
+    for (const j of CHIP_KEPT) {
+      const q = j * 4;
+      if (l < rect[q + 2] && rect[q] < rr && tp < rect[q + 3] && rect[q + 1] < b) {
+        hit = true;
+        break;
+      }
+    }
+    if (hit) target[i] = 0;
+    else CHIP_KEPT.push(i);
+  }
+}
 /**
  * 티어별 칩이 완전히 사라지는 카메라 거리 — 0.75 배 지점부터 페이드. 허브는 은하 기본 자세에서도 보인다.
- * 은하: 기본 자세(poseFor, 188개 목업 기준 카메라 거리 ≈ 245, 30° 부감)에서 tier 1(질량 랭크 12~49, 반지름 58~101)이
- *       가장 가까워야 ≈ 166 이므로 tier 1 상한을 140 으로 두어 '기본 자세에서는 허브만' 을 지킨다 (페이드 105~140).
+ * 은하: 기본 자세(poseFor, 188개 목업 기준 카메라 거리 ≈ 250~290, 30° 부감·주가 고도 켬)에서 tier 1(질량 랭크 12~49)이
+ *       가장 가까워도 ≈ 200 이므로 tier 1 상한을 140 으로 두어 '기본 자세에서는 허브만' 을 지킨다 (페이드 105~140).
  * 기업 중심: 기본 자세(거리 ≈ 118)에서 depth 1 궤도가 96~142 에 걸치므로 200 을 유지해야 첫 궤도 칩이 다 보인다.
  */
 const TIER_FAR: Record<SceneModel["kind"], number[]> = { galaxy: [520, 140, 110], system: [520, 200, 110] };
-/** 화면 버킷(px) — 같은 버킷에 겹치는 칩은 우선순위 높은 하나만 남긴다 */
-const BUCKET_W = 96;
-const BUCKET_H = 28;
-/** 칩 목표 화면 높이(px)와 월드 높이 클램프 — 코앞에서도 너무 작아지지 않고 멀리서도 행성을 덮지 않게 */
-const CHIP_PX = 20;
+/**
+ * 칩 겹침 판정의 여백(px) — 화면에 실제로 그려질 칩 사각형이 이 여백 안으로 겹치면 우선순위 낮은 쪽을 숨긴다.
+ * 예전 방식(행성 위치를 96×28 격자에 넣어 같은 칸만 겹침으로 침)은 칩이 칸보다 넓어지자 무력해졌다 — 26px 칩은 폭이 100~150px 라
+ * 옆 칸의 칩과 그대로 겹쳤다(기본 자세에서 겹치는 쌍 실측 4.3/프레임). 사각형끼리 재면 폭이 얼마든 정확하다
+ */
+const CHIP_GAP = 4;
+/**
+ * 칩 목표 화면 높이(px)와 월드 높이 클램프 — 코앞에서도 너무 작아지지 않고 멀리서도 행성을 통째로 덮지 않게.
+ * 20px·상한 4 일 때는 은하 기본 자세에서 칩이 13px 안팎, 글자는 7px 남짓이라 읽히지 않았다. 26px 로 키우고 상한을 10 으로 올렸다.
+ * 상한이 걸리는 구간(기본 자세 카메라 거리 ≈ 265~310 에서 계산): 캔버스 세로 790px 이상이면 허브 칩이 모두 26px, 720px 에서는 23.8~26px,
+ * 650px 에서는 21.5~25.2px. 글자 높이는 이름 아틀라스 행(ROW 44 중 글자 36)에 따라 칩 높이의 약 0.65 배 ≈ 17px 이다.
+ * 하한은 코앞(궤도 최소 거리 22)에서 칩이 화면 45~65px 로 커지는 정도 — 더 올리면 긴 이름이 화면 1/3 을 덮는다
+ */
+const CHIP_PX = 26;
 const CHIP_MIN = 1.3;
-const CHIP_MAX = 4.0;
+const CHIP_MAX = 10.0;
 /** 항성 점광 레이어 — 랩과 동일 */
 const LIT = 1;
 /** 피킹에서 무시하는 배지·칩 알파 — 이 아래는 보이지 않는데 포인터를 가로채면 안 된다 */
@@ -138,8 +174,8 @@ function filteredRaycast(accept: (instanceId: number, uv: THREE.Vector2) => bool
  * - 산업색에서 만든 팔레트로 면 단위 바다·대륙을 칠하고, 대륙형·고리형·위성형을 기업 id 시드로 섞는다
  *   (은하 뷰와 기업 중심 뷰에서 같은 기업이 같은 행성으로 보인다)
  * - 크기는 연결 가중치(node.size), 호버·중심·강조로 크기와 밝기를 프레임마다 lerp. 위치는 live 버퍼(morph.ts)에서 읽는다
- * - 행성 표면은 비워 두고, 로고·기업명은 행성 위 깃발 칩(InstancedMesh 1회)에 놓는다. 칩은 화면상 약 20px 높이로
- *   항상 카메라를 향하고, 티어(허브·첫 껍질·나머지)별 거리 LOD 와 화면 버킷으로 혼잡을 억제한다
+ * - 행성 표면은 비워 두고, 로고·기업명은 행성 위 깃발 칩(InstancedMesh 1회)에 놓는다. 칩은 화면상 약 26px 높이로
+ *   항상 카메라를 향하고, 티어(허브·첫 껍질·나머지)별 거리 LOD 와 칩 사각형 겹침 판정(cullOverlappingChips)으로 혼잡을 억제한다
  * - 정면 배지(흰 로고 원판)는 emphasis.badges — 호버·중심·선택 간선 양끝 — 에서만 카메라→행성 시선 위에 떠오른다
  * - 멀리서도 위치가 보이도록 아주 약한 헤일로 점광을 함께 둔다
  * - 행성·칩·배지를 끌면 그 행성을 옮길 수 있다. 옮긴 자리는 live 버퍼에만 남으므로 새로고침하면 레이아웃 좌표로 돌아간다
@@ -324,8 +360,8 @@ export default function CompanyNodes({ model, emphasis, hoveredId, onHover, onCl
     touch(built.chipRole, built.chipRoleColor);
   }, [roleTags, model, built]);
 
-  // 프레임 스크래치 — 칩 높이·목표 알파 (버킷 판정이 끝난 뒤 두 번째 루프에서 쓴다)
-  const scratch = useMemo(() => ({ h: new Float32Array(n), target: new Float32Array(n) }), [n]);
+  // 프레임 스크래치 — 칩 높이·목표 알파·화면 사각형(left, top, right, bottom)·우선순위 (겹침 판정이 끝난 뒤 두 번째 루프에서 쓴다)
+  const scratch = useMemo(() => ({ h: new Float32Array(n), target: new Float32Array(n), rect: new Float32Array(n * 4), prio: new Float32Array(n) }), [n]);
 
   useEffect(() => {
     const init = (m: THREE.InstancedMesh | null, ud: Record<string, unknown>) => {
@@ -391,19 +427,24 @@ export default function CompanyNodes({ model, emphasis, hoveredId, onHover, onCl
     const chipMesh = chips.current;
     const morphing = morphState.plan !== null;
 
-    // 칩 배치 기준: 카메라 상·우 방향, 화면 20px 에 해당하는 월드 높이 계수
+    // 칩 배치 기준: 카메라 상·우 방향, 화면 CHIP_PX 에 해당하는 월드 높이 계수
     UPV.set(0, 1, 0).applyQuaternion(cam.quaternion);
     RGT.set(1, 0, 0).applyQuaternion(cam.quaternion);
     const persp = cam as THREE.PerspectiveCamera;
     const fov = persp.isPerspectiveCamera ? persp.fov : 52;
-    const pxK = (2 * Math.tan(THREE.MathUtils.degToRad(fov) / 2) * CHIP_PX) / Math.max(1, state.size.height);
+    const tanHalf = Math.tan(THREE.MathUtils.degToRad(fov) / 2);
+    const pxK = (2 * tanHalf * CHIP_PX) / Math.max(1, state.size.height);
     const W = state.size.width;
     const H = state.size.height;
     const tierFar = TIER_FAR[model.kind];
-    // 버킷 우선순위: 호버 > 중심 기업 > 강조 고정 > 낮은 티어. 호버·중심에 별도 등급이 없으면 같은 버킷의 큰 pinned 이웃이
+    // 세로로 긴 캔버스는 poseFor 가 가로를 맞추느라 카메라를 1/종횡비 만큼 물린다 — 티어 거리도 같은 배율로 늘려야
+    // 좁은 창(모바일 세로)에서 허브 이름표가 페이드에 걸려 사라지지 않는다
+    const narrow = Math.max(1, 1 / Math.max(0.2, Math.min(1, W / Math.max(1, H))));
+    // 겹침 우선순위: 호버 > 중심 기업 > 강조 고정 > 낮은 티어. 호버·중심에 별도 등급이 없으면 겹친 큰 pinned 이웃이
     // 호버한 기업의 칩을 밀어내 숨긴다
     const prioOf = (nd: SceneNode) => (nd.id === hoveredId ? 5 : nd.id === model.centerId ? 4 : emphasis.pinned.has(nd.id) ? 3 : 2 - nd.tier);
-    BUCKETS.clear();
+    CHIP_ORDER.length = 0;
+    const roleArr = built.chipRole.array as Float32Array;
 
     planets.forEach((p, i) => {
       const { node } = p;
@@ -452,36 +493,46 @@ export default function CompanyNodes({ model, emphasis, hoveredId, onHover, onCl
       (built.haloSize.array as Float32Array)[i] = r * 3.2 * (0.5 + 0.5 * emph);
       (built.haloAlpha.array as Float32Array)[i] = (0.15 + 0.85 * emph) * 0.22;
 
+      // 칩 폭(aspect)은 여기서 이 프레임 값으로 확정한다 — 겹침 판정(아래)과 배치(두 번째 루프)가 같은 폭을 봐야 한다.
+      // 역할 태그 폭은 호버 순간 0 → 전체로 바로 뛰므로 직전 프레임 값을 쓰면 그 프레임에 이웃 칩과 겹친다
+      a.nameOn += ((showLabels || pinned ? 1 : 0) - a.nameOn) * kFast;
+      const roleW = roleArr[i * 4 + 3] > 0 ? (roleArr[i * 4 + 2] / roleArr[i * 4 + 3]) * 0.8 : 0;
+      built.aspectArr[i] = 1 + a.nameOn * ((built.nameCells[i]?.aspect ?? 0) * 0.8 + 0.3) + (roleW > 0 ? roleW + 0.15 : 0);
+
       // 칩 목표 알파: 티어별 거리 LOD × 강조, 고정 노드는 항상. 모프 중에는 중심만
       scratch.h[i] = THREE.MathUtils.clamp(dist * pxK, CHIP_MIN, CHIP_MAX);
-      const far = tierFar[Math.min(node.tier, tierFar.length - 1)];
+      const far = tierFar[Math.min(node.tier, tierFar.length - 1)] * narrow;
       let ct = pinned ? 1 : 1 - THREE.MathUtils.smoothstep(dist, far * 0.75, far);
       ct *= 0.15 + 0.85 * emph;
       if (morphing && !isCenter) ct = 0;
       if (ct > 0.01) {
-        // 카메라 뒤는 제외, 앞이면 화면 버킷으로 겹침을 억제한다 (우선순위: prioOf, 동률은 큰 행성)
-        NDC.copy(TMP).applyMatrix4(cam.matrixWorldInverse);
+        // 카메라 뒤는 제외. 앞이면 칩이 그려질 화면 사각형을 재어 두고, 루프가 끝난 뒤 우선순위 순으로 겹침을 걸러낸다
+        // 두 번째 루프의 배치처럼 카메라 쪽으로 r·0.2 만큼 뺀 지점을 투영한다 (화면 가장자리에서는 이 오프셋이 몇 px 옆으로 새기 때문)
+        NDC.copy(TMP).addScaledVector(TO_CAM, r * 0.2).applyMatrix4(cam.matrixWorldInverse);
         if (NDC.z >= -1e-3) ct = 0;
         else {
+          // 이 깊이에서 월드 1 이 차지하는 픽셀 — 빌보드라 화면 크기는 여기서 그대로 정해진다
+          const pxw = H / (2 * -NDC.z * tanHalf);
           NDC.applyMatrix4(cam.projectionMatrix);
-          const cx = Math.floor(((NDC.x + 1) * 0.5 * W) / BUCKET_W);
-          const cy = Math.floor(((1 - NDC.y) * 0.5 * H) / BUCKET_H);
-          const key = cy * 4096 + cx;
-          const prio = prioOf(node);
-          const cur = BUCKETS.get(key);
-          if (cur === undefined) BUCKETS.set(key, i);
-          else {
-            const other = planets[cur].node;
-            const otherPrio = prioOf(other);
-            if (prio > otherPrio || (prio === otherPrio && node.size > other.size)) {
-              scratch.target[cur] = 0;
-              BUCKETS.set(key, i);
-            } else ct = 0;
-          }
+          const px = (NDC.x + 1) * 0.5 * W;
+          const py = (1 - NDC.y) * 0.5 * H;
+          const h = scratch.h[i];
+          // 두 번째 루프의 배치와 같은 식: 로고 원(폭 h)이 행성 바로 위, 캡슐은 오른쪽으로 aspect 만큼
+          const aspect = built.aspectArr[i];
+          const bottom = py - (r * 1.05 + CHIP_STEM * h) * pxw;
+          const o = i * 4;
+          scratch.rect[o] = px - 0.5 * h * pxw;
+          scratch.rect[o + 1] = bottom - h * pxw;
+          scratch.rect[o + 2] = px + (aspect - 0.5) * h * pxw;
+          scratch.rect[o + 3] = bottom;
+          // 정수부 = 우선순위, 소수부 = 크기(≤ 3.5) — 같은 우선순위면 큰 행성이 앞선다
+          scratch.prio[i] = prioOf(node) * 10 + node.size;
+          CHIP_ORDER.push(i);
         }
       }
       scratch.target[i] = ct;
     });
+    cullOverlappingChips(CHIP_ORDER, scratch.rect, scratch.prio, scratch.target);
     if (tagMesh) {
       tagMesh.instanceMatrix.needsUpdate = true;
       built.brightAttr.needsUpdate = true;
@@ -502,20 +553,16 @@ export default function CompanyNodes({ model, emphasis, hoveredId, onHover, onCl
       built.haloPos.needsUpdate = true;
     }
 
-    // 칩 — 버킷 판정이 끝난 뒤 알파를 lerp 하고 행렬·속성을 쓴다
+    // 칩 — 겹침 판정이 끝난 뒤 알파를 lerp 하고 행렬·속성을 쓴다
     if (chipMesh) {
       const stateArr = built.chipState.array as Float32Array;
-      const roleArr = built.chipRole.array as Float32Array;
       for (let i = 0; i < n; i += 1) {
         const p = planets[i];
         const { node } = p;
         const a = animFor(node.id);
         const ca = (a.chipA += (scratch.target[i] - a.chipA) * kFast);
-        const pinned = emphasis.pinned.has(node.id);
-        a.nameOn += ((showLabels || pinned ? 1 : 0) - a.nameOn) * kFast;
-        const roleW = roleArr[i * 4 + 3] > 0 ? (roleArr[i * 4 + 2] / roleArr[i * 4 + 3]) * 0.8 : 0;
-        const aspect = 1 + a.nameOn * ((built.nameCells[i]?.aspect ?? 0) * 0.8 + 0.3) + (roleW > 0 ? roleW + 0.15 : 0);
-        built.aspectArr[i] = aspect;
+        // 폭(aspect)·이름 표시(nameOn)는 첫 루프가 이 프레임 값으로 정해 두었다
+        const aspect = built.aspectArr[i];
         stateArr[i * 4] = ca;
         stateArr[i * 4 + 1] = emphasis.node.get(node.id) ?? 1;
         stateArr[i * 4 + 2] = node.id === hoveredId ? 1.1 : 1;

@@ -3,6 +3,7 @@ import { useFrame, useThree } from "@react-three/fiber";
 import * as THREE from "three";
 import { useGalaxy } from "@/store/galaxy";
 import { cameraBusy } from "./cameraState";
+import { codeOf, isTyping, modalOpen } from "./keyboard";
 
 /** 이동 속도(월드 단위/초), Shift 가속 배율, 시선 감도 */
 const SPEED = 55;
@@ -16,26 +17,6 @@ const RIGHT = new THREE.Vector3();
 const UP = new THREE.Vector3(0, 1, 0);
 const WISH = new THREE.Vector3();
 const EULER = new THREE.Euler(0, 0, 0, "YXZ");
-
-/** 일부 환경(자동화 도구·가상 키보드)은 e.code 를 비워 보내므로 e.key 로 보완한다 */
-function codeOf(e: KeyboardEvent) {
-  if (e.code) return e.code;
-  const k = e.key;
-  if (k === " ") return "Space";
-  if (k === "Shift") return "ShiftLeft";
-  if (k.length === 1) {
-    const u = k.toUpperCase();
-    if (u >= "A" && u <= "Z") return `Key${u}`;
-  }
-  return k;
-}
-
-function isTyping() {
-  const el = document.activeElement as HTMLElement | null;
-  if (!el) return false;
-  const tag = el.tagName;
-  return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || el.isContentEditable;
-}
 
 /**
  * 탐색(비행) 카메라 — 우주선을 타고 행성 사이를 직접 날아다니는 시점.
@@ -81,7 +62,8 @@ export default function FlyControls() {
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      if (isTyping() || useGalaxy.getState().searchOpen) return;
+      // 모달(로그인 등)이 떠 있으면 모드 전환·비행 키를 받지 않는다 — OrbitKeys 와 같은 규칙
+      if (isTyping() || modalOpen() || useGalaxy.getState().searchOpen) return;
       const code = codeOf(e);
       if (code === "KeyF" && !e.repeat && !e.ctrlKey && !e.metaKey && !e.altKey) {
         useGalaxy.getState().toggleNavMode();

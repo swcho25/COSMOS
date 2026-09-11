@@ -15,6 +15,7 @@ import EdgeArrows from "./EdgeArrows";
 import FlyControls from "./FlyControls";
 import GalaxyDust from "./GalaxyDust";
 import GhostNodes from "./GhostNodes";
+import OrbitKeys from "./OrbitKeys";
 import RelationLines from "./RelationLines";
 import RoleRings from "./RoleRings";
 import Warp from "./Warp";
@@ -321,7 +322,10 @@ function Content({ galaxy, system, next = null, callout, warpRef }: ContentProps
     <>
       <Director warpRef={warpRef} galaxy={galaxy} system={system} next={next} />
       <FlyControls />
-      <OrbitControls makeDefault enablePan={false} enableDamping dampingFactor={0.07} rotateSpeed={0.45} zoomSpeed={0.7} minDistance={22} maxDistance={900} maxPolarAngle={Math.PI * 0.62} />
+      {/* W A S D 로 옮길 수 있는 궤도 중심의 한계 — 지금 보는 모델의 바깥 반지름에 여유를 둔다 */}
+      <OrbitKeys bound={model ? model.extent.maxR * 1.4 : undefined} />
+      {/* 극각 하한 0.03rad(약 1.7도): 카메라가 정점(y 축)에 정확히 올라서면 lookAt(up=+y)이 무너져 시선이 돈다 — 드래그와 방향키(OrbitKeys)가 같은 한계를 읽는다 */}
+      <OrbitControls makeDefault enablePan={false} enableDamping dampingFactor={0.07} rotateSpeed={0.45} zoomSpeed={0.7} minDistance={22} maxDistance={900} minPolarAngle={0.03} maxPolarAngle={Math.PI * 0.62} />
       <fog attach="fog" args={[LAB.bg, 520, 1600]} />
       <Backdrop radius={1700} stars={900} />
       {/* 장난감 우주 조명 — 랩과 동일한 구성 */}

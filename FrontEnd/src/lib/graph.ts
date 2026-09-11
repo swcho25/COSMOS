@@ -206,10 +206,10 @@ const SIM_DAMP = 0.85;
 const SIM_STEP = 0.18;
 /** 한 스텝 최대 이동 — 겹친 노드가 서로를 걷어차는 순간의 안전판 */
 const MAX_STEP = 4;
-/** 반발 사거리와 세기 */
-const REP_D = 34;
+/** 반발 사거리와 세기 — 사거리를 34→40 으로 늘려 이웃 행성이 더 떨어져 앉는다 (스프링 목표·하드 간격·핵 사다리도 함께 키웠다) */
+const REP_D = 40;
 const REP_K = 0.9;
-/** 간선 스프링 세기 — 목표 거리는 점수 100 → 9, 점수 0 → 27 */
+/** 간선 스프링 세기 — 목표 거리는 점수 100 → 11, 점수 0 → 32 */
 const SPRING_K = 0.06;
 /**
  * 팔 중심선으로 모으는 접선 인력.
@@ -225,12 +225,20 @@ const RADIUS_JITTER = 0.12;
 const RADIUS_K = 0.03;
 /** 마지막 이 횟수 동안은 하드 최소 간격을 직접 밀어 지킨다 */
 const HARD_TAIL = 40;
-/** 하드 최소 간격 = (반지름 합) × 이 값 + 여백 — 칩과 행성이 겹치지 않는 실측 기준 */
-const GAP_K = 3.4;
-const GAP_PAD = 4;
+/** 하드 최소 간격 = (반지름 합) × 이 값 + 여백 — 칩(화면 26px)과 행성이 겹치지 않고 이웃이 한눈에 구분되는 간격 */
+const GAP_K = 4.0;
+const GAP_PAD = 5;
+/**
+ * 핵 사다리의 최소 간격 배율 — 핵 6개는 하드 간격 패스가 밀지 않으므로(고정) 사다리를 늘릴 때 이 배율로 벌린다.
+ * 기본 자세에서 이름표가 보이는 것은 핵 허브들뿐이라 여기가 벌어져야 "간격이 넓어졌다" 가 눈에 보인다.
+ * 목업(허브 반지름 2.3~2.8)에서는 이 요구치(배율 ≈ 3.5)를 CORE_SCALE_MAX 2.8 이 먼저 막아 실제 사다리는 2.8 배로 고정된다 —
+ * 즉 지금 벌지 크기는 CORE_SCALE_MAX 가 정하고, 이 값은 허브가 더 작은 데이터에서만 효력이 있다.
+ * 결과(실측): 핵 최소 쌍거리 8.3 → 11.7, 기본 자세 화면 간격 +28%, 팔 시작 반지름 32 → 46
+ */
+const CORE_GAP_K = 1.8;
 /** 팔 배정 그리디의 부하 벌점 — 없으면 친화도가 큰 팔 하나로 전부 몰려 나선이 한 줄만 굵어진다 */
 const ARM_BALANCE = 0.4;
-/** 핵 사다리를 늘리는 배율의 상한 — 벌지가 원반만큼 커지지 않게 */
+/** 핵 사다리를 늘리는 배율의 상한 — 벌지가 원반만큼 커지지 않게 (2.8 이면 바깥 허브 r ≈ 36, 팔 시작 r ≈ 46 으로 원반 반지름의 약 27%) */
 const CORE_SCALE_MAX = 2.8;
 /**
  * 핵 6개가 처음 각도에서 벗어날 수 있는 한계(rad).
@@ -320,13 +328,13 @@ export function layoutGalaxy(graph: LatestGraph): SceneModel {
       const rj = coreBase(j);
       const gap = Math.max(0, Math.abs(((((coreAngle(i) - coreAngle(j) + Math.PI) % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2)) - Math.PI) - 2 * CORE_DRIFT);
       const d = Math.sqrt(Math.max(0, ri * ri + rj * rj - 2 * ri * rj * Math.cos(gap)));
-      const need = sizeOf.get(ranked[i].companyId)! + sizeOf.get(ranked[j].companyId)! + 3;
+      const need = (sizeOf.get(ranked[i].companyId)! + sizeOf.get(ranked[j].companyId)!) * CORE_GAP_K + GAP_PAD;
       if (d > 1e-3) coreScale = Math.max(coreScale, need / d);
     }
   }
   coreScale = Math.min(coreScale, CORE_SCALE_MAX);
-  // 팔의 시작 반지름 — 핵 사다리 바깥보다 안쪽에서 출발하면 벌지 안에 팔이 파묻힌다
-  const rStart = Math.max(R_CORE, coreBase(coreCount - 1) * coreScale + 6);
+  // 팔의 시작 반지름 — 핵 사다리 바깥보다 안쪽에서 출발하면 벌지 안에 팔이 파묻힌다. 바깥 허브와 첫 팔 행성 사이에도 여백(GAP_PAD 두 배)을 둔다
+  const rStart = Math.max(R_CORE, coreBase(coreCount - 1) * coreScale + GAP_PAD * 2);
   // 기업이 몇 개 없는 필터 뷰에서 rMax 가 rStart 보다 작아지면 랭크가 커질수록 안으로 들어간다 — 최소 폭을 보장한다
   const rOuter = Math.max(rMax, rStart + 20);
 
@@ -378,7 +386,7 @@ export function layoutGalaxy(graph: LatestGraph): SceneModel {
     ea.push(a);
     eb.push(b);
     ew.push(w);
-    ed0.push(9 + (1 - w) * 18);
+    ed0.push(11 + (1 - w) * 21);
   });
 
   /* 5) 2D(xz) 힘 시뮬레이션 */
@@ -398,8 +406,8 @@ export function layoutGalaxy(graph: LatestGraph): SceneModel {
       fx[b] -= dx * f;
       fz[b] -= dz * f;
     }
-    // b) 반발 — 사거리로 정규화한다. (34-d)/d 그대로면 근거리 힘이 스프링의 수십 배라
-    //    모든 간선이 사거리 끝(34)에 붙어 '점수가 높을수록 가깝다' 가 사라진다
+    // b) 반발 — 사거리로 정규화한다. (REP_D-d)/d 그대로면 근거리 힘이 스프링의 수십 배라
+    //    모든 간선이 사거리 끝(REP_D)에 붙어 '점수가 높을수록 가깝다' 가 사라진다
     for (let i = 0; i < n; i += 1) {
       for (let j = i + 1; j < n; j += 1) {
         const dx = x[j] - x[i];
