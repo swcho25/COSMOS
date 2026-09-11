@@ -134,20 +134,63 @@
 }
 .map-stage {
   position: relative;
-  height: 460px;
   margin-top: 14px;
+  padding: 16px;
+  border-radius: 14px;
   background: #05070f;
+  overflow: hidden;
 }
-.map-stage canvas {
-  display: block;
+/*
+ * 뉴스 관계 지도 — 은하 뷰가 이미 은하 페이지에 있어 여기서 다시 그릴 이유가 없다는 팀 합의로 3D를
+ * 걷어냈다. 이어서 시도한 2열 화살표 다이어그램도 관련 기업이 수십 개로 늘면 선이 한 점에 뭉쳐 오히려
+ * 안 읽혔다 — 허브 하나·위성 다수 구조엔 노드-링크 다이어그램 자체가 안 맞는다고 보고, 관계 유형별로
+ * 묶어 점수순으로 나열하는 목록으로 바꿨다. '1홉 관계까지 확장' 기능도 목록이 지나치게 길어지고
+ * '뉴스가 실제로 언급한 기업'만 보는 편이 명확하다는 팀 합의로 없앴다 — 그래서 이 목록에 나오는 관계는
+ * 항상 선택된 뉴스가 직접 언급한 기업들 사이의 관계뿐이다.
+ */
+.rel2d-wrap {
+  max-height: 480px;
+  overflow-y: auto;
+  padding-right: 2px;
 }
-.map-overlay {
-  position: absolute;
-  z-index: 3;
-  pointer-events: none;
+.rel2d-group + .rel2d-group {
+  margin-top: 18px;
 }
-.map-overlay > * {
-  pointer-events: auto;
+.rel2d-group-head {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 4px 0 2px;
+}
+.rel2d-group-head .kick {
+  font-size: 12px;
+}
+.rel2d-group-head .meta {
+  margin-left: auto;
+}
+.rel2d-sibling {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 0;
+  flex-wrap: wrap;
+}
+.rel2d-chip {
+  padding: 5px 12px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  font-size: 13px;
+  font-weight: 600;
+}
+.rel2d-chip:hover {
+  border-color: rgba(198, 165, 255, 0.5);
+  color: var(--text);
+}
+.rel2d-chip.on {
+  border-color: rgba(109, 140, 255, 0.55);
+  background: rgba(109, 140, 255, 0.12);
+  color: var(--primary-2);
 }
 .map-foot {
   padding: 12px 20px 14px;
@@ -258,7 +301,7 @@
   .analysis {
     grid-template-columns: 1fr;
   }
-  .map-stage {
-    height: 380px;
+  .rel2d-wrap {
+    max-height: 380px;
   }
 }
