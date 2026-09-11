@@ -1,5 +1,6 @@
 import { useEffect } from "react";
-import { fmtDateTime, fmtNumber } from "@/lib/format";
+import { fmtCompactPrice, fmtDateTime, fmtNumber } from "@/lib/format";
+import { marketCurrency } from "@/lib/meta";
 import { useCompany, useCompanyMetrics, useToggleWatch } from "@/lib/queries";
 import { useSession } from "@/store/session";
 import { useUi } from "@/store/ui";
@@ -95,6 +96,8 @@ export default function CompanyPreviewDialog({ companyId, onClose, onOpenGalaxy 
               <Kpi label="뉴스 언급 (30일)" value={metrics.data ? fmtNumber(metrics.data.newsMentionCount) : "-"} unit="건" />
               <Kpi label="뉴스 분위기" value={metrics.data?.sentimentScore != null ? Math.round(metrics.data.sentimentScore * 100) : "-"} unit="/100" />
               <Kpi label="연결 관계" value={metrics.data ? fmtNumber(metrics.data.relationshipCount) : "-"} unit="개" />
+              {/* 시가총액은 company 테이블에 아직 컬럼이 없어 백엔드가 값을 줄 때만 나타난다(은하 뷰 주가 탭과 동일 규칙) */}
+              {c.marketCap != null && <Kpi label="시가총액" value={fmtCompactPrice(c.marketCap, marketCurrency(c.market))} />}
             </div>
             {metrics.data?.measuredAt && <div className="meta mt-8">{fmtDateTime(metrics.data.measuredAt)} 기준 지표</div>}
 
