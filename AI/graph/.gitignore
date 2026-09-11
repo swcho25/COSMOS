@@ -1,0 +1,5 @@
+data/edges_*.csv
+data/ownership_*.csv
+data/prices_raw/
+data/prices_daily.parquet
+data/prices_manifest.json
