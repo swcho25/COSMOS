@@ -18,5 +18,21 @@ services:
       timeout: 3s
       retries: 10
 
+  # Refresh Token 보관용 (14일 TTL). 캐시 용도로도 함께 사용한다.
+  redis:
+    image: redis:7-alpine
+    container_name: cosmos-redis
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "6379:6379"
+    volumes:
+      - cosmos-redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
 volumes:
   cosmos-pgdata:
+  cosmos-redisdata:
