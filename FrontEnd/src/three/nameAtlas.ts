@@ -16,7 +16,8 @@ const SIZE = 2048;
 const ROW = 44;
 const PX = 36;
 const PAD = 12;
-const FONT_SPEC = `700 ${PX}px ${FONT}`;
+/** 기업명·역할 태그는 보통 굵기(400)로 굽는다 */
+const FONT_SPEC = `400 ${PX}px ${FONT}`;
 
 export interface NameCell {
   u: number;
