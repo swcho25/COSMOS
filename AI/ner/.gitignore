@@ -1,0 +1,12 @@
+.venv/
+__pycache__/
+*.pyc
+# large local samples pulled from HDFS and derived review files (regenerate with spark/sample_news.py)
+data/sample_*.jsonl
+data/review_*.jsonl
+data/alias_candidates_*.csv
+# model weights and NER corpora (large; regenerate with train_ner.py / make_bio_dataset.py)
+models/
+data/ner_corpus_*.jsonl
+data/ner_corpus_*.stats.json
+data/eval/v12_audit/sample_*.jsonl

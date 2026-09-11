@@ -1,9 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
-import type { GraphEdge, LatestGraph, NewsDetail, NewsRelatedCompany, Sentiment } from "@/api/types";
-import MiniScene from "@/three/MiniScene";
-import { layoutNewsSubgraph } from "@/lib/graph";
+import type { GraphEdge, LatestGraph, LatestGraphNode, NewsDetail, NewsRelatedCompany, Sentiment } from "@/api/types";
 import { fmtDateTime, fmtRelative } from "@/lib/format";
 import { SENTIMENTS, SENTIMENT_META, marketLabel, relationshipMeta } from "@/lib/meta";
 import { useCompany, useIndustries, useLatestGraph, useNewsDetail, useNewsFeed, useToggleScrap, useToggleWatch } from "@/lib/queries";
@@ -11,6 +9,7 @@ import { useSession } from "@/store/session";
 import { useUi } from "@/store/ui";
 import { CompanyAvatar, Empty, Icon, Kpi, ScoreBar, SentimentBadge, Skeleton, TypeBadge, TypeLegend } from "@/components/ui";
 import NewsDetailDialog from "./NewsDetailDialog";
+import RelationMap2D from "./RelationMap2D";
 import "./news.css";
 
 /**
@@ -29,7 +28,6 @@ export default function NewsPage() {
   const [industryId, setIndustryId] = useState<string | null>(null);
   const [sentiment, setSentiment] = useState<Sentiment | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [expand, setExpand] = useState(true);
   const [keywordInput, setKeywordInput] = useState("");
   const [keyword, setKeyword] = useState("");
   const [showDetail, setShowDetail] = useState(false);
@@ -46,13 +44,11 @@ export default function NewsPage() {
   const feed = useNewsFeed({ companyId: companyId ?? undefined, industryId: companyId ? undefined : industryId ?? undefined, sentiment: sentiment ?? undefined, keyword: keyword || undefined, size: 20 });
   const items = useMemo(() => feed.data?.pages.flatMap((p) => p.items) ?? [], [feed.data]);
 
-  // 목록이 바뀌면 첫 기사를 선택한다
-  useEffect(() => {
-    if (!items.length) return;
-    if (!selectedId || !items.some((n) => n.newsId === selectedId)) setSelectedId(items[0].newsId);
-  }, [items, selectedId]);
+  // 목록이 바뀌거나(필터 변경 등) 선택된 기사가 새 목록에 없으면 첫 기사를 기본값으로 본다.
+  // effect에서 setState로 동기화하면 렌더가 한 번 더 캐스케이드되므로, 렌더링 중 파생값으로 계산한다.
+  const activeId = selectedId && items.some((n) => n.newsId === selectedId) ? selectedId : items[0]?.newsId ?? null;
 
-  const detail = useNewsDetail(selectedId);
+  const detail = useNewsDetail(activeId);
   const toggleScrap = useToggleScrap();
   const toggleWatch = useToggleWatch();
 
@@ -64,7 +60,10 @@ export default function NewsPage() {
     setSentiment(null);
   };
 
-  /* 관계 지도 모델: 선택 뉴스의 관련 기업 (+1홉) */
+  /* 관계 지도 모델: 선택 뉴스가 직접 언급한 기업들. 1홉 확장은 관련 기업이 많은 뉴스에서 선이 한 점에
+   * 뭉치거나 목록이 지나치게 길어지는 문제가 있었고, 무엇보다 '뉴스가 실제로 언급한 기업'만 보는 편이
+   * 명확하다는 팀 합의로 기능 자체를 없앴다 — 은하 뷰의 3D 그래프를 여기 다시 그리지 않기로 한 것과
+   * 같은 이유다(은하 페이지에 이미 1홉·다홉 탐색이 있다). */
   const seedIds = useMemo(() => {
     const d = detail.data;
     if (!d) return [] as string[];
@@ -74,7 +73,12 @@ export default function NewsPage() {
     if (companyId && ids.includes(companyId)) return [companyId, ...ids.filter((x) => x !== companyId)];
     return ids;
   }, [detail.data, companyId]);
-  const model = useMemo(() => (universe.data && seedIds.length ? layoutNewsSubgraph(universe.data, seedIds, expand) : null), [universe.data, seedIds, expand]);
+  const seedSet = useMemo(() => new Set(seedIds.filter((id) => universe.data?.nodes.some((n) => n.companyId === id))), [seedIds, universe.data]);
+  const mapNodes: LatestGraphNode[] = useMemo(() => (universe.data ? universe.data.nodes.filter((n) => seedSet.has(n.companyId)) : []), [universe.data, seedSet]);
+  const mapEdges = useMemo(
+    () => (universe.data ? universe.data.edges.filter((e) => seedSet.has(e.sourceCompanyId) && seedSet.has(e.targetCompanyId)) : []),
+    [universe.data, seedSet],
+  );
 
   const analysis = useMemo(() => (detail.data && universe.data ? analyze(detail.data, universe.data) : null), [detail.data, universe.data]);
 
@@ -179,7 +183,7 @@ export default function NewsPage() {
             {feed.isLoading && [0, 1, 2, 3].map((i) => <Skeleton key={i} h={110} style={{ borderRadius: 14 }} />)}
             {!feed.isLoading && !items.length && <Empty>조건에 맞는 뉴스가 없습니다.</Empty>}
             {items.map((n) => (
-              <article key={n.newsId} className={`news-card ${n.newsId === selectedId ? "on" : ""}`} onClick={() => setSelectedId(n.newsId)} role="button" tabIndex={0} onKeyDown={(e) => e.key === "Enter" && setSelectedId(n.newsId)}>
+              <article key={n.newsId} className={`news-card ${n.newsId === activeId ? "on" : ""}`} onClick={() => setSelectedId(n.newsId)} role="button" tabIndex={0} onKeyDown={(e) => e.key === "Enter" && setSelectedId(n.newsId)}>
                 <div className="row between">
                   <div className="row" style={{ gap: 8 }}>
                     <SentimentBadge value={n.sentiment} />
@@ -273,20 +277,15 @@ export default function NewsPage() {
                 )}
               </div>
             </div>
-            <div className="map-tools">
-              <div className="row" style={{ gap: 8 }}>
-                <button type="button" className={`chip chip-sm ${!expand ? "on" : ""}`} onClick={() => setExpand(false)}>
-                  선택 뉴스 기업만
-                </button>
-                <button type="button" className={`chip chip-sm ${expand ? "on" : ""}`} onClick={() => setExpand(true)}>
-                  1홉 관계까지 확장
-                </button>
-              </div>
+            {/* <div className="map-tools">
+              <span className="pill">
+                RELATION MAP · {mapNodes.length} NODES · {mapEdges.length} EDGES
+              </span>
               <TypeLegend />
-            </div>
+            </div> */}
             <div className="map-stage">
-              {model ? (
-                <MiniScene model={model} highlightId={companyId} onPickCompany={(id) => setCompany(id)} onPickEdge={() => navigate(`/?company=${seedIds[0]}`)} />
+              {mapNodes.length ? (
+                <RelationMap2D nodes={mapNodes} edges={mapEdges} highlightId={companyId} onPickCompany={(id) => setCompany(id)} />
               ) : (
                 <div className="stage-loading">
                   <span className="kick">relation map</span>
@@ -294,20 +293,6 @@ export default function NewsPage() {
                   <span>{detail.isLoading || universe.isLoading ? "관계 지도를 만드는 중" : "이 뉴스와 연결된 기업이 그래프에 없습니다"}</span>
                 </div>
               )}
-              <div className="map-overlay" style={{ left: 16, top: 14 }}>
-                <span className="pill">
-                  3D RELATION MAP · {model?.nodes.length ?? 0} NODES · {model?.edges.length ?? 0} EDGES
-                </span>
-              </div>
-              <div className="map-overlay" style={{ right: 16, bottom: 14 }}>
-                <span className="meta">노드 클릭 → 좌측 목록이 그 기업 뉴스로 전환 · 관계선 클릭 → 전체 은하</span>
-              </div>
-            </div>
-            <div className="map-foot">
-              <span className="kick">
-                {model?.nodes.length ?? 0} nodes · {model?.edges.length ?? 0} edges · {companyId ? "company context" : "1 selected news"}
-              </span>
-              <span className="meta">굵고 밝은 선일수록 관계 점수가 높습니다. 흐르는 방향이 공급·투자 방향입니다.</span>
             </div>
           </div>
 
