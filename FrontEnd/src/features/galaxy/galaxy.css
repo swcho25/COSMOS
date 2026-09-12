@@ -23,19 +23,22 @@
   pointer-events: auto;
 }
 
-/* 상단: 검색 + 산업 칩 */
+/* 상단 한 줄: 검색 · 은하 범위 · 산업 선택판. 산업 드롭다운이 이 행 아래에 뜨므로 다른 HUD(경로 스트립 등)보다 한 층 위 */
 .hud-top {
   left: 0;
   right: 0;
   top: 22px;
+  z-index: 6;
   display: flex;
-  flex-direction: column;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 14px;
+  justify-content: center;
+  gap: 10px;
   padding: 0 24px;
 }
 .search-trigger {
-  width: min(490px, 100%);
+  flex: 0 1 490px;
+  min-width: 260px;
   height: 48px;
   padding: 0 10px 0 16px;
   cursor: text;
@@ -58,18 +61,85 @@
   border-radius: 7px;
   padding: 4px 8px;
 }
-.industry-chips {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-  justify-content: center;
-  max-width: 1100px;
+/* 산업 선택판 — 요약 칩(트리거) + 묶음별 드롭다운. 넓은 화면에서는 트리거 오른쪽 끝에 맞춰 왼쪽으로 펼쳐진다
+   (트리거가 행의 오른쪽 끝이라 항상 화면 안에 들어온다). 좁은 화면은 아래 미디어 쿼리에서 행 가운데로 바꾼다 */
+.industry-picker {
+  position: relative;
 }
-.industry-chips .chip {
-  backdrop-filter: blur(8px);
+.industry-trigger {
+  height: 48px;
+  padding: 0 12px 0 14px;
+  gap: 8px;
+  cursor: pointer;
+  color: var(--text-2);
+  white-space: nowrap;
+  background: rgba(3, 9, 20, 0.78);
+  backdrop-filter: blur(10px);
+}
+.industry-trigger:hover {
+  border-color: rgba(109, 140, 255, 0.45);
+}
+.industry-trigger.on {
+  border-color: rgba(109, 140, 255, 0.45);
+  background: rgba(109, 140, 255, 0.14);
+}
+.industry-trigger i {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  flex: none;
+}
+.industry-trigger .lab {
+  font-size: 12px;
+  color: var(--text-4);
+}
+.industry-trigger b {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text);
+}
+.industry-trigger .num {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--primary-2);
+}
+.industry-trigger svg {
+  color: var(--text-4);
+  transition: transform 0.15s;
+}
+.industry-trigger[aria-expanded="true"] svg {
+  transform: rotate(180deg);
+}
+.industry-pop {
+  position: absolute;
+  top: calc(100% + 10px);
+  right: 0;
+  z-index: 7;
+  width: min(760px, calc(100vw - 48px));
+  padding: 14px 16px 16px;
+  border-radius: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.industry-pop-head {
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--border);
+}
+.industry-sec .lab {
+  font-size: 12px;
+  color: var(--text-4);
+  margin-bottom: 8px;
+}
+.industry-sec-items {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.industry-pop .chip {
   background: rgba(10, 14, 24, 0.55);
 }
-.industry-chips .chip.on {
+.industry-pop .chip.on {
   background: rgba(109, 140, 255, 0.22);
 }
 
@@ -425,16 +495,6 @@
 .status-card button:hover {
   background: rgba(255, 255, 255, 0.07);
   color: var(--text);
-}
-
-/* 하단 중앙: 도움말 */
-.hud-help {
-  left: 0;
-  right: 0;
-  bottom: 30px;
-  text-align: center;
-  font-size: 13px;
-  color: var(--text-4);
 }
 
 /* 우하단: 범례 */
@@ -930,7 +990,6 @@
     padding: 0 16px;
     gap: 10px;
   }
-  .industry-chips,
   .my-galaxy-bar {
     flex-wrap: nowrap;
     overflow-x: auto;
@@ -939,8 +998,19 @@
     padding-bottom: 4px;
     scrollbar-width: none;
   }
+  /* 행이 접히면 트리거 위치가 들쭉날쭉하므로 드롭다운은 행(.hud-top) 가운데에 띄운다 */
+  .industry-picker {
+    position: static;
+  }
+  .industry-pop {
+    right: auto;
+    left: 50%;
+    transform: translateX(-50%);
+    width: calc(100% - 32px);
+    max-height: 60vh;
+    overflow-y: auto;
+  }
   .hud-legend,
-  .hud-help,
   .hud-path {
     display: none;
   }

@@ -5,7 +5,6 @@ import { useQueryClient } from "@tanstack/react-query";
 import Scene, { type Callout } from "@/three/Scene";
 import { capScale, layoutGalaxy, layoutMyGalaxy, layoutSystemCached, type CompanyLookup } from "@/lib/graph";
 import { fmtDateTime, fmtRelative } from "@/lib/format";
-import { industryColor } from "@/lib/meta";
 import { companyGraphQuery, useCompanyGraph, useIndustries, useLatestGraph, useNewsFeed, useSessionKey, useToggleWatch, useWatchlist } from "@/lib/queries";
 import { useGalaxy, type GalaxyScope } from "@/store/galaxy";
 import { useSession } from "@/store/session";
@@ -14,6 +13,7 @@ import { Icon, TypeLegend } from "@/components/ui";
 import { LAB } from "@/three/toon";
 import CompanyPanel from "./CompanyPanel";
 import HopSummary from "./HopSummary";
+import IndustryPicker from "./IndustryPicker";
 import MyGalaxyBar, { MyGalaxyEmpty } from "./MyGalaxyBar";
 import PathStrip from "./PathStrip";
 import RelationshipPanel from "./RelationshipPanel";
@@ -195,12 +195,13 @@ export default function GalaxyPage() {
     if (status === "guest" && useGalaxy.getState().scope === "mine") setScope("all");
   }, [status, setScope]);
 
-  /* 키보드: ESC — 역할 필터 → 경로 기준 핀 → 선택 간선 → 은하 복귀 순으로 한 겹씩 벗긴다 */
+  /* 키보드: ESC — 산업 선택판 → 역할 필터 → 경로 기준 핀 → 선택 간선 → 은하 복귀 순으로 한 겹씩 벗긴다 */
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const s = useGalaxy.getState();
       if (e.key === "Escape" && !s.searchOpen) {
-        if (s.roleFilter) s.setRoleFilter(null);
+        if (s.industryOpen) s.setIndustryOpen(false);
+        else if (s.roleFilter) s.setRoleFilter(null);
         else if (s.pinnedId) s.togglePin(s.pinnedId);
         else if (s.selectedEdgeId) selectEdge(null);
         else if (s.focusId && s.phase !== "warp") s.backToGalaxy();
@@ -298,13 +299,13 @@ export default function GalaxyPage() {
       )}
       {showEmpty && <MyGalaxyEmpty outOfSnapshot={watchIds.length > 0} onSearch={() => setSearchOpen(true)} onBack={() => pickScope("all")} />}
 
-      {/* 상단: 검색 + 산업 칩 (은하 뷰에서만) */}
+      {/* 상단 한 줄: 검색 · 은하 범위 · 산업 선택판 (은하 뷰에서만) */}
       {!focusId && (
       <div className="hud hud-top">
         <button type="button" className="field search-trigger" onClick={() => setSearchOpen(true)}>
           <Icon.Search />
           <span>기업명 또는 종목코드를 검색하세요</span>
-          <span className="kbd">Ctrl K</span>
+          <span className="kbd">/</span>
         </button>
         {/* 은하 범위 — 탭을 늘리지 않고 같은 화면을 전체 우주 / 내 관심 기업 두 가지로 쓴다 */}
         <div className="seg scope-seg" role="group" aria-label="은하 범위">
@@ -327,27 +328,15 @@ export default function GalaxyPage() {
             onPick={pickCompany}
           />
         ) : (
-        <div className="industry-chips" role="group" aria-label="산업 필터">
-          <button type="button" className={`chip ${industryId === null ? "on" : ""}`} onClick={() => (setIndustry(null), focusId && warpTo(null))}>
-            전체 <b className="num">{universe.data?.nodes.length ?? "-"}</b>
-          </button>
-          {industries.data?.items
-            .filter((i) => i.companyCount > 0)
-            .map((i) => (
-              <button
-                key={i.industryId}
-                type="button"
-                className={`chip ${industryId === i.industryId ? "on" : ""}`}
-                onClick={() => {
-                  setIndustry(industryId === i.industryId ? null : i.industryId);
-                  if (focusId) warpTo(null);
-                }}
-              >
-                <i style={{ background: industryColor(i.name) }} />
-                {i.name} <b className="num">{i.companyCount}</b>
-              </button>
-            ))}
-        </div>
+          <IndustryPicker
+            industries={industries.data?.items ?? []}
+            total={universe.data?.nodes.length}
+            value={industryId}
+            onChange={(id) => {
+              setIndustry(id);
+              if (focusId) warpTo(null);
+            }}
+          />
         )}
       </div>
       )}
@@ -364,7 +353,7 @@ export default function GalaxyPage() {
             <span className="meta">중심 관계망 · 최대 3단계</span>
           </div>
           <button type="button" className="crumb" onClick={() => setSearchOpen(true)} title="다른 기업 검색">
-            <Icon.Search /> <span className="kbd">Ctrl K</span>
+            <Icon.Search /> <span className="kbd">/</span>
           </button>
         </div>
       )}
@@ -391,11 +380,6 @@ export default function GalaxyPage() {
           </button>
         </div>
       </div>
-
-      {/* 하단 중앙: 조작 도움말 (은하 뷰에서만) */}
-      {!focusId && !selectedEdgeId && (
-        <div className="hud hud-help">드래그·방향키로 회전 · W A S D 이동 · Shift 가속 · 휠로 확대 · 기업을 누르면 워프, 관계선을 누르면 근거를 봅니다 · Shift+클릭으로 경로 기준 고정 · 행성을 끌면 자리를 옮깁니다(새로고침하면 원래대로)</div>
-      )}
 
       {/* 우하단: 관계 유형·최소 점수 (접으면 꼬리표) */}
       {!focusId && !selectedEdgeId && (

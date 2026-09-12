@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useCompanySearch } from "@/lib/queries";
 import { useGalaxy } from "@/store/galaxy";
+import { isTyping, modalOpen } from "@/three/keyboard";
 import { CompanyAvatar, Icon, IndustryBadge, MarketTag } from "@/components/ui";
 
 interface Props {
@@ -22,6 +23,10 @@ export default function SearchPalette({ onPick }: Props) {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
         e.preventDefault();
         setOpen(!useGalaxy.getState().searchOpen);
+      } else if (e.key === "/" && !e.ctrlKey && !e.metaKey && !e.altKey && !useGalaxy.getState().searchOpen && !isTyping() && !modalOpen()) {
+        // 화면에 안내하는 단축키. 입력 상자에 '/' 를 치는 중이거나 다른 모달이 떠 있으면 그대로 둔다 (Ctrl/Cmd+K 는 숨은 별칭)
+        e.preventDefault();
+        setOpen(true);
       } else if (e.key === "Escape" && useGalaxy.getState().searchOpen) setOpen(false);
     };
     window.addEventListener("keydown", onKey);

@@ -49,6 +49,8 @@ interface GalaxyState {
   panelOpen: boolean;
   /** 우하단 관계 유형·최소 점수 카드 펼침 여부 */
   legendOpen: boolean;
+  /** 상단 산업 선택판 펼침 여부 — ESC 한 겹으로 닫히도록 스토어에 둔다 */
+  industryOpen: boolean;
   /** 기업 중심 뷰의 최신 뉴스 콜아웃 닫힘 여부 (기업이 바뀌면 다시 열림) */
   calloutHidden: boolean;
 
@@ -78,6 +80,7 @@ interface GalaxyState {
   setSearchOpen(v: boolean): void;
   setPanelOpen(v: boolean): void;
   toggleLegend(): void;
+  setIndustryOpen(v: boolean): void;
   hideCallout(): void;
 }
 
@@ -110,6 +113,7 @@ export const useGalaxy = create<GalaxyState>((set, get) => ({
   searchOpen: false,
   panelOpen: true,
   legendOpen: true,
+  industryOpen: false,
   calloutHidden: false,
 
   warpTo(companyId) {
@@ -129,6 +133,7 @@ export const useGalaxy = create<GalaxyState>((set, get) => ({
       roleFilter: null,
       panelOpen: true,
       calloutHidden: false,
+      industryOpen: false,
     });
   },
   commitWarp() {
@@ -164,7 +169,7 @@ export const useGalaxy = create<GalaxyState>((set, get) => ({
 
   setScope(scope) {
     // 범위가 바뀌면 모델이 통째로 갈린다 — 새 모델에 없을 수 있는 상태(선택 간선·경로 핀·역할 필터)를 setIndustry 와 같게 턴다
-    set({ scope, selectedEdgeId: null, pinnedId: null, roleFilter: null });
+    set({ scope, selectedEdgeId: null, pinnedId: null, roleFilter: null, industryOpen: false });
   },
   toggleNeighbors() {
     set((s) => ({ includeNeighbors: !s.includeNeighbors }));
@@ -213,6 +218,9 @@ export const useGalaxy = create<GalaxyState>((set, get) => ({
   },
   toggleLegend() {
     set((s) => ({ legendOpen: !s.legendOpen }));
+  },
+  setIndustryOpen(v) {
+    set({ industryOpen: v });
   },
   hideCallout() {
     set({ calloutHidden: true });

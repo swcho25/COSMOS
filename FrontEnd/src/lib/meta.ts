@@ -34,6 +34,36 @@ export function industryColor(name: string | undefined | null) {
 }
 
 /* ------------------------------ 관계 유형 ------------------------------ */
+/**
+ * 산업 선택판의 묶음 — industry.parent_industry_id 가 비어 있는 목업용 임시 분류다.
+ * 서버가 parentIndustryId 를 채워 주면 IndustryPicker 가 그 계층을 우선 쓰고 이 맵은 보지 않는다.
+ * 키는 INDUSTRY_COLORS 와 같은 산업명이어야 한다.
+ */
+export const INDUSTRY_GROUP_ORDER = ["IT·플랫폼", "제조·모빌리티", "에너지·소재", "소비·바이오", "금융·지주", "기타"];
+const INDUSTRY_GROUPS: Record<string, string> = {
+  반도체: "IT·플랫폼",
+  "소프트웨어·AI": "IT·플랫폼",
+  "인터넷·플랫폼": "IT·플랫폼",
+  "전자부품·하드웨어": "IT·플랫폼",
+  통신: "IT·플랫폼",
+  "미디어·게임·엔터": "IT·플랫폼",
+  자동차: "제조·모빌리티",
+  "2차전지": "제조·모빌리티",
+  "조선·해운·운송": "제조·모빌리티",
+  "방산·항공우주": "제조·모빌리티",
+  "건설·기계·산업재": "제조·모빌리티",
+  "전력·에너지설비": "에너지·소재",
+  "정유·화학·에너지": "에너지·소재",
+  "철강·비철·소재": "에너지·소재",
+  "소비재·유통": "소비·바이오",
+  "바이오·헬스케어": "소비·바이오",
+  금융: "금융·지주",
+  지주회사: "금융·지주",
+};
+export function industryGroup(name: string) {
+  return INDUSTRY_GROUPS[name] ?? "기타";
+}
+
 export interface RelationshipMeta {
   code: RelationshipType;
   label: string;

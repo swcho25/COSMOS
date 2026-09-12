@@ -77,7 +77,7 @@ export function MyGalaxyEmpty({ outOfSnapshot, onSearch, onBack }: { outOfSnapsh
         )}
         <div className="row mt-16">
           <button type="button" className="btn btn-p" onClick={onSearch}>
-            <Icon.Search /> 기업 검색 <span className="kbd">Ctrl K</span>
+            <Icon.Search /> 기업 검색 <span className="kbd">/</span>
           </button>
           <button type="button" className="btn btn-g" onClick={onBack}>
             전체 은하 보기
