@@ -772,3 +772,91 @@ button:disabled {
     display: none;
   }
 }
+
+/* ------------------------------------------------------------------ */
+/* 인증 폼 — 비밀번호 규칙 · 중복 확인 · 보조 안내                          */
+/* ------------------------------------------------------------------ */
+.avail {
+  font-size: 12px;
+  white-space: nowrap;
+  color: var(--text-4);
+}
+.avail.yes {
+  color: var(--pos-fg);
+}
+.avail.no {
+  color: var(--neg-fg);
+}
+.eye-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  margin-right: -6px;
+  border-radius: var(--r-sm);
+  color: var(--text-4);
+}
+.eye-btn:hover {
+  color: var(--text-2);
+}
+.pw-rules {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  margin: -6px 0 0;
+  padding: 0 2px;
+  list-style: none;
+  font-size: 12px;
+  color: var(--text-4);
+}
+.pw-rules li {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.pw-rules li::before {
+  content: "○";
+  font-size: 10px;
+}
+.pw-rules li.ok {
+  color: var(--pos-fg);
+}
+.pw-rules li.ok::before {
+  content: "●";
+}
+.pw-rules li.bad {
+  color: var(--neg-fg);
+}
+.pw-rules li.bad::before {
+  content: "!";
+  font-weight: 700;
+}
+.caps-hint {
+  font-size: 12px;
+  color: var(--warn-fg);
+  margin-top: -6px;
+}
+.form-note {
+  font-size: 13px;
+  color: var(--pos-fg);
+  background: rgba(42, 199, 105, 0.08);
+  border: 1px solid rgba(42, 199, 105, 0.25);
+  border-radius: 10px;
+  padding: 10px 12px;
+}
+.remember {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--text-3);
+  cursor: pointer;
+  user-select: none;
+}
+.remember input {
+  width: 15px;
+  height: 15px;
+  accent-color: var(--primary);
+  cursor: pointer;
+}

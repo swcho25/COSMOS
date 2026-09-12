@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import Header from "@/components/Header";
@@ -20,11 +20,15 @@ const queryClient = new QueryClient({
 function SessionBoot() {
   const bootstrap = useSession((s) => s.bootstrap);
   const sessionKey = useSession((s) => s.sessionKey);
+  const lastKey = useRef(sessionKey);
   useEffect(() => {
     void bootstrap();
   }, [bootstrap]);
-  // 로그인 사용자가 바뀌면 개인화 응답(watched·scrapped·personalized)을 다시 받는다
+  // 로그인 사용자가 바뀌면 개인화 응답(watched·scrapped·personalized)을 다시 받는다.
+  // 마운트 직후 한 번은 무효화할 캐시가 없으므로 건너뛴다 — 첫 로드 중복 호출의 원인이었다
   useEffect(() => {
+    if (lastKey.current === sessionKey) return;
+    lastKey.current = sessionKey;
     void queryClient.invalidateQueries();
   }, [sessionKey]);
   return null;

@@ -248,7 +248,8 @@ export const mockApi: CosmosApi = {
       if (list.some((u) => u.nickname === nickname)) fail(409, "NICKNAME_DUPLICATED", "이미 사용 중인 닉네임입니다.");
       // BIGSERIAL 처럼 1부터 증가하는 정수를 발급한다 (DEMO_USER 가 1)
       const nextId = list.reduce((mx, u) => Math.max(mx, u.userId), 0) + 1;
-      const user: StoredUser = { userId: nextId, email, password, nickname: nickname.trim() };
+      // 백엔드(UserService)가 이메일을 소문자로 정규화해 저장하므로 목업도 같게 맞춘다 — 헤더·내 페이지 표기가 실서버와 어긋나지 않게
+      const user: StoredUser = { userId: nextId, email: email.trim().toLowerCase(), password, nickname: nickname.trim() };
       list.push(user);
       write(LS.users, list);
       return { userId: user.userId, email: user.email, nickname: user.nickname };
