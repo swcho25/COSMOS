@@ -1,4 +1,4 @@
-/** 씬 키 입력 공용 헬퍼 — FlyControls(탐색 모드)와 OrbitKeys(궤도 모드)가 같은 규칙으로 키를 읽는다 */
+/** 씬 키 입력 헬퍼 — OrbitKeys 가 키를 읽고 HUD·입력 상자·모달에 양보하는 규칙 */
 
 /** 일부 환경(자동화 도구·가상 키보드)은 e.code 를 비워 보내므로 e.key 로 보완한다 */
 export function codeOf(e: KeyboardEvent) {

@@ -173,7 +173,7 @@ function filteredRaycast(accept: (instanceId: number, uv: THREE.Vector2) => bool
  * 기업 노드 = 저폴리 툰 행성 (장난감 우주 스타일).
  * - 산업색에서 만든 팔레트로 면 단위 바다·대륙을 칠하고, 대륙형·고리형·위성형을 기업 id 시드로 섞는다
  *   (은하 뷰와 기업 중심 뷰에서 같은 기업이 같은 행성으로 보인다)
- * - 크기는 연결 가중치(node.size), 호버·중심·강조로 크기와 밝기를 프레임마다 lerp. 위치는 live 버퍼(morph.ts)에서 읽는다
+ * - 크기는 연결 가중치 + 시가총액(node.size, graph.ts nodeSize), 호버·중심·강조로 크기와 밝기를 프레임마다 lerp. 위치는 live 버퍼(morph.ts)에서 읽는다
  * - 행성 표면은 비워 두고, 로고·기업명은 행성 위 깃발 칩(InstancedMesh 1회)에 놓는다. 칩은 화면상 약 26px 높이로
  *   항상 카메라를 향하고, 티어(허브·첫 껍질·나머지)별 거리 LOD 와 칩 사각형 겹침 판정(cullOverlappingChips)으로 혼잡을 억제한다
  * - 정면 배지(흰 로고 원판)는 emphasis.badges — 호버·중심·선택 간선 양끝 — 에서만 카메라→행성 시선 위에 떠오른다
@@ -651,11 +651,11 @@ export default function CompanyNodes({ model, emphasis, hoveredId, onHover, onCl
    * 주 버튼으로 행성·칩·배지를 누르면 드래그 후보로 잡아 둔다 (실제 시작은 슬롭을 넘긴 pointermove).
    * 카메라 연출 중(인트로 비행·필터 변경 재프레이밍)에는 시작하지 않는다 — 드래그 평면은 시작 시점의 시선으로 한 번만 고정되는데
    * controls.enabled=false 는 사용자 입력만 막을 뿐 Director 의 연출은 계속 카메라를 밀어 옮기므로, 같은 커서 위치가 프레임마다
-   * 다른 점에 떨어져 행성이 커서에서 미끄러진다. FlyControls 가 같은 이유로 cameraBusy.anim 을 보는 것과 같은 가드다.
+   * 다른 점에 떨어져 행성이 커서에서 미끄러진다. OrbitKeys 가 같은 이유로 controls.enabled 를 보는 것과 같은 가드다.
    */
   const beginDrag = (e: ThreeEvent<PointerEvent>, id: string, index: number) => {
     const s = useGalaxy.getState();
-    if (e.nativeEvent.button !== 0 || morphState.plan || s.phase === "warp" || s.navMode === "fly" || cameraBusy.anim) return;
+    if (e.nativeEvent.button !== 0 || morphState.plan || s.phase === "warp" || cameraBusy.anim) return;
     if (!pickable(id)) return;
     e.stopPropagation();
     armDrag(id, index, e.nativeEvent.clientX, e.nativeEvent.clientY, live);

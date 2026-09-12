@@ -3,7 +3,7 @@ import { useSearchParams } from "react-router-dom";
 import type { AltitudeWindow } from "@/api/types";
 import { useQueryClient } from "@tanstack/react-query";
 import Scene, { type Callout } from "@/three/Scene";
-import { layoutGalaxy, layoutSystemCached } from "@/lib/graph";
+import { capScale, layoutGalaxy, layoutSystemCached, type CompanyLookup } from "@/lib/graph";
 import { fmtDateTime, fmtRelative } from "@/lib/format";
 import { industryColor } from "@/lib/meta";
 import { companyGraphQuery, useCompanyGraph, useIndustries, useLatestGraph, useNewsFeed, useSessionKey } from "@/lib/queries";
@@ -76,8 +76,6 @@ export default function GalaxyPage() {
   const toggleLegend = useGalaxy((s) => s.toggleLegend);
   const calloutHidden = useGalaxy((s) => s.calloutHidden);
   const hideCallout = useGalaxy((s) => s.hideCallout);
-  const navMode = useGalaxy((s) => s.navMode);
-  const toggleNavMode = useGalaxy((s) => s.toggleNavMode);
 
   const industries = useIndustries();
   const universe = useLatestGraph(null); // 전체 우주 — 색·시장 조회용
@@ -88,11 +86,14 @@ export default function GalaxyPage() {
   const targetGraph = useCompanyGraph(phase === "warp" ? warpTarget : null);
   const focusNews = useNewsFeed({ companyId: focusId ?? undefined, size: 1 }, Boolean(focusId));
 
-  const galaxyModel = useMemo(() => (latest.data ? layoutGalaxy(latest.data) : null), [latest.data]);
-  const lookup = useMemo(() => {
-    const m = new Map(universe.data?.nodes.map((n) => [n.companyId, n]) ?? []);
+  // 시가총액 척도는 전체 우주 기준으로 한 번 만들어 은하 배치와 기업 중심 배치(lookup)에 같이 준다 — 산업 필터가 켜져도 같은 기업은 같은 크기
+  const capT = useMemo(() => capScale(universe.data?.nodes ?? []), [universe.data]);
+  const galaxyModel = useMemo(() => (latest.data ? layoutGalaxy(latest.data, capT) : null), [latest.data, capT]);
+  const lookup = useMemo<CompanyLookup>(() => {
+    const nodes = universe.data?.nodes ?? [];
+    const m = new Map(nodes.map((n) => [n.companyId, { name: n.name, industryName: n.industryName, market: n.market, stockCode: n.stockCode, capT: capT(n.marketCapKrw) }]));
     return (id: string) => m.get(id);
-  }, [universe.data]);
+  }, [universe.data, capT]);
   // 그래프 객체 기준 캐시(layoutSystemCached) — 커밋 뒤 목적지 그래프가 포커스 그래프가 되어도 같은 SceneModel 이라
   // 씬이 리마운트되지 않고(팝인 없음) 모프가 그대로 이어진다
   const systemModel = useMemo(() => (focusGraph.data ? layoutSystemCached(focusGraph.data, lookup) : null), [focusGraph.data, lookup]);
@@ -261,22 +262,9 @@ export default function GalaxyPage() {
         </div>
       </div>
 
-      {/* 하단 중앙: 카메라 모드 전환 + 도움말 */}
-      <div className="hud hud-nav">
-        <button type="button" className={`hud-tag nav-toggle ${navMode === "fly" ? "on" : ""}`} onClick={toggleNavMode} title="F 키로도 전환됩니다">
-          <span className="nav-icon" aria-hidden>
-            {navMode === "fly" ? "🚀" : "◎"}
-          </span>
-          {navMode === "fly" ? "탐색 모드" : "궤도 모드"}
-          <kbd>F</kbd>
-        </button>
-      </div>
-      {(navMode === "fly" || (!focusId && !selectedEdgeId)) && (
-        <div className="hud hud-help">
-          {navMode === "fly"
-            ? "W A S D 이동 · Q E 위아래 · Shift 가속 · 드래그로 시선 · 휠로 전진 · 기업을 누르면 워프"
-            : "드래그·방향키로 회전 · W A S D 이동 · Shift 가속 · 휠로 확대 · 기업을 누르면 워프, 관계선을 누르면 근거를 봅니다 · Shift+클릭으로 경로 기준 고정 · 행성을 끌면 자리를 옮깁니다(새로고침하면 원래대로)"}
-        </div>
+      {/* 하단 중앙: 조작 도움말 (은하 뷰에서만) */}
+      {!focusId && !selectedEdgeId && (
+        <div className="hud hud-help">드래그·방향키로 회전 · W A S D 이동 · Shift 가속 · 휠로 확대 · 기업을 누르면 워프, 관계선을 누르면 근거를 봅니다 · Shift+클릭으로 경로 기준 고정 · 행성을 끌면 자리를 옮깁니다(새로고침하면 원래대로)</div>
       )}
 
       {/* 우하단: 관계 유형·최소 점수 (접으면 꼬리표) */}

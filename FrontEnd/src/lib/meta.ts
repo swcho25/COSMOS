@@ -2,18 +2,26 @@ import type { ImpactDirection, Market, RelationshipType, Sentiment } from "@/api
 import type { CurrencyCode } from "@/lib/format";
 
 /* ------------------------------ 산업 팔레트 ------------------------------ */
+/** 산업 팔레트 — 목업 산업명(src/mock/data.ts IndustryName)과 키가 같아야 한다. 18종이라 색상환에 겹치는 색이 있어 명도·채도로 나눴다 */
 export const INDUSTRY_COLORS: Record<string, string> = {
   반도체: "#5FB8FF",
   "2차전지": "#4FE8C0",
   자동차: "#FFB457",
   "인터넷·플랫폼": "#B98CFF",
   "바이오·헬스케어": "#FF7FA4",
-  "에너지·중공업": "#FFE27A",
   "소프트웨어·AI": "#5CE1E6",
-  "금융·지주": "#9DB0FF",
   "소비재·유통": "#B6F26B",
-  "통신·미디어": "#E58CFF",
-  "철강·화학·소재": "#FF7A6B",
+  "전자부품·하드웨어": "#7F8FFF",
+  "미디어·게임·엔터": "#E58CFF",
+  통신: "#B3D4FF",
+  "조선·해운·운송": "#3D8BFF",
+  "방산·항공우주": "#8FB9A8",
+  "전력·에너지설비": "#FFE27A",
+  "정유·화학·에너지": "#FF7A6B",
+  "철강·비철·소재": "#C4CBD4",
+  "건설·기계·산업재": "#D9B26F",
+  금융: "#7BDC6E",
+  지주회사: "#D9A0C8",
 };
 const FALLBACK_COLORS = ["#7FD3FF", "#FFD27F", "#8CFFC9", "#FF9FCF", "#C0C8FF"];
 

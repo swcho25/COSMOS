@@ -7,8 +7,8 @@ import { codeOf, focusScrolls, isTyping, modalOpen } from "./keyboard";
 /** 방향키 회전 각속도(rad/s)와 Shift 가속 배율 — 한 바퀴에 약 5초, Shift 로 2초 남짓 */
 const TURN = 1.25;
 const BOOST = 2.4;
-/** W A S D 이동 속도 — 궤도 거리에 비례(초당 거리의 1/4)해 가까이서는 섬세하게, 멀리서는 크게 움직인다. 기본 프레이밍(거리 약 230)에서
-    FlyControls 의 SPEED 55 와 비슷하다. 아래·위 한계는 월드 단위/초 */
+/** W A S D 이동 속도 — 궤도 거리에 비례(초당 거리의 1/4)해 가까이서는 섬세하게, 멀리서는 크게 움직인다. 기본 프레이밍(거리 약 250~290)에서
+    초당 60~70 유닛. 아래·위 한계는 월드 단위/초 */
 const PAN = 0.25;
 const PAN_MIN = 10;
 const PAN_MAX = 150;
@@ -44,7 +44,7 @@ interface Orbit {
  *  - ← → 는 은하 둘레를 돌고(방위각), ↑ ↓ 는 내려다보는 각도(극각)를 바꾼다. W S 는 시선 방향(원반 평면에 눕힌)으로 앞뒤,
  *    A D 는 좌우로 궤도 중심을 옮긴다 — 카메라도 같은 만큼 따라가므로 옮긴 자리를 중심으로 계속 돌려볼 수 있다. Shift 로 둘 다 가속
  *  - OrbitControls 자체의 키 입력(listenToKeyEvents)은 keydown 반복에 의존해 끊기고, 수식키 없는 방향키는 팬(꺼져 있음)이라
- *    여기서 프레임마다 속도로 움직인다. 관성은 FlyControls 와 같은 곡선이라 두 모드의 손맛이 비슷하다
+ *    여기서 프레임마다 속도로 움직인다. 관성(0.002^dt 로 수렴)으로 시작·정지가 부드럽다
  *  - 카메라 위치(와 target)만 옮기고 시선을 target 으로 다시 맞춘다. controls.update() 는 부르지 않는다 — drei 가 프레임 첫머리
  *    (priority -1)에 이미 불렀고, 한 번 더 부르면 그 프레임의 드래그 감쇠가 두 번 진행돼 드래그 관성이 반으로 꺾인다. 다음 프레임의
  *    update() 가 이 위치에서 구면좌표를 다시 읽으므로 드래그 회전과 자연히 합쳐진다 (Director 의 연출 카메라와 같은 방식)
@@ -52,13 +52,12 @@ interface Orbit {
  *    않는다 — 드래그가 남긴 자세를 방향키가 건드리면 첫 프레임에 튀기 때문. 이동도 bound 에 닿으면 바깥으로 미는 성분만 끊어 가장자리를 따라 미끄러진다
  *  - 방향은 three 의 기본 키 규약을 따른다: ← 는 카메라가 왼쪽으로 돌아가고(장면은 오른쪽으로 흐름), ↑ 는 더 위에서 내려다본다
  * 카메라가 잠긴 동안(워프·인트로·재프레이밍·행성 드래그 — 판정은 Director 가 controls.enabled 한 곳에 쓴다), 검색 팔레트가 열려 있을 때,
- * 모달이 떠 있을 때, 포커스가 스크롤 가능한 HUD(우측 패널 목록) 안에 있을 때(방향키만)는 받지 않는다. 탐색 모드의 키는 FlyControls 가 쓴다.
+ * 모달이 떠 있을 때, 포커스가 스크롤 가능한 HUD(우측 패널 목록) 안에 있을 때(방향키만)는 받지 않는다.
  */
 /** @param bound 궤도 중심이 원점에서 벗어날 수 있는 평면 반지름 — 가장자리를 바깥에서 볼 여유만 두고 빈 우주로 나가지 않게 */
 export default function OrbitKeys({ bound = PAN_BOUND }: { bound?: number }) {
   const camera = useThree((s) => s.camera);
   const controls = useThree((s) => s.controls) as unknown as Orbit | null;
-  const navMode = useGalaxy((s) => s.navMode);
 
   // 렌더 중에는 .current 를 읽지 않는다(react-hooks/refs) — 이펙트·프레임 안에서만 꺼내 쓴다
   const stRef = useRef({
@@ -70,14 +69,6 @@ export default function OrbitKeys({ bound = PAN_BOUND }: { bound?: number }) {
     /** Shift 가속 — 키 집합이 아니라 매 키 이벤트의 e.shiftKey 로 갱신한다. 집합은 여러 곳에서 통째로 비워지는데 Shift 는 자동 반복이 없어 다시 채워지지 않기 때문 */
     shift: false,
   });
-
-  // 모드가 바뀌면 누르던 키·관성을 버린다 — 탐색 모드로 넘어가며 은하가 계속 돌지 않게
-  useEffect(() => {
-    const st = stRef.current;
-    st.keys.clear();
-    st.vel.set(0, 0);
-    st.pan.set(0, 0, 0);
-  }, [navMode]);
 
   useEffect(() => {
     const st = stRef.current;
@@ -96,7 +87,7 @@ export default function OrbitKeys({ bound = PAN_BOUND }: { bound?: number }) {
       if (e.altKey || e.ctrlKey) return;
       const s = useGalaxy.getState();
       // 모달(로그인 등)이 떠 있으면 그 안의 버튼에 포커스가 있어도 뒤의 은하를 움직이지 않는다
-      if (s.navMode !== "orbit" || s.searchOpen || isTyping() || modalOpen()) return;
+      if (s.searchOpen || isTyping() || modalOpen()) return;
       // 패널 목록 안에 포커스가 있으면 방향키는 그 목록의 스크롤이다 (W A S D 에는 기본 동작이 없어 그대로 받는다)
       if (arrow && focusScrolls(code === "ArrowUp" || code === "ArrowDown" ? "y" : "x")) return;
       st.keys.add(code);
@@ -128,7 +119,7 @@ export default function OrbitKeys({ bound = PAN_BOUND }: { bound?: number }) {
 
   useFrame((_, delta) => {
     const s = useGalaxy.getState();
-    if (!controls || s.navMode !== "orbit") return;
+    if (!controls) return;
     const st = stRef.current;
     const dt = Math.min(delta, 0.05);
     // 카메라가 잠겨 있으면(Director 가 워프·연출·행성 드래그 중 enabled 를 내린다) 관성만 끊고 키는 기억한다 — 워프가 끝나면 이어서 움직인다.
@@ -141,7 +132,7 @@ export default function OrbitKeys({ bound = PAN_BOUND }: { bound?: number }) {
     }
     const k = st.keys;
     const boost = st.shift ? BOOST : 1;
-    // 관성: FlyControls 와 같은 수렴 곡선
+    // 관성: 목표 속도로 부드럽게 수렴
     const damp = 1 - Math.pow(0.002, dt);
 
     // 회전 의도

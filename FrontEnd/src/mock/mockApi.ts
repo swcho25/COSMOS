@@ -18,6 +18,7 @@ import {
   SEED_COMMENTS,
   currentSnapshot,
   isDirected,
+  marketCapKrwOf,
   marketCapOf,
   metricsFor,
   otherEnd,
@@ -503,7 +504,7 @@ export const mockApi: CosmosApi = {
         ...snap,
         personalized: weight !== null && weight !== 50,
         // priceChange 는 은하 뷰의 행성 높이(주가 고도)가 읽는다 — 목업은 같은 시계열에서 뽑아 화면과 주가 탭이 어긋나지 않는다
-        nodes: nodes.map((c) => ({ companyId: c.companyId, name: c.name, stockCode: c.stockCode, market: c.market, industryName: c.industry, priceChange: priceChanges(c) })),
+        nodes: nodes.map((c) => ({ companyId: c.companyId, name: c.name, stockCode: c.stockCode, market: c.market, industryName: c.industry, priceChange: priceChanges(c), marketCapKrw: marketCapKrwOf(c) })),
         edges,
       };
     },
@@ -535,14 +536,33 @@ export const mockApi: CosmosApi = {
         frontier = next;
       }
       const included = new Set(order);
-      const edges = EDGES.filter((e) => included.has(e.sourceCompanyId) && included.has(e.targetCompanyId)).map((e) => toEdge(e, weight));
+      const kept = EDGES.filter((e) => included.has(e.sourceCompanyId) && included.has(e.targetCompanyId));
+      // depth 는 "돌려주는 간선 기준 최단 홉" 이어야 한다(계약: 1 = 직접 관계). 위 확장은 노드당 상위 perNode 개만 따라가므로
+      // 나중 단계에서 들어온 기업이 중심과 직접 간선을 갖는 경우가 생기는데, 그대로 두면 은하 뷰에서 중심이 depth 3 행성까지 긴 빔을 뻗는다
+      const adjacency = new Map<string, string[]>();
+      kept.forEach((e) => {
+        for (const [a, b] of [[e.sourceCompanyId, e.targetCompanyId], [e.targetCompanyId, e.sourceCompanyId]]) {
+          if (!adjacency.has(a)) adjacency.set(a, []);
+          adjacency.get(a)!.push(b);
+        }
+      });
+      const hop = new Map<string, number>([[companyId, 0]]);
+      for (let queue = [companyId]; queue.length; ) {
+        const next: string[] = [];
+        for (const id of queue) for (const o of adjacency.get(id) ?? []) if (!hop.has(o)) {
+          hop.set(o, hop.get(id)! + 1);
+          next.push(o);
+        }
+        queue = next;
+      }
+      const edges = kept.map((e) => toEdge(e, weight));
       const snap = currentSnapshot();
       return {
         snapshotId: snap.snapshotId,
         asOfAt: snap.asOfAt,
         centerCompanyId: companyId,
         personalized: weight !== null && weight !== 50,
-        nodes: order.map((id) => ({ companyId: id, name: COMPANY_BY_ID.get(id)!.name, depth: depth.get(id)! })),
+        nodes: order.map((id) => ({ companyId: id, name: COMPANY_BY_ID.get(id)!.name, depth: Math.min(depth.get(id)!, hop.get(id) ?? depth.get(id)!) })),
         edges,
       };
     },

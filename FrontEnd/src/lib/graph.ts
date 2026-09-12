@@ -40,7 +40,7 @@ export interface SceneCluster {
   industry: string;
   center: Vec3;
   radius: number;
-  /** 구성 기업의 가중 연결도 합 (nodeSize 의 역함수 합) */
+  /** 구성 기업의 가중 연결도 합 — 질량 랭크·반지름 스프링과 같은 척도 */
   mass: number;
 }
 export interface SceneEdge {
@@ -86,12 +86,47 @@ function weightedDegree(edges: GraphEdge[]) {
   return { deg, cnt };
 }
 
-function nodeSize(w: number) {
-  return Math.min(2.9, 0.7 + Math.sqrt(w) * 0.52);
+/**
+ * 행성 반지름(월드 단위) — 연결 가중치 w 와 시가총액 순위 capT(0~1, 없으면 undefined)로 정한다.
+ *  - 시가총액이 있으면: 바닥 0.75 + 연결도 √w·0.36 + 시가총액 capT·1.0. 연결도가 낮아도 시가총액이 크면(capT 1) 2.1 안팎으로
+ *    중간 허브만큼 커져 "큰 회사" 가 한눈에 보이고, 둘 다 큰 허브는 2.9~3.1 이다 (목업 실측: 중간값 1.35 → 1.7, 최대 2.84 → 3.0).
+ *    연결도 계수가 예전(0.52)보다 작아 시가총액이 아주 작은 기업(capT ≈ 0)은 이전보다 최대 15% 작아진다 — 규모를 반영하려는 의도다
+ *  - 없으면(서버가 marketCapKrw 를 아직 안 주는 live): 바닥 0.75 + √w·0.58 — 예전 공식(0.7 + √w·0.52, 상한 2.9)보다 약 10% 크다
+ * 자리(랭크·질량)는 여기가 아니라 가중 연결도가 정한다 — 관계가 자리를, 크기가 규모를 말한다
+ */
+const SIZE_BASE = 0.75;
+const SIZE_MAX = 3.4;
+function nodeSize(w: number, capT: number | undefined) {
+  const s = capT === undefined ? SIZE_BASE + Math.sqrt(w) * 0.58 : SIZE_BASE + Math.sqrt(w) * 0.36 + capT * 1.0;
+  return Math.min(SIZE_MAX, s);
 }
 
-/** 겹침 완화 + 간선 인접 노드끼리 살짝 끌어당기는 결정론적 완화 단계 */
-function relax(nodes: SceneNode[], edges: GraphEdge[], anchor: Map<string, Vec3>, iterations: number, opts: { spring: number; attract: number; planar: boolean }) {
+/**
+ * 시가총액 → 0~1 순위 척도. 로그 스케일에 5·95 백분위를 양끝으로 잡아 삼성전자 같은 극단값이 나머지를 다 눌러 버리지 않게 한다.
+ * 값이 있는 기업이 둘 미만이면(서버가 아직 안 주는 live) undefined 만 돌려 nodeSize 가 연결 가중치만 쓰게 한다.
+ * 척도는 전체 우주 스냅샷으로 한 번 만들어 layoutGalaxy 와 기업 중심 배치(GalaxyPage 의 lookup)에 같이 넘긴다 — 산업 필터로 줄어든
+ * 그래프로 따로 만들면 같은 기업이 은하 뷰와 기업 중심 뷰에서 다른 크기가 된다
+ */
+export type CapScale = (cap: number | null | undefined) => number | undefined;
+export function capScale(nodes: { marketCapKrw?: number | null }[]): CapScale {
+  const logs = nodes
+    .map((n) => n.marketCapKrw)
+    .filter((c): c is number => typeof c === "number" && c > 0)
+    .map((c) => Math.log10(c))
+    .sort((a, b) => a - b);
+  if (logs.length < 2) return () => undefined;
+  const lo = logs[Math.floor((logs.length - 1) * 0.05)];
+  const hi = logs[Math.ceil((logs.length - 1) * 0.95)];
+  if (!(hi > lo)) return () => undefined;
+  return (cap) => (typeof cap === "number" && cap > 0 ? Math.min(1, Math.max(0, (Math.log10(cap) - lo) / (hi - lo))) : undefined);
+}
+
+/**
+ * 겹침 완화 + 간선 인접 노드끼리 살짝 끌어당기는 결정론적 완화 단계.
+ * opts.ring 을 주면(기업 중심 뷰) 매 반복 끝에 노드를 자기 궤도(반지름·SYSTEM_SQUASH 타원)로 되돌린다 — 반발·인력이 각도만 바꾸고
+ * 반지름은 못 바꾸게 해서, 이웃이 많은 허브가 중심 쪽으로 끌려 들어가 궤도가 뭉개지는 일을 막는다
+ */
+function relax(nodes: SceneNode[], edges: GraphEdge[], anchor: Map<string, Vec3>, iterations: number, opts: { spring: number; attract: number; planar: boolean; ring?: Map<string, number> }) {
   const byId = new Map(nodes.map((n) => [n.id, n]));
   for (let it = 0; it < iterations; it += 1) {
     // 반발
@@ -137,14 +172,14 @@ function relax(nodes: SceneNode[], edges: GraphEdge[], anchor: Map<string, Vec3>
       n.pos[0] += (o[0] - n.pos[0]) * opts.spring;
       n.pos[1] += (o[1] - n.pos[1]) * opts.spring;
       n.pos[2] += (o[2] - n.pos[2]) * opts.spring;
+      const ring = opts.ring?.get(n.id);
+      if (ring !== undefined) {
+        const th = Math.atan2(n.pos[2] / SYSTEM_SQUASH, n.pos[0]);
+        n.pos[0] = Math.cos(th) * ring;
+        n.pos[2] = Math.sin(th) * ring * SYSTEM_SQUASH;
+      }
     });
   }
-}
-
-/** 노드 크기(nodeSize)에서 가중 연결도를 되돌린 값 — 랭크·성단 질량이 같은 척도를 쓰도록 한 곳에 둔다 */
-export function massOf(size: number) {
-  const w = (size - 0.7) / 0.52;
-  return w * w;
 }
 
 function finish(kind: SceneModel["kind"], centerId: string | null, nodes: SceneNode[], edges: GraphEdge[], clusters: SceneCluster[]): SceneModel {
@@ -231,7 +266,7 @@ const GAP_PAD = 5;
 /**
  * 핵 사다리의 최소 간격 배율 — 핵 6개는 하드 간격 패스가 밀지 않으므로(고정) 사다리를 늘릴 때 이 배율로 벌린다.
  * 기본 자세에서 이름표가 보이는 것은 핵 허브들뿐이라 여기가 벌어져야 "간격이 넓어졌다" 가 눈에 보인다.
- * 목업(허브 반지름 2.3~2.8)에서는 이 요구치(배율 ≈ 3.5)를 CORE_SCALE_MAX 2.8 이 먼저 막아 실제 사다리는 2.8 배로 고정된다 —
+ * 목업(허브 반지름 2.6~3.0)에서는 이 요구치(배율 ≈ 3.5 이상)를 CORE_SCALE_MAX 2.8 이 먼저 막아 실제 사다리는 2.8 배로 고정된다 —
  * 즉 지금 벌지 크기는 CORE_SCALE_MAX 가 정하고, 이 값은 허브가 더 작은 데이터에서만 효력이 있다.
  * 결과(실측): 핵 최소 쌍거리 8.3 → 11.7, 기본 자세 화면 간격 +28%, 팔 시작 반지름 32 → 46
  */
@@ -251,23 +286,26 @@ const CORE_DRIFT = 0.12;
  * 전체 은하 — 아스트라 사진처럼 납작한 3팔 나선 원반.
  *  - 자리를 정하는 것은 산업이 아니라 관계다. 간선 점수가 높을수록 짧은 스프링으로 묶여 가까이 앉는다
  *  - 반지름은 질량(가중 연결도) 랭크가 정한다. 허브 6개가 핵에 모이고 잎이 팔 끝으로 밀린다
+ *  - 행성 크기(nodeSize)는 연결 가중치에 시가총액(marketCapKrw, 원화 환산·로그 순위)을 더해 정한다 — 자리와는 별개다
  *  - 산업은 "어느 팔에서 출발할지" 만 정하고(관계가 많은 산업끼리 같은 팔), 나머지는 시뮬레이션이 결정한다
  *  - 구가 아니라 원반이라 위에서 비스듬히 보면 어떤 행성도 다른 행성 뒤에 숨지 않는다 (허브 클릭 가능)
  */
-export function layoutGalaxy(graph: LatestGraph): SceneModel {
+/** @param capT 시가총액 척도 — 전체 우주로 만든 것을 넘긴다(GalaxyPage). 생략하면 이 그래프의 노드만으로 만든다 */
+export function layoutGalaxy(graph: LatestGraph, capT: CapScale = capScale(graph.nodes)): SceneModel {
   const rng = seededRandom(hashString(graph.snapshotId));
   const { deg, cnt } = weightedDegree(graph.edges);
   const n = graph.nodes.length;
   if (n === 0) return finish("galaxy", null, [], graph.edges, []);
 
-  /* 1) 질량 랭크 — 같은 질량이면 id 순으로 끊어 같은 스냅샷이면 랭크도 같다 */
-  const sizeOf = new Map(graph.nodes.map((c) => [c.companyId, nodeSize(deg.get(c.companyId) ?? 0)]));
+  /* 1) 질량 랭크 — 질량은 가중 연결도다(시가총액은 크기에만 들어간다). 같은 질량이면 id 순으로 끊어 같은 스냅샷이면 랭크도 같다 */
+  const massOf = (id: string) => deg.get(id) ?? 0;
+  const sizeOf = new Map(graph.nodes.map((c) => [c.companyId, nodeSize(massOf(c.companyId), capT(c.marketCapKrw))]));
   const ranked = graph.nodes.slice().sort((a, b) => {
-    const d = massOf(sizeOf.get(b.companyId)!) - massOf(sizeOf.get(a.companyId)!);
+    const d = massOf(b.companyId) - massOf(a.companyId);
     return d !== 0 ? d : a.companyId < b.companyId ? -1 : 1;
   });
   const index = new Map(ranked.map((c, i) => [c.companyId, i]));
-  const maxMass = Math.max(1e-6, massOf(sizeOf.get(ranked[0].companyId)!));
+  const maxMass = Math.max(1e-6, massOf(ranked[0].companyId));
 
   /* 2) 산업 → 팔 (그리디). 산업 간 간선 가중치 합이 큰 산업끼리 같은 팔에서 출발한다 */
   const industryOf = new Map(graph.nodes.map((c) => [c.companyId, c.industryName]));
@@ -353,7 +391,7 @@ export function layoutGalaxy(graph: LatestGraph): SceneModel {
     const c = ranked[i];
     const size = sizeOf.get(c.companyId)!;
     rad[i] = size;
-    mass[i] = massOf(size);
+    mass[i] = massOf(c.companyId);
     let r: number;
     let th: number;
     if (i < coreCount) {
@@ -544,7 +582,7 @@ export function layoutGalaxy(graph: LatestGraph): SceneModel {
       cx += nd.pos[0];
       cy += nd.pos[1];
       cz += nd.pos[2];
-      m += massOf(nd.size);
+      m += massOf(nd.id);
     });
     cx /= members.length;
     cy /= members.length;
@@ -562,16 +600,43 @@ export function layoutGalaxy(graph: LatestGraph): SceneModel {
 /* ------------------------------------------------------------------ */
 /* 기업 중심 — depth 가 궤도 반지름이 된다                                  */
 /* ------------------------------------------------------------------ */
-/** depth 별 궤도 반지름 — 격자의 궤도 링도 같은 값을 쓴다 */
+/** depth 별 궤도 반지름의 기본값 — 한 궤도에 행성이 많으면 layoutSystem 이 둘레를 확보하도록 키우고 바깥 궤도를 그만큼 밀어낸다 */
 export const ORBIT = [0, 24, 44, 62];
+/** 궤도 타원의 z 축 비율 — 비스듬히 내려다볼 때 원으로 보이도록 살짝 눌렀다 */
+const SYSTEM_SQUASH = 0.82;
+/** 궤도 둘레에서 행성 하나가 차지하는 길이 — 이보다 촘촘해지면 궤도 반지름을 키운다 (행성 지름 4~7 + 이름표 여유) */
+const RING_SPACING = 12;
+/** 이웃 궤도 사이 최소 간격 — 안쪽 궤도가 커지면 바깥 궤도도 이만큼은 밀려난다 */
+const RING_GAP = 18;
 
-/** 기업 중심 배치가 산업·시장·종목코드를 채우는 데 쓰는 조회 함수 (전체 우주 스냅샷에서 만든다) */
-export type CompanyLookup = (id: string) => { industryName: string; market: Market; stockCode: string | null } | undefined;
+/**
+ * 기업 중심 배치가 산업·시장·종목코드·시가총액 순위를 채우는 데 쓰는 조회 함수 (전체 우주 스냅샷에서 만든다).
+ * capT 는 capScale 로 만든 0~1 척도 — 은하 뷰와 같은 척도라야 워프 전후로 행성 크기가 튀지 않는다
+ */
+export type CompanyLookup = (id: string) => { name?: string; industryName: string; market: Market; stockCode: string | null; capT?: number } | undefined;
 
 export function layoutSystem(graph: CompanyGraph, lookup: CompanyLookup): SceneModel {
   const rng = seededRandom(hashString(graph.snapshotId + graph.centerCompanyId));
   const { deg, cnt } = weightedDegree(graph.edges);
-  const depthOf = new Map(graph.nodes.map((n) => [n.companyId, n.depth]));
+  // depth 는 응답값과 "돌려받은 간선 기준 최단 홉" 중 작은 쪽 — 서버가 확장 폭을 제한해 나중 단계에 넣은 기업이 중심과 직접 간선을
+  // 갖는 경우, 그 기업을 depth 1 궤도에 앉혀야 중심에서 바깥 궤도까지 뻗는 긴 빔이 생기지 않는다 (계약: depth 1 = 직접 관계)
+  const adjacency = new Map<string, string[]>();
+  graph.edges.forEach((e) => {
+    for (const [a, b] of [[e.sourceCompanyId, e.targetCompanyId], [e.targetCompanyId, e.sourceCompanyId]]) {
+      if (!adjacency.has(a)) adjacency.set(a, []);
+      adjacency.get(a)!.push(b);
+    }
+  });
+  const hop = new Map<string, number>([[graph.centerCompanyId, 0]]);
+  for (let queue = [graph.centerCompanyId]; queue.length; ) {
+    const next: string[] = [];
+    for (const id of queue) for (const o of adjacency.get(id) ?? []) if (!hop.has(o)) {
+      hop.set(o, hop.get(id)! + 1);
+      next.push(o);
+    }
+    queue = next;
+  }
+  const depthOf = new Map(graph.nodes.map((n) => [n.companyId, Math.min(n.depth, hop.get(n.companyId) ?? n.depth)]));
 
   // 각 노드의 "부모": 더 낮은 depth 의 이웃 중 점수가 가장 높은 것
   const parent = new Map<string, string>();
@@ -590,8 +655,9 @@ export function layoutSystem(graph: CompanyGraph, lookup: CompanyLookup): SceneM
   const angle = new Map<string, number>([[graph.centerCompanyId, 0]]);
   const byDepth = new Map<number, string[]>();
   graph.nodes.forEach((n) => {
-    if (!byDepth.has(n.depth)) byDepth.set(n.depth, []);
-    byDepth.get(n.depth)!.push(n.companyId);
+    const d = depthOf.get(n.companyId)!;
+    if (!byDepth.has(d)) byDepth.set(d, []);
+    byDepth.get(d)!.push(n.companyId);
   });
   const maxDepth = Math.max(...byDepth.keys());
   for (let d = 1; d <= maxDepth; d += 1) {
@@ -618,13 +684,22 @@ export function layoutSystem(graph: CompanyGraph, lookup: CompanyLookup): SceneM
     });
   }
 
+  // 궤도 반지름 — 기본값(ORBIT)에서 출발해, 그 궤도의 행성 수가 둘레(RING_SPACING × 수)를 넘치면 키우고 바깥 궤도는 RING_GAP 만큼 뒤로 민다
+  const ringR: number[] = [0];
+  for (let d = 1; d <= maxDepth; d += 1) {
+    const count = byDepth.get(d)?.length ?? 0;
+    ringR[d] = Math.max(ORBIT[Math.min(d, ORBIT.length - 1)], ringR[d - 1] + RING_GAP, (count * RING_SPACING) / (Math.PI * 2));
+  }
+
   const nodes: SceneNode[] = [];
   const anchor = new Map<string, Vec3>();
+  const ring = new Map<string, number>();
   graph.nodes.forEach((n) => {
-    const d = n.depth;
-    const r = ORBIT[Math.min(d, ORBIT.length - 1)] + (d > 0 ? (rng() - 0.5) * 6 : 0);
+    const d = depthOf.get(n.companyId)!;
+    const r = d === 0 ? 0 : ringR[d] + (rng() - 0.5) * 6;
+    if (d > 0) ring.set(n.companyId, r);
     const a = angle.get(n.companyId) ?? rng() * Math.PI * 2;
-    const pos: Vec3 = d === 0 ? [0, 0, 0] : [Math.cos(a) * r, (rng() - 0.5) * (5 + d * 4), Math.sin(a) * r * 0.82];
+    const pos: Vec3 = d === 0 ? [0, 0, 0] : [Math.cos(a) * r, (rng() - 0.5) * (5 + d * 4), Math.sin(a) * r * SYSTEM_SQUASH];
     anchor.set(n.companyId, [...pos] as Vec3);
     const info = lookup(n.companyId);
     nodes.push({
@@ -635,14 +710,14 @@ export function layoutSystem(graph: CompanyGraph, lookup: CompanyLookup): SceneM
       stockCode: info?.stockCode ?? null,
       color: industryColor(info?.industryName),
       pos,
-      size: d === 0 ? 3.4 : nodeSize(deg.get(n.companyId) ?? 0) * (d === 1 ? 1.15 : d === 2 ? 0.95 : 0.8),
+      size: d === 0 ? 3.4 : nodeSize(deg.get(n.companyId) ?? 0, info?.capT) * (d === 1 ? 1.15 : d === 2 ? 0.95 : 0.8),
       depth: d,
       degree: cnt.get(n.companyId) ?? 0,
       tier: Math.min(d, 2),
     });
   });
   const movable = nodes.filter((n) => n.depth > 0);
-  relax(movable, graph.edges, anchor, 60, { spring: 0.05, attract: 0.0015, planar: false });
+  relax(movable, graph.edges, anchor, 60, { spring: 0.05, attract: 0.0015, planar: false, ring });
   return finish("system", graph.centerCompanyId, nodes, graph.edges, []);
 }
 
