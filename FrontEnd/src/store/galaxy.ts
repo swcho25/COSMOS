@@ -4,6 +4,8 @@ import { RELATIONSHIP_ORDER } from "@/lib/meta";
 import type { RoleKey } from "@/lib/roles";
 
 export type PanelTab = "news" | "price" | "board";
+/** 은하 범위 — "all" 전체 우주, "mine" 관심 기업(+1홉)만 보는 개인 은하 */
+export type GalaxyScope = "all" | "mine";
 export type Phase = "galaxy" | "warp" | "system";
 
 interface GalaxyState {
@@ -23,6 +25,10 @@ interface GalaxyState {
   roleFilter: RoleKey | null;
 
   /* ---- 필터 ---- */
+  /** 은하에 무엇을 올릴지 — 전체 우주냐 내 관심 기업이냐. 같은 화면을 두 범위로 쓴다 */
+  scope: GalaxyScope;
+  /** 내 은하에서 관심 기업의 1홉 이웃까지 함께 올릴지 (끄면 관심 기업끼리의 관계만 남는다) */
+  includeNeighbors: boolean;
   industryId: string | null;
   minScore: number;
   activeTypes: Set<RelationshipType>;
@@ -57,6 +63,8 @@ interface GalaxyState {
   clearSelection(): void;
   togglePin(id: string): void;
   setRoleFilter(r: RoleKey | null): void;
+  setScope(scope: GalaxyScope): void;
+  toggleNeighbors(): void;
   setIndustry(id: string | null): void;
   setMinScore(v: number): void;
   toggleType(t: RelationshipType): void;
@@ -86,6 +94,8 @@ export const useGalaxy = create<GalaxyState>((set, get) => ({
   pinnedId: null,
   roleFilter: null,
 
+  scope: "all",
+  includeNeighbors: true,
   industryId: null,
   minScore: 0,
   activeTypes: new Set(RELATIONSHIP_ORDER),
@@ -152,6 +162,13 @@ export const useGalaxy = create<GalaxyState>((set, get) => ({
     set((s) => ({ roleFilter: s.roleFilter === r ? null : r }));
   },
 
+  setScope(scope) {
+    // 범위가 바뀌면 모델이 통째로 갈린다 — 새 모델에 없을 수 있는 상태(선택 간선·경로 핀·역할 필터)를 setIndustry 와 같게 턴다
+    set({ scope, selectedEdgeId: null, pinnedId: null, roleFilter: null });
+  },
+  toggleNeighbors() {
+    set((s) => ({ includeNeighbors: !s.includeNeighbors }));
+  },
   setIndustry(id) {
     // 새 모델에는 없을 수 있는 상태(선택 간선·경로 핀·역할 필터)를 함께 턴다 — 핀이 남으면 crosshair 커서만 남고 경로가 잡히지 않는다
     set({ industryId: id, selectedEdgeId: null, pinnedId: null, roleFilter: null });

@@ -763,3 +763,52 @@ export function layoutNewsSubgraph(graph: LatestGraph, seedIds: string[], expand
   // 뉴스 지도는 중심 기업 하나가 아니라 관련 기업 묶음이므로 depth 0·1을 같은 궤도에 놓는다
   return model;
 }
+
+/* ------------------------------------------------------------------ */
+/* 개인 은하 — 관심 기업(씨앗) + 1홉 이웃                                   */
+/* ------------------------------------------------------------------ */
+/**
+ * 내 은하 — 우주 스냅샷에서 관심 기업 주변만 잘라 전체 은하와 같은 나선 원반으로 배치한다.
+ *  - 개인 별자리는 "씨앗(관심 기업) + 1홉" 이다. 이웃까지 넣어야 관심 기업끼리 직접 연결이 없어도 무엇으로 이어지는지 보인다
+ *  - 시드(snapshotId)에 관심 기업 목록을 섞는다 — 같은 관심 목록이면 늘 같은 자리(결정론)이고, 전체 은하와는 다른 자리다
+ *  - 이름표 등급: 관심 기업은 0(멀리서도 항상), 이웃은 2 이상(가까이 가야 칩이 뜬다) — 내 별이 무엇인지 한눈에 갈린다
+ * 자리·크기는 layoutGalaxy 가 정하고 여기서는 등급만 다시 매긴다. capT 는 호출자(전체 우주 척도)가 넘겨 줘야
+ * 같은 기업이 전체 은하와 내 은하에서 같은 크기로 보인다.
+ * @returns missing 우주 스냅샷(상위 N개) 밖이라 배치할 자리가 없는 관심 기업 id (입력 순서 유지) · neighborIds 1홉으로 딸려 온 기업 id
+ */
+export function layoutMyGalaxy(
+  graph: LatestGraph,
+  watchIds: string[],
+  includeNeighbors: boolean,
+  capT: CapScale,
+): { model: SceneModel; missing: string[]; neighborIds: string[] } {
+  const inSnapshot = new Set(graph.nodes.map((n) => n.companyId));
+  const watched = watchIds.filter((id) => inSnapshot.has(id));
+  const missing = watchIds.filter((id) => !inSnapshot.has(id));
+  const seed = new Set(watched);
+  // 관심 기업이 하나도 없으면 배치할 것이 없다 — 빈 모델을 돌려주고 화면은 빈 상태 카드를 보여 준다
+  if (!seed.size) return { model: layoutGalaxy({ ...graph, nodes: [], edges: [] }, capT), missing, neighborIds: [] };
+
+  const included = new Set(seed);
+  if (includeNeighbors) {
+    graph.edges.forEach((e) => {
+      if (seed.has(e.sourceCompanyId)) included.add(e.targetCompanyId);
+      if (seed.has(e.targetCompanyId)) included.add(e.sourceCompanyId);
+    });
+  }
+  const nodes = graph.nodes.filter((n) => included.has(n.companyId));
+  const edges = graph.edges.filter((e) => included.has(e.sourceCompanyId) && included.has(e.targetCompanyId));
+  const neighborIds = [...included].filter((id) => !seed.has(id));
+
+  const sub: LatestGraph = {
+    ...graph,
+    snapshotId: `${graph.snapshotId}:mine:${watched.slice().sort().join(",")}${includeNeighbors ? ":n" : ""}`,
+    nodes,
+    edges,
+  };
+  const model = layoutGalaxy(sub, capT);
+  model.nodes.forEach((nd) => {
+    nd.tier = seed.has(nd.id) ? 0 : Math.max(2, nd.tier);
+  });
+  return { model, missing, neighborIds };
+}

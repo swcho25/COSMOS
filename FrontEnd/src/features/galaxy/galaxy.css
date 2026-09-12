@@ -73,6 +73,114 @@
   background: rgba(109, 140, 255, 0.22);
 }
 
+/* 상단: 은하 범위 토글 (전체 / 내 은하) */
+.scope-seg {
+  background: rgba(3, 9, 20, 0.78);
+  backdrop-filter: blur(10px);
+}
+.scope-seg button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 7px 18px;
+}
+.scope-seg button .num {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--primary-2);
+}
+
+/* 내 은하 도구 줄 — 산업 칩 자리에 들어간다 */
+.my-galaxy-bar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  max-width: 1100px;
+}
+.my-galaxy-bar .chip {
+  backdrop-filter: blur(8px);
+  background: rgba(10, 14, 24, 0.55);
+}
+.my-galaxy-bar .chip.on {
+  background: rgba(109, 140, 255, 0.22);
+}
+.mg-sum {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-3);
+  white-space: nowrap;
+}
+.mg-sum .num {
+  font-weight: 700;
+  color: var(--text);
+}
+.mg-missing {
+  position: relative;
+}
+.mg-missing-pop {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 6;
+  width: 248px;
+  padding: 10px;
+  border-radius: 13px;
+  text-align: left;
+}
+.mg-missing-pop .hint {
+  padding: 2px 4px 8px;
+}
+.mg-missing-pop button {
+  display: block;
+  width: 100%;
+  padding: 9px 10px;
+  border-radius: 9px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-2);
+  text-align: left;
+}
+.mg-missing-pop button:hover {
+  background: rgba(109, 140, 255, 0.12);
+  color: var(--text);
+}
+
+/* 내 은하가 비었을 때 — 무대 한가운데 안내 카드 (상단 HUD 보다는 아래) */
+.mg-empty {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  pointer-events: none;
+}
+.mg-empty > * {
+  pointer-events: auto;
+}
+.mg-empty-card {
+  width: min(430px, 100%);
+  padding: 26px 28px;
+  border-radius: 16px;
+  text-align: center;
+}
+.mg-empty-card h2 {
+  font-size: 19px;
+  font-weight: 700;
+  margin-top: 8px;
+}
+.mg-empty-card .hint {
+  margin-top: 10px;
+}
+.mg-empty-card .row {
+  gap: 8px;
+  justify-content: center;
+}
+
 /* 좌상단: 기업 중심 뷰 브레드크럼 */
 .hud-crumb {
   left: 24px;
@@ -822,7 +930,8 @@
     padding: 0 16px;
     gap: 10px;
   }
-  .industry-chips {
+  .industry-chips,
+  .my-galaxy-bar {
     flex-wrap: nowrap;
     overflow-x: auto;
     justify-content: flex-start;

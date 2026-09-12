@@ -3,15 +3,18 @@ import { useSearchParams } from "react-router-dom";
 import type { AltitudeWindow } from "@/api/types";
 import { useQueryClient } from "@tanstack/react-query";
 import Scene, { type Callout } from "@/three/Scene";
-import { capScale, layoutGalaxy, layoutSystemCached, type CompanyLookup } from "@/lib/graph";
+import { capScale, layoutGalaxy, layoutMyGalaxy, layoutSystemCached, type CompanyLookup } from "@/lib/graph";
 import { fmtDateTime, fmtRelative } from "@/lib/format";
 import { industryColor } from "@/lib/meta";
-import { companyGraphQuery, useCompanyGraph, useIndustries, useLatestGraph, useNewsFeed, useSessionKey } from "@/lib/queries";
-import { useGalaxy } from "@/store/galaxy";
+import { companyGraphQuery, useCompanyGraph, useIndustries, useLatestGraph, useNewsFeed, useSessionKey, useToggleWatch, useWatchlist } from "@/lib/queries";
+import { useGalaxy, type GalaxyScope } from "@/store/galaxy";
+import { useSession } from "@/store/session";
+import { useUi } from "@/store/ui";
 import { Icon, TypeLegend } from "@/components/ui";
 import { LAB } from "@/three/toon";
 import CompanyPanel from "./CompanyPanel";
 import HopSummary from "./HopSummary";
+import MyGalaxyBar, { MyGalaxyEmpty } from "./MyGalaxyBar";
 import PathStrip from "./PathStrip";
 import RelationshipPanel from "./RelationshipPanel";
 import SceneTip, { type PointerPos } from "./SceneTip";
@@ -50,6 +53,8 @@ export default function GalaxyPage() {
   const [params, setParams] = useSearchParams();
   const qc = useQueryClient();
 
+  const scope = useGalaxy((s) => s.scope);
+  const includeNeighbors = useGalaxy((s) => s.includeNeighbors);
   const industryId = useGalaxy((s) => s.industryId);
   const focusId = useGalaxy((s) => s.focusId);
   const phase = useGalaxy((s) => s.phase);
@@ -63,6 +68,8 @@ export default function GalaxyPage() {
   const altitudeWindow = useGalaxy((s) => s.altitudeWindow);
   const setAltitude = useGalaxy((s) => s.setAltitude);
   const setAltitudeWindow = useGalaxy((s) => s.setAltitudeWindow);
+  const setScope = useGalaxy((s) => s.setScope);
+  const toggleNeighbors = useGalaxy((s) => s.toggleNeighbors);
   const setIndustry = useGalaxy((s) => s.setIndustry);
   const setMinScore = useGalaxy((s) => s.setMinScore);
   const toggleType = useGalaxy((s) => s.toggleType);
@@ -77,6 +84,9 @@ export default function GalaxyPage() {
   const calloutHidden = useGalaxy((s) => s.calloutHidden);
   const hideCallout = useGalaxy((s) => s.hideCallout);
 
+  const status = useSession((s) => s.status);
+  const openAuth = useUi((s) => s.openAuth);
+  const toast = useUi((s) => s.toast);
   const industries = useIndustries();
   const universe = useLatestGraph(null); // 전체 우주 — 색·시장 조회용
   const latest = useLatestGraph(industryId);
@@ -85,10 +95,19 @@ export default function GalaxyPage() {
   const warpTarget = useGalaxy((s) => s.warpTarget);
   const targetGraph = useCompanyGraph(phase === "warp" ? warpTarget : null);
   const focusNews = useNewsFeed({ companyId: focusId ?? undefined, size: 1 }, Boolean(focusId));
+  const watchlist = useWatchlist();
+  const toggleWatch = useToggleWatch();
+  const mineScope = scope === "mine";
+  const watchItems = useMemo(() => watchlist.data?.items ?? [], [watchlist.data]);
+  const watchIds = useMemo(() => watchItems.map((w) => w.companyId), [watchItems]);
 
   // 시가총액 척도는 전체 우주 기준으로 한 번 만들어 은하 배치와 기업 중심 배치(lookup)에 같이 준다 — 산업 필터가 켜져도 같은 기업은 같은 크기
   const capT = useMemo(() => capScale(universe.data?.nodes ?? []), [universe.data]);
-  const galaxyModel = useMemo(() => (latest.data ? layoutGalaxy(latest.data, capT) : null), [latest.data, capT]);
+  const fullModel = useMemo(() => (latest.data ? layoutGalaxy(latest.data, capT) : null), [latest.data, capT]);
+  // 내 은하는 전체 우주에서 관심 기업 주변만 잘라 같은 배치로 만든다 — 산업 필터(latest)가 아니라 우주(universe)가 재료다
+  const mine = useMemo(() => (mineScope && universe.data ? layoutMyGalaxy(universe.data, watchIds, includeNeighbors, capT) : null), [mineScope, universe.data, watchIds, includeNeighbors, capT]);
+  // 별이 하나도 없으면 씬에 null 을 준다 — 빈 원반을 그리는 대신 빈 상태 카드가 화면을 설명한다
+  const galaxyModel = mineScope ? (mine && mine.model.nodes.length ? mine.model : null) : fullModel;
   const lookup = useMemo<CompanyLookup>(() => {
     const nodes = universe.data?.nodes ?? [];
     const m = new Map(nodes.map((n) => [n.companyId, { name: n.name, industryName: n.industryName, market: n.market, stockCode: n.stockCode, capT: capT(n.marketCapKrw) }]));
@@ -121,6 +140,61 @@ export default function GalaxyPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [focusId]);
 
+  /* URL ?scope=mine — 세션이 정해진 뒤 소비한다. 게스트면 로그인 안내만 하고 파라미터를 지운다(전체 은하 유지)
+     params 자체를 구독해야, 은하 페이지에 이미 마운트된 채로 헤더 "내 은하"처럼 쿼리만 바뀌는 이동도 소비된다 */
+  /* 게스트가 내 은하를 요청(딥링크·토글)한 뒤 로그인하면 바로 그 화면으로 — 다이얼로그를 그냥 닫으면 의도도 접는다 */
+  const wantMine = useRef(false);
+  const authDialog = useUi((s) => s.authDialog);
+  useEffect(() => {
+    if (status === "authed") {
+      if (wantMine.current) {
+        wantMine.current = false;
+        setScope("mine");
+      }
+    } else if (authDialog === null) wantMine.current = false;
+  }, [status, authDialog, setScope]);
+  /* 진입 시 ?scope=mine 이 있으면 세션 판정(booting)이 끝날 때까지 아래 URL 동기화가 파라미터를 지우지 못하게 막는다 — ?company= 의 pendingDeepLink 와 같은 역할 */
+  const pendingScope = useRef(params.get("scope") === "mine");
+  useEffect(() => {
+    if (params.get("scope") !== "mine" || status === "booting") return;
+    pendingScope.current = false;
+    if (status === "authed") {
+      if (useGalaxy.getState().scope !== "mine") setScope("mine");
+      return;
+    }
+    wantMine.current = true;
+    openAuth("login");
+    setParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        next.delete("scope");
+        return next;
+      },
+      { replace: true },
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [status, params]);
+  useEffect(() => {
+    if (pendingScope.current) return;
+    const want = scope === "mine" ? "mine" : null;
+    if ((params.get("scope") ?? null) === want) return;
+    // 함수형 갱신 — ?company= 동기화와 같은 커밋에 겹쳐도 서로의 파라미터를 덮지 않는다
+    setParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        if (want) next.set("scope", want);
+        else next.delete("scope");
+        return next;
+      },
+      { replace: true },
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scope]);
+  /* 로그아웃하면 관심 목록이 사라져 내 은하를 그릴 재료가 없다 — 전체 은하로 돌려놓는다(위 동기화가 파라미터도 지운다) */
+  useEffect(() => {
+    if (status === "guest" && useGalaxy.getState().scope === "mine") setScope("all");
+  }, [status, setScope]);
+
   /* 키보드: ESC — 역할 필터 → 경로 기준 핀 → 선택 간선 → 은하 복귀 순으로 한 겹씩 벗긴다 */
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -138,12 +212,38 @@ export default function GalaxyPage() {
 
   const pickCompany = useCallback(
     (id: string) => {
-      // 산업 필터 밖의 기업이면 필터를 풀고 이동한다
-      const inFilter = !industryId || latest.data?.nodes.some((n) => n.companyId === id);
+      // 산업 필터 밖의 기업이면 필터를 풀고 이동한다 (내 은하는 산업 필터를 쓰지 않으므로 건너뛴다)
+      const inFilter = mineScope || !industryId || latest.data?.nodes.some((n) => n.companyId === id);
       if (!inFilter) setIndustry(null);
       warpTo(id);
     },
-    [industryId, latest.data, setIndustry, warpTo],
+    [mineScope, industryId, latest.data, setIndustry, warpTo],
+  );
+
+  /** 검색으로 고른 기업 — 내 은하에서는 아직 관심 기업이 아니면 먼저 담아 그 자리에 별이 생기게 한다 */
+  const pickFromSearch = useCallback(
+    (id: string) => {
+      if (mineScope && status === "authed" && !watchIds.includes(id)) {
+        toggleWatch.mutate({ companyId: id, watched: false }, { onSuccess: () => toast("내 은하에 추가했습니다.", "success") });
+      }
+      pickCompany(id);
+    },
+    [mineScope, status, watchIds, toggleWatch, toast, pickCompany],
+  );
+
+  /** 범위 전환 — 게스트가 내 은하를 누르면 로그인부터. 산업 칩과 같이 기업 중심 뷰였다면 은하로 되돌린다 */
+  const pickScope = useCallback(
+    (next: GalaxyScope) => {
+      if (next === "mine" && status !== "authed") {
+        wantMine.current = true;
+        openAuth("login");
+        return;
+      }
+      if (next === useGalaxy.getState().scope) return;
+      setScope(next);
+      if (focusId) warpTo(null);
+    },
+    [status, openAuth, setScope, focusId, warpTo],
   );
 
   const callout: Callout | null = useMemo(() => {
@@ -153,9 +253,16 @@ export default function GalaxyPage() {
   }, [focusNews.data, focusId, phase, calloutHidden, hideCallout]);
 
   const focusName = focusId ? systemModel?.nodeById.get(focusId)?.name ?? lookup(focusId)?.name ?? "…" : null;
-  const snapshot = latest.data;
+  // 내 은하의 기준 스냅샷은 우주다 — 상태 카드의 시각·갱신 예정도 그 재료를 가리켜야 한다
+  const snapshot = mineScope ? universe.data : latest.data;
   const stale = snapshot ? Date.now() > Date.parse(snapshot.nextRefreshAt) : false;
-  const loading = latest.isLoading || (Boolean(focusId) && focusGraph.isLoading && !systemModel);
+  const scopeLoading = mineScope ? universe.isLoading || watchlist.isLoading : latest.isLoading;
+  const loading = scopeLoading || (Boolean(focusId) && focusGraph.isLoading && !systemModel);
+  const scopeError = mineScope ? universe.isError : latest.isError;
+  // 관심 기업이 0개거나(watchIds 없음), 있어도 전부 우주 스냅샷 밖이라 배치할 별이 없으면 씬 대신 안내 카드를 보여 준다
+  // (워프해 들어간 상태에서는 씬이 주인공이므로 비운다)
+  const noStars = watchIds.length === 0 || (mine !== null && mine.model.nodes.length === 0);
+  const showEmpty = mineScope && status === "authed" && watchlist.data !== undefined && !focusId && noStars;
 
   return (
     <div
@@ -177,18 +284,19 @@ export default function GalaxyPage() {
           <span className="kick">news × relationship graph</span>
           <b>COSMOS</b>
           <i />
-          <span>{focusId ? "기업 관계망을 불러오는 중" : "최신 스냅샷을 불러오는 중"}</span>
+          <span>{focusId ? "기업 관계망을 불러오는 중" : mineScope ? "내 은하를 불러오는 중" : "최신 스냅샷을 불러오는 중"}</span>
         </div>
       )}
-      {latest.isError && (
+      {scopeError && (
         <div className="stage-loading" style={{ pointerEvents: "auto" }}>
           <b>연결 실패</b>
           <span>그래프 스냅샷을 가져오지 못했습니다.</span>
-          <button type="button" className="btn btn-g btn-sm" onClick={() => latest.refetch()}>
+          <button type="button" className="btn btn-g btn-sm" onClick={() => (mineScope ? universe.refetch() : latest.refetch())}>
             다시 시도
           </button>
         </div>
       )}
+      {showEmpty && <MyGalaxyEmpty outOfSnapshot={watchIds.length > 0} onSearch={() => setSearchOpen(true)} onBack={() => pickScope("all")} />}
 
       {/* 상단: 검색 + 산업 칩 (은하 뷰에서만) */}
       {!focusId && (
@@ -198,6 +306,27 @@ export default function GalaxyPage() {
           <span>기업명 또는 종목코드를 검색하세요</span>
           <span className="kbd">Ctrl K</span>
         </button>
+        {/* 은하 범위 — 탭을 늘리지 않고 같은 화면을 전체 우주 / 내 관심 기업 두 가지로 쓴다 */}
+        <div className="seg scope-seg" role="group" aria-label="은하 범위">
+          <button type="button" className={mineScope ? "" : "on"} aria-pressed={!mineScope} onClick={() => pickScope("all")}>
+            전체 은하
+          </button>
+          <button type="button" className={mineScope ? "on" : ""} aria-pressed={mineScope} onClick={() => pickScope("mine")} title={status === "authed" ? "관심 기업과 그 1홉 관계만 보기" : "로그인하면 관심 기업으로 개인 은하를 만들 수 있습니다"}>
+            <Icon.Star filled={mineScope} /> 내 은하
+            {status === "authed" && <b className="num">{watchIds.length}</b>}
+          </button>
+        </div>
+        {mineScope ? (
+          <MyGalaxyBar
+            watchCount={watchIds.length}
+            neighborCount={includeNeighbors ? mine?.neighborIds.length ?? 0 : 0}
+            includeNeighbors={includeNeighbors}
+            onToggleNeighbors={toggleNeighbors}
+            onSearch={() => setSearchOpen(true)}
+            missing={(mine?.missing ?? []).map((id) => ({ companyId: id, name: watchItems.find((w) => w.companyId === id)?.name ?? id }))}
+            onPick={pickCompany}
+          />
+        ) : (
         <div className="industry-chips" role="group" aria-label="산업 필터">
           <button type="button" className={`chip ${industryId === null ? "on" : ""}`} onClick={() => (setIndustry(null), focusId && warpTo(null))}>
             전체 <b className="num">{universe.data?.nodes.length ?? "-"}</b>
@@ -219,6 +348,7 @@ export default function GalaxyPage() {
               </button>
             ))}
         </div>
+        )}
       </div>
       )}
 
@@ -227,7 +357,7 @@ export default function GalaxyPage() {
         <div className="hud hud-crumb">
           <div className="crumb">
             <button type="button" onClick={() => warpTo(null)} title="은하로 돌아가기 (ESC)">
-              <Icon.Back /> 전체 은하
+              <Icon.Back /> {mineScope ? "내 은하" : "전체 은하"}
             </button>
             <span aria-hidden="true">›</span>
             <b>{focusName}</b>
@@ -249,7 +379,7 @@ export default function GalaxyPage() {
           <div>
             <div className="t">
               <i className={`dot ${stale ? "warn" : ""}`} />
-              {snapshot?.personalized ? "개인화 그래프" : "공개 스냅샷"}
+              {mineScope ? `내 은하 · 관심 ${watchIds.length}` : snapshot?.personalized ? "개인화 그래프" : "공개 스냅샷"}
               {stale && <span className="meta">· 새 스냅샷 가능</span>}
             </div>
             <div className="meta num" style={{ marginTop: 4 }}>
@@ -348,7 +478,7 @@ export default function GalaxyPage() {
           </div>
         ))}
 
-      <SearchPalette onPick={pickCompany} />
+      <SearchPalette onPick={pickFromSearch} />
     </div>
   );
 }
