@@ -51,6 +51,13 @@
   text-align: left;
   font-size: 14px;
 }
+/* 단축키 배지는 안내 문구처럼 늘어나면 안 된다 — 글자 폭만큼만 차지한다 */
+.search-trigger .kbd {
+  flex: none;
+  text-align: center;
+  font-size: 12px;
+  min-width: 26px;
+}
 .kbd {
   font-family: var(--mono);
   font-size: 12px;
