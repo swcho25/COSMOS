@@ -131,7 +131,7 @@ const DOMAINS = {
   ISRG: ["intuitive.com"],
   AZN: ["astrazeneca.com"],
   DXCM: ["dexcom.com"],
-  // 에너지·중공업
+  // (구)에너지·중공업 → 전력·에너지설비 · 조선·해운·운송 · 방산·항공우주 · 정유·화학·에너지
   "034020": ["doosanenerbility.com", "doosan.com"],
   "267260": ["hd-hyundaielectric.com", "hd.com"],
   "329180": ["hd-hhi.co.kr", "hd.com"],
@@ -150,7 +150,7 @@ const DOMAINS = {
   BKR: ["bakerhughes.com"],
   FSLR: ["firstsolar.com"],
   ENPH: ["enphase.com"],
-  // 금융·지주
+  // (구)금융·지주 → 금융 · 지주회사
   "105560": ["kbfg.com", "kbstar.com"],
   "055550": ["shinhangroup.com", "shinhan.com"],
   "086790": ["hanafn.com", "hanabank.com"],
@@ -188,7 +188,7 @@ const DOMAINS = {
   "139480": ["emart.com", "shinsegae.com"],
   "023530": ["lotteshopping.com", "lotte.co.kr"],
   "383220": ["fnf.co.kr"],
-  // 통신·미디어
+  // (구)통신·미디어 → 통신 · 미디어·게임·엔터
   "017670": ["sktelecom.com", "sk.com"],
   "030200": ["kt.com"],
   "032640": ["lguplus.com", "lg.com"],
@@ -200,7 +200,7 @@ const DOMAINS = {
   TMUS: ["t-mobile.com"],
   EA: ["ea.com"],
   TTWO: ["take2games.com"],
-  // 철강·화학·소재
+  // (구)철강·화학·소재 → 철강·비철·소재 · 정유·화학·에너지
   "004020": ["hyundai-steel.com", "hyundai.com"],
   "010130": ["koreazinc.co.kr"],
   "051910": ["lgchem.com", "lg.com"],
@@ -213,6 +213,15 @@ const DOMAINS = {
   LIN: ["linde.com"],
   ALB: ["albemarle.com"],
   STLD: ["steeldynamics.com"],
+  // 산업군 재편으로 추가된 기업
+  "066570": ["lge.co.kr", "lg.com"],
+  "000720": ["hdec.kr", "hyundai.com"],
+  "241560": ["doosanbobcat.com", "bobcat.com"],
+  "042670": ["hd-infracore.com", "hd.com"],
+  "028050": ["samsungena.com", "samsung.com"],
+  "047810": ["koreaaero.com"],
+  "011200": ["hmm21.com"],
+  "003490": ["koreanair.com"],
 };
 
 const UA = "Mozilla/5.0 (compatible; cosmos-logo-fetch/1.0)";

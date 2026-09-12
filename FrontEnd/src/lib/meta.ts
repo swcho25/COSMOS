@@ -2,18 +2,26 @@ import type { ImpactDirection, Market, RelationshipType, Sentiment } from "@/api
 import type { CurrencyCode } from "@/lib/format";
 
 /* ------------------------------ 산업 팔레트 ------------------------------ */
+/** 산업 팔레트 — 목업 산업명(src/mock/data.ts IndustryName)과 키가 같아야 한다. 18종이라 색상환에 겹치는 색이 있어 명도·채도로 나눴다 */
 export const INDUSTRY_COLORS: Record<string, string> = {
   반도체: "#5FB8FF",
   "2차전지": "#4FE8C0",
   자동차: "#FFB457",
   "인터넷·플랫폼": "#B98CFF",
   "바이오·헬스케어": "#FF7FA4",
-  "에너지·중공업": "#FFE27A",
   "소프트웨어·AI": "#5CE1E6",
-  "금융·지주": "#9DB0FF",
   "소비재·유통": "#B6F26B",
-  "통신·미디어": "#E58CFF",
-  "철강·화학·소재": "#FF7A6B",
+  "전자부품·하드웨어": "#7F8FFF",
+  "미디어·게임·엔터": "#E58CFF",
+  통신: "#B3D4FF",
+  "조선·해운·운송": "#3D8BFF",
+  "방산·항공우주": "#8FB9A8",
+  "전력·에너지설비": "#FFE27A",
+  "정유·화학·에너지": "#FF7A6B",
+  "철강·비철·소재": "#C4CBD4",
+  "건설·기계·산업재": "#D9B26F",
+  금융: "#7BDC6E",
+  지주회사: "#D9A0C8",
 };
 const FALLBACK_COLORS = ["#7FD3FF", "#FFD27F", "#8CFFC9", "#FF9FCF", "#C0C8FF"];
 
@@ -26,6 +34,36 @@ export function industryColor(name: string | undefined | null) {
 }
 
 /* ------------------------------ 관계 유형 ------------------------------ */
+/**
+ * 산업 선택판의 묶음 — industry.parent_industry_id 가 비어 있는 목업용 임시 분류다.
+ * 서버가 parentIndustryId 를 채워 주면 IndustryPicker 가 그 계층을 우선 쓰고 이 맵은 보지 않는다.
+ * 키는 INDUSTRY_COLORS 와 같은 산업명이어야 한다.
+ */
+export const INDUSTRY_GROUP_ORDER = ["IT·플랫폼", "제조·모빌리티", "에너지·소재", "소비·바이오", "금융·지주", "기타"];
+const INDUSTRY_GROUPS: Record<string, string> = {
+  반도체: "IT·플랫폼",
+  "소프트웨어·AI": "IT·플랫폼",
+  "인터넷·플랫폼": "IT·플랫폼",
+  "전자부품·하드웨어": "IT·플랫폼",
+  통신: "IT·플랫폼",
+  "미디어·게임·엔터": "IT·플랫폼",
+  자동차: "제조·모빌리티",
+  "2차전지": "제조·모빌리티",
+  "조선·해운·운송": "제조·모빌리티",
+  "방산·항공우주": "제조·모빌리티",
+  "건설·기계·산업재": "제조·모빌리티",
+  "전력·에너지설비": "에너지·소재",
+  "정유·화학·에너지": "에너지·소재",
+  "철강·비철·소재": "에너지·소재",
+  "소비재·유통": "소비·바이오",
+  "바이오·헬스케어": "소비·바이오",
+  금융: "금융·지주",
+  지주회사: "금융·지주",
+};
+export function industryGroup(name: string) {
+  return INDUSTRY_GROUPS[name] ?? "기타";
+}
+
 export interface RelationshipMeta {
   code: RelationshipType;
   label: string;

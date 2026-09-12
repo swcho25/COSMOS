@@ -12,9 +12,9 @@ import AltitudeDriver from "./AltitudeDriver";
 import Backdrop from "./Backdrop";
 import CompanyNodes from "./CompanyNodes";
 import EdgeArrows from "./EdgeArrows";
-import FlyControls from "./FlyControls";
 import GalaxyDust from "./GalaxyDust";
 import GhostNodes from "./GhostNodes";
+import OrbitKeys from "./OrbitKeys";
 import RelationLines from "./RelationLines";
 import RoleRings from "./RoleRings";
 import Warp from "./Warp";
@@ -201,13 +201,13 @@ function Director({ warpRef, galaxy, system, next }: { warpRef: MutableRefObject
       morphState.fade = 1;
       // 착지 후 0.6s 동안 빔이 자란다 (landedAt 0 = 아직 워프한 적 없음 → 마운트 램프에만 맡긴다)
       morphState.reveal = morphState.landedAt === 0 ? 1 : Math.min(1, (now - morphState.landedAt) / REVEAL_MS);
-      if (rig.lastPhase !== s.phase && rig.lastPhase !== "warp-committed" && s.navMode !== "fly") {
+      if (rig.lastPhase !== s.phase && rig.lastPhase !== "warp-committed") {
         startAnim(s.phase === "system" ? poseFor(system, "system", (camera as THREE.PerspectiveCamera).aspect) : poseFor(galaxy, "galaxy", (camera as THREE.PerspectiveCamera).aspect), 1.4);
       }
       if (rig.lastPhase !== s.phase) rig.lastPhase = s.phase;
       // 워프 중에 그래프가 도착했거나 필터로 모델이 바뀐 경우: 진행 중인 애니메이션이 끝난 뒤 현재 모델에 다시 맞춘다
       const model = s.phase === "system" ? system : galaxy;
-      if (model && fitted.current !== model && !rig.anim && introDone.current && s.navMode !== "fly") {
+      if (model && fitted.current !== model && !rig.anim && introDone.current) {
         fitted.current = model;
         startAnim(poseFor(model, s.phase === "system" ? "system" : "galaxy", (camera as THREE.PerspectiveCamera).aspect), 1.0);
       }
@@ -229,7 +229,7 @@ function Director({ warpRef, galaxy, system, next }: { warpRef: MutableRefObject
     cameraBusy.anim = !!rig.anim || s.phase === "warp";
     if (controls) {
       // 행성을 끄는 동안은 궤도 회전을 멈춘다 — 안 그러면 행성과 카메라가 같은 드래그로 함께 움직인다
-      const free = s.phase !== "warp" && !rig.anim && s.navMode !== "fly" && !dragState.id;
+      const free = s.phase !== "warp" && !rig.anim && !dragState.id;
       if (controls.enabled !== free) controls.enabled = free;
     }
   });
@@ -301,13 +301,12 @@ function Content({ galaxy, system, next = null, callout, warpRef }: ContentProps
     [model, hoveredId, hoveredEdgeId, selectedEdgeId, minScore, activeTypes, edgeBudget, path, roleFilter],
   );
 
-  const navMode = useGalaxy((s) => s.navMode);
   useEffect(() => {
-    document.body.style.cursor = hoveredId || hoveredEdgeId ? "pointer" : navMode === "fly" || pinnedId ? "crosshair" : "";
+    document.body.style.cursor = hoveredId || hoveredEdgeId ? "pointer" : pinnedId ? "crosshair" : "";
     return () => {
       document.body.style.cursor = "";
     };
-  }, [hoveredId, hoveredEdgeId, navMode, pinnedId]);
+  }, [hoveredId, hoveredEdgeId, pinnedId]);
 
   const calloutNode = callout && model ? model.nodeById.get(callout.companyId) : undefined;
   // 별가루 시드는 구성원 목록에서 뽑는다 — 노드 수만 같고 내용이 다른 스냅샷·필터가 같은 별가루를 재생하지 않게.
@@ -320,8 +319,10 @@ function Content({ galaxy, system, next = null, callout, warpRef }: ContentProps
   return (
     <>
       <Director warpRef={warpRef} galaxy={galaxy} system={system} next={next} />
-      <FlyControls />
-      <OrbitControls makeDefault enablePan={false} enableDamping dampingFactor={0.07} rotateSpeed={0.45} zoomSpeed={0.7} minDistance={22} maxDistance={900} maxPolarAngle={Math.PI * 0.62} />
+      {/* W A S D 로 옮길 수 있는 궤도 중심의 한계 — 지금 보는 모델의 바깥 반지름에 여유를 둔다 */}
+      <OrbitKeys bound={model ? model.extent.maxR * 1.4 : undefined} />
+      {/* 극각 하한 0.03rad(약 1.7도): 카메라가 정점(y 축)에 정확히 올라서면 lookAt(up=+y)이 무너져 시선이 돈다 — 드래그와 방향키(OrbitKeys)가 같은 한계를 읽는다 */}
+      <OrbitControls makeDefault enablePan={false} enableDamping dampingFactor={0.07} rotateSpeed={0.45} zoomSpeed={0.7} minDistance={22} maxDistance={900} minPolarAngle={0.03} maxPolarAngle={Math.PI * 0.62} />
       <fog attach="fog" args={[LAB.bg, 520, 1600]} />
       <Backdrop radius={1700} stars={900} />
       {/* 장난감 우주 조명 — 랩과 동일한 구성 */}

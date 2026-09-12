@@ -45,7 +45,8 @@ export default function Header() {
         ))}
       </nav>
       <div className="account" ref={menuRef} style={{ position: "relative" }}>
-        {status === "authed" && user ? (
+        {/* 세션이 정해지기 전에는 비워 둔다 — 로그인 사용자에게 로그인·회원가입 버튼이 한 번 번쩍이지 않게 */}
+        {status === "booting" ? null : status === "authed" && user ? (
           <>
             <button type="button" className="profile-btn" onClick={() => setOpen((v) => !v)} aria-haspopup="menu" aria-expanded={open}>
               <span className="avatar">{user.nickname.slice(0, 1)}</span>
@@ -60,6 +61,12 @@ export default function Header() {
                 <div style={{ padding: "6px 0" }}>
                   <button type="button" className="item on" role="menuitem" onClick={() => (close(), navigate("/me"))}>
                     <span style={{ fontWeight: 600 }}>내 페이지</span>
+                  </button>
+                  {/* 탭은 3개로 두기로 했으므로 개인 은하 진입은 프로필 메뉴에서 연다 */}
+                  <button type="button" className="item" role="menuitem" onClick={() => (close(), navigate("/?scope=mine"))}>
+                    <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+                      <Icon.Galaxy /> 내 은하
+                    </span>
                   </button>
                   <button type="button" className="item" role="menuitem" onClick={() => (close(), navigate("/me#watch"))}>
                     <span>관심 기업</span>

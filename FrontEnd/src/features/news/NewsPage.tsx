@@ -7,7 +7,7 @@ import { SENTIMENTS, SENTIMENT_META, marketLabel, relationshipMeta } from "@/lib
 import { useCompany, useIndustries, useLatestGraph, useNewsDetail, useNewsFeed, useToggleScrap, useToggleWatch } from "@/lib/queries";
 import { useSession } from "@/store/session";
 import { useUi } from "@/store/ui";
-import { CompanyAvatar, Empty, Icon, Kpi, ScoreBar, SentimentBadge, Skeleton, TypeBadge, TypeLegend } from "@/components/ui";
+import { CompanyAvatar, Empty, Icon, Kpi, ScoreBar, SentimentBadge, Skeleton, TypeBadge } from "@/components/ui";
 import NewsDetailDialog from "./NewsDetailDialog";
 import RelationMap2D from "./RelationMap2D";
 import "./news.css";

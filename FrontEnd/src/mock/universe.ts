@@ -3,6 +3,7 @@
  * 결정론적 난수를 쓰므로 새로고침해도 같은 결과가 나오고, 스냅샷 ID 는 1시간 단위로 바뀐다.
  */
 import type { AltitudeWindow, Candle, ImpactDirection, LatestGraphNode, Market, RelationshipType, Sentiment } from "@/api/types";
+import { marketCurrency } from "@/lib/meta";
 import { gaussian, hashString, seededRandom, stableUuid } from "@/lib/rng";
 import { COMPANY_SEEDS, INDUSTRY_DESCRIPTIONS, LISTED_SHARES, RELATION_SEEDS, type IndustryName } from "./data";
 
@@ -435,6 +436,16 @@ export function marketCapOf(company: MockCompany) {
   const last = stockSeries(company).at(-1);
   if (!last) return null;
   return Math.round(last.closePrice * company.listedShares);
+}
+
+/** 시장 통화 → 원화 환산율(대략치). 은하 뷰의 행성 크기가 시장이 다른 기업의 시가총액을 한 척도로 비교할 수 있게만 하면 된다 */
+const KRW_PER: Record<string, number> = { KRW: 1, USD: 1350, JPY: 9, CNY: 190 };
+
+/** 원화 환산 시가총액 — 그래프 노드(LatestGraphNode.marketCapKrw)에 싣는 값. 실 서버는 환산까지 해서 내려 준다고 가정한다 */
+export function marketCapKrwOf(company: MockCompany) {
+  const cap = marketCapOf(company);
+  if (cap === null) return null;
+  return Math.round(cap * (KRW_PER[marketCurrency(company.market)] ?? 1));
 }
 
 /* ------------------------------------------------------------------ */

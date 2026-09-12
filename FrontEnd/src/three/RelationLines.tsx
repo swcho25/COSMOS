@@ -4,7 +4,7 @@ import * as THREE from "three";
 import type { SceneEdge, SceneModel } from "@/lib/graph";
 import { altitudeGate } from "./altitude";
 import { touch } from "./bufferUtil";
-import { bezier, controlPoint, radiusOf } from "./edgeCurve";
+import { bezier, CHORD_CLEAR, controlPoint, radiusOf } from "./edgeCurve";
 import type { Emphasis } from "./emphasis";
 import { dragState, liveFor, morphState, type LiveTransform } from "./morph";
 import { beamColorFor } from "./toon";
@@ -79,7 +79,7 @@ interface EdgeBuffers {
  * 드래그로 움직인(dirty) 노드에 붙은 간선만 live 좌표로 다시 굽는다 — 튜브 정점·법선, 제어점, 피킹 선분.
  * 전체 재생성은 하지 않는다 (한 노드의 인접 간선은 수십 개 수준).
  */
-function followEdges(buf: EdgeBuffers, edges: SceneEdge[], adjacency: Map<string, number[]>, nodeIndex: Map<string, number>, live: LiveTransform) {
+function followEdges(buf: EdgeBuffers, edges: SceneEdge[], adjacency: Map<string, number[]>, nodeIndex: Map<string, number>, live: LiveTransform, clear: number) {
   const hits = new Set<number>();
   dragState.dirty.forEach((id) => adjacency.get(id)?.forEach((ei) => hits.add(ei)));
   if (!hits.size) return;
@@ -95,7 +95,7 @@ function followEdges(buf: EdgeBuffers, edges: SceneEdge[], adjacency: Map<string
       toArr[ei * 3 + k] = live.pos[ti * 3 + k];
     }
     const ctrl = ctrls[ei];
-    controlPoint(fromArr, toArr, ctrl, ei * 3, ei * 3);
+    controlPoint(fromArr, toArr, ctrl, ei * 3, ei * 3, clear);
     CURVE.v0.fromArray(fromArr, ei * 3);
     CURVE.v1.copy(ctrl);
     CURVE.v2.fromArray(toArr, ei * 3);
@@ -138,6 +138,8 @@ const revealAt = (reveal: number, score01: number) => clamp01((reveal - (1 - sco
  * - 강조(emphasis) 값은 지오메트리를 다시 만들지 않고 속성 하나만 갱신한다
  */
 export default function RelationLines({ edges, emphasis, model, onHover, onSelect, intensity = 1, hoveredEdgeId = null, warpFx = false }: Props) {
+  // 기업 중심 뷰에서는 궤도 위 두 행성의 현이 중심을 뚫지 않게 돌려 그린다 (edgeCurve CHORD_CLEAR)
+  const clear = model ? CHORD_CLEAR[model.kind] : 0;
   const built = useMemo(() => {
     const n = edges.length;
     const ctrls: THREE.Vector3[] = [];
@@ -172,7 +174,7 @@ export default function RelationLines({ edges, emphasis, model, onHover, onSelec
       fromArr.set(e.from, ei * 3);
       toArr.set(e.to, ei * 3);
       const ctrl = new THREE.Vector3();
-      controlPoint(e.from, e.to, ctrl);
+      controlPoint(e.from, e.to, ctrl, 0, 0, clear);
       ctrls.push(ctrl);
       const s = e.score / 100;
       const r = radiusOf(s);
@@ -276,7 +278,7 @@ export default function RelationLines({ edges, emphasis, model, onHover, onSelec
     pulseGeo.setAttribute("aColor", new THREE.BufferAttribute(pColor, 3));
 
     return { geo, emphAttr, posAttr, normAttr, pick, pickAttr, position, normal, pickPos, fromArr, toArr, ctrls, radii, speeds, phases, outward, pulseGeo, pPos, pSize, pAlpha, vPer };
-  }, [edges]);
+  }, [edges, clear]);
 
   useEffect(
     () => () => {
@@ -333,7 +335,7 @@ export default function RelationLines({ edges, emphasis, model, onHover, onSelec
     }
     if (model && follow.version !== dragState.version) {
       follow.version = dragState.version;
-      followEdges(built, edges, adjacency, nodeIndex, liveFor(model));
+      followEdges(built, edges, adjacency, nodeIndex, liveFor(model), clear);
     }
     tubeUniforms.uDim.value = intensity;
     haloUniforms.uDim.value = intensity;
