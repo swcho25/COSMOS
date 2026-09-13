@@ -234,6 +234,26 @@ DO UPDATE SET snapshot_id = EXCLUDED.snapshot_id, score = EXCLUDED.score,
               evidence_count = EXCLUDED.evidence_count, formula_version = EXCLUDED.formula_version,
               as_of_at = EXCLUDED.as_of_at;
 
+-- 5) 이번 발행에 없는 이전 점수 행 정리.
+-- 같은 스냅샷(as_of_at + formula_version)으로 다시 발행하면 INSERT/UPDATE 만으로는 지난번에
+-- 있었다가 이번에 사라진 관계의 점수 행이 그대로 남는다. 그 행들이 최신 스냅샷을 가리키고
+-- 있으므로 API 그래프에 유령 엣지로 뜬다 — 문장 분리 수정 후 재발행에서 실제로 10건 남았다.
+-- company_relationship 행 자체는 남겨둔다(이력이고, 점수 행이 없으면 그래프 쿼리에 안 잡힌다).
+DELETE FROM relationship_score_current rsc
+USING graph_snapshot g
+WHERE rsc.snapshot_id = g.snapshot_id
+  AND (g.as_of_at, g.formula_version) IN (SELECT as_of_at, formula_version FROM _snapshot)
+  AND NOT EXISTS (
+      SELECT 1 FROM _score s
+      JOIN company sc ON sc.market = s.source_market AND sc.stock_code = s.source_stock_code
+      JOIN company tc ON tc.market = s.target_market AND tc.stock_code = s.target_stock_code
+      JOIN relationship_type rt ON rt.code = s.relationship_type_code
+      JOIN company_relationship cr ON cr.source_company_id = sc.company_id
+                                  AND cr.target_company_id = tc.company_id
+                                  AND cr.relationship_type_id = rt.relationship_type_id
+      WHERE cr.relationship_id = rsc.relationship_id
+        AND s.window_type = rsc.window_type);
+
 COMMIT;
 
 -- 확인용: API가 실제로 보게 될 엣지 수 (company.status='ACTIVE' 조건 포함)
