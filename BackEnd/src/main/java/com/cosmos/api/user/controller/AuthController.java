@@ -1,17 +1,23 @@
 package com.cosmos.api.user.controller;
 
+import com.cosmos.api.global.security.RefreshTokenCookie;
 import com.cosmos.api.user.dto.AvailabilityResponse;
+import com.cosmos.api.user.dto.LoginRequest;
 import com.cosmos.api.user.dto.SignupRequest;
+import com.cosmos.api.user.dto.TokenResponse;
 import com.cosmos.api.user.dto.UserResponse;
+import com.cosmos.api.user.service.AuthService;
 import com.cosmos.api.user.service.UserService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.annotation.Validated;
+import org.springframework.web.bind.annotation.CookieValue;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -26,6 +32,28 @@ import org.springframework.web.bind.annotation.RestController;
 public class AuthController {
 
     private final UserService userService;
+    private final AuthService authService;
+    private final RefreshTokenCookie refreshTokenCookie;
+
+    /** 로그인. Access Token은 본문으로, Refresh Token은 httpOnly 쿠키(Set-Cookie)로 내려준다. */
+    @PostMapping("/login")
+    public ResponseEntity<TokenResponse> login(@Valid @RequestBody LoginRequest request) {
+        AuthService.LoginResult result = authService.login(request);
+        return ResponseEntity.ok()
+                .header(HttpHeaders.SET_COOKIE, refreshTokenCookie.create(result.refreshToken()).toString())
+                .body(new TokenResponse(result.accessToken()));
+    }
+
+    /**
+     * Access Token 재발급. 요청 본문 없이 refresh_token 쿠키로만 동작한다.
+     * 실패하면 401을 주는데, 프론트는 code로 재시도(TOKEN_EXPIRED)와 재로그인(TOKEN_INVALID)을 구분한다.
+     */
+    @PostMapping("/refresh")
+    public TokenResponse refresh(
+            @CookieValue(name = RefreshTokenCookie.NAME, required = false) String refreshToken
+    ) {
+        return new TokenResponse(authService.reissueAccessToken(refreshToken));
+    }
 
     /** 회원가입. 성공하면 201과 만들어진 회원 정보(userId, email, nickname)를 돌려준다. */
     @PostMapping("/signup")

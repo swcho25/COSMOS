@@ -129,6 +129,10 @@ function WatchCard() {
             관심 기업 <span className="num" style={{ color: "var(--primary-2)" }}>{items.length}</span>
           </h2>
         </div>
+        {/* 목록에서 바로 개인 은하로 — 관심 기업이 어떻게 이어지는지는 표가 아니라 은하가 보여 준다 */}
+        <button type="button" className="btn btn-g btn-sm" onClick={() => navigate("/?scope=mine")}>
+          <Icon.Galaxy /> 내 은하에서 보기
+        </button>
       </div>
       <div className="stack mt-16">
         {watch.isLoading && <Skeleton h={60} />}

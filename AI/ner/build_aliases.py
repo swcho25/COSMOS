@@ -27,6 +27,13 @@ CORP_SUFFIX_RE = re.compile(
     r"limited|ltd\.?|plc|holdings?|n\.v\.|s\.a\.|ag|group))+\s*$",
     re.IGNORECASE,
 )
+# 외래어 음차 흔들림: 영어 복수 -s 를 '즈'로 적은 표기와 '스'로 적은 표기가 둘 다 유통된다
+# (시스코시스템즈/시스코시스템스, 베이커휴즈/베이커휴스). nasdaq_ko 별칭에 한해 '스' 표기를 파생한다.
+# 국내 기업(kospi_manual)에는 절대 적용하지 마라 - '즈' 종결이 음차가 아니라 법인명이고
+# (SK머티리얼즈, 카카오게임즈) '스' 표기는 실존하지 않는다.
+KO_PLURAL_SUFFIX = "즈"
+KO_PLURAL_MIN_LEN = 4  # '몬델리즈'(4자)가 하한. 3자 이하는 일반명사 충돌 위험이 크다
+
 CLASS_RE = re.compile(r"\s*\((class\s+[a-z]|adr|ads)\)\s*", re.IGNORECASE)
 
 # English words that are company names but too common to match alone.
@@ -166,6 +173,15 @@ def build(companies_path: Path, seeds_dir: Path) -> tuple[list[dict], list[str]]
             if " " in a:
                 add(rows, seen, a.replace(" ", ""), t, c["name_official"], c["market"], "ko_manual", amb,
                     source="manual", note="space removed")
+            # '시스코시스템즈' -> '시스코시스템스'. 이 블록 안에 있어야 안전하다: blockers(5번)와
+            # products(4b)가 뒤에 실행돼 last-wins 로 파생형을 덮어쓴다.
+            if amb == "safe" and len(a) >= KO_PLURAL_MIN_LEN and a.endswith(KO_PLURAL_SUFFIX):
+                v = a[:-1] + "스"
+                add(rows, seen, v, t, c["name_official"], c["market"], "ko_manual", "safe",
+                    source="rule", note="즈->스 음차 변형 자동 파생")
+                if " " in v:
+                    add(rows, seen, v.replace(" ", ""), t, c["name_official"], c["market"], "ko_manual",
+                        "safe", source="rule", note="즈->스 음차 변형, 공백 제거")
 
     # 3. curated aliases for KOSPI (Korean nicknames, English names, old names, bank subsidiaries)
     for r in read_csv(seeds_dir / "kospi_manual.csv"):

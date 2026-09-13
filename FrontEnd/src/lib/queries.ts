@@ -5,6 +5,12 @@ import { useSession } from "@/store/session";
 
 const useKey = () => useSession((s) => s.sessionKey);
 const useAuthed = () => useSession((s) => s.status === "authed");
+/**
+ * 세션 판정이 끝났는지. 세션 키가 키에 들어가는 쿼리는 booting 동안 멈춰 둔다 —
+ * guest 키로 한 번, 로그인 확정 후 다시 한 번 받던 콜드 로드 중복 호출을 없앤다.
+ * 힌트가 없는 게스트는 첫 렌더부터 "guest" 이므로 이 게이트에 걸리지 않는다.
+ */
+const useBooted = () => useSession((s) => s.status !== "booting");
 /** 쿼리 키에 들어가는 세션 키 — 컴포넌트가 prefetch 옵션을 만들 때 같은 키를 쓰도록 공개한다 */
 export const useSessionKey = useKey;
 
@@ -16,9 +22,11 @@ export function useIndustries() {
 /* ------------------------------ 그래프 ------------------------------ */
 export function useLatestGraph(industryId: string | null) {
   const k = useKey();
+  const booted = useBooted();
   return useQuery({
     queryKey: ["graph", "latest", k, industryId],
     queryFn: () => api.graphs.latest({ industryId: industryId ?? undefined }),
+    enabled: booted,
     staleTime: 5 * 60_000,
     placeholderData: keepPreviousData,
   });
@@ -31,14 +39,16 @@ export const companyGraphQuery = (k: string, companyId: string) => ({
 });
 export function useCompanyGraph(companyId: string | null) {
   const k = useKey();
-  return useQuery({ ...companyGraphQuery(k, companyId ?? ""), enabled: Boolean(companyId) });
+  const booted = useBooted();
+  return useQuery({ ...companyGraphQuery(k, companyId ?? ""), enabled: booted && Boolean(companyId) });
 }
 export function useRelationship(relationshipId: string | null, window: T.MetricWindow) {
   const k = useKey();
+  const booted = useBooted();
   return useQuery({
     queryKey: ["relationship", k, relationshipId, window],
     queryFn: () => api.graphs.relationship(relationshipId!, window),
-    enabled: Boolean(relationshipId),
+    enabled: booted && Boolean(relationshipId),
     placeholderData: keepPreviousData,
   });
 }
@@ -55,7 +65,8 @@ export function useRelationshipEvidence(relationshipId: string | null) {
 /* ------------------------------ 기업 ------------------------------ */
 export function useCompany(companyId: string | null) {
   const k = useKey();
-  return useQuery({ queryKey: ["company", k, companyId], queryFn: () => api.companies.detail(companyId!), enabled: Boolean(companyId) });
+  const booted = useBooted();
+  return useQuery({ queryKey: ["company", k, companyId], queryFn: () => api.companies.detail(companyId!), enabled: booted && Boolean(companyId) });
 }
 export function useCompanyMetrics(companyId: string | null, window: T.MetricWindow) {
   return useQuery({
@@ -83,21 +94,24 @@ export function useStockPrices(companyId: string | null, period: T.PricePeriod) 
 }
 export function useCompanySearch(keyword: string, enabled = true) {
   const k = useKey();
+  const booted = useBooted();
   const q = keyword.trim();
   return useQuery({
     queryKey: ["companies", "search", k, q],
     queryFn: () => api.companies.list({ keyword: q, size: 12 }),
-    enabled: enabled && q.length >= 1,
+    enabled: booted && enabled && q.length >= 1,
     placeholderData: keepPreviousData,
   });
 }
 export function useCompanyDirectory(params: T.CompanyListParams) {
   const k = useKey();
+  const booted = useBooted();
   return useInfiniteQuery({
     queryKey: ["companies", "directory", k, params],
     queryFn: ({ pageParam }) => api.companies.list({ ...params, cursor: pageParam, size: params.size ?? 40 }),
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (last) => last.nextCursor ?? undefined,
+    enabled: booted,
     placeholderData: keepPreviousData,
   });
 }
@@ -105,18 +119,20 @@ export function useCompanyDirectory(params: T.CompanyListParams) {
 /* ------------------------------ 뉴스 ------------------------------ */
 export function useNewsFeed(params: T.NewsListParams, enabled = true) {
   const k = useKey();
+  const booted = useBooted();
   return useInfiniteQuery({
     queryKey: ["news", "feed", k, params],
     queryFn: ({ pageParam }) => api.news.list({ ...params, cursor: pageParam, size: params.size ?? 20 }),
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (last) => last.nextCursor ?? undefined,
-    enabled,
+    enabled: booted && enabled,
     placeholderData: keepPreviousData,
   });
 }
 export function useNewsDetail(newsId: string | null) {
   const k = useKey();
-  return useQuery({ queryKey: ["news", "detail", k, newsId], queryFn: () => api.news.detail(newsId!), enabled: Boolean(newsId) });
+  const booted = useBooted();
+  return useQuery({ queryKey: ["news", "detail", k, newsId], queryFn: () => api.news.detail(newsId!), enabled: booted && Boolean(newsId) });
 }
 
 /* ------------------------------ 커뮤니티 ------------------------------ */

@@ -9,4 +9,5 @@ data/alias_candidates_*.csv
 models/
 data/ner_corpus_*.jsonl
 data/ner_corpus_*.stats.json
-data/eval/v12_audit/sample_*.jsonl
+# 검수·회귀용 기사 원문 (full200.jsonl 은 fetch_full_bodies.py 로 재생성)
+data/eval/v12_audit/*.jsonl

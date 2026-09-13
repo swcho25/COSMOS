@@ -247,6 +247,12 @@ export interface LatestGraphNode {
    * 서버가 아직 내려주지 않을 수 있어 선택 필드이고, 시계열이 없는 기업은 null 이다 (README '백엔드에 확인이 필요한 항목').
    */
   priceChange?: { "1D"?: number | null; "1M"?: number | null; "3M"?: number | null };
+  /**
+   * 원화 환산 시가총액. 은하 뷰의 행성 크기가 연결 가중치와 함께 이 값을 쓴다.
+   * 시장 통화가 달라도 한 척도로 비교해야 하므로 서버가 환산해 준다고 가정한다(README '백엔드에 확인이 필요한 항목').
+   * 서버가 아직 내려주지 않을 수 있어 선택 필드이고, 값이 없는 기업은 연결 가중치만으로 크기를 정한다.
+   */
+  marketCapKrw?: number | null;
 }
 export interface LatestGraph {
   snapshotId: UUID;
