@@ -17,6 +17,7 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.annotation.Validated;
+import org.springframework.web.bind.annotation.CookieValue;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -41,6 +42,17 @@ public class AuthController {
         return ResponseEntity.ok()
                 .header(HttpHeaders.SET_COOKIE, refreshTokenCookie.create(result.refreshToken()).toString())
                 .body(new TokenResponse(result.accessToken()));
+    }
+
+    /**
+     * Access Token 재발급. 요청 본문 없이 refresh_token 쿠키로만 동작한다.
+     * 실패하면 401을 주는데, 프론트는 code로 재시도(TOKEN_EXPIRED)와 재로그인(TOKEN_INVALID)을 구분한다.
+     */
+    @PostMapping("/refresh")
+    public TokenResponse refresh(
+            @CookieValue(name = RefreshTokenCookie.NAME, required = false) String refreshToken
+    ) {
+        return new TokenResponse(authService.reissueAccessToken(refreshToken));
     }
 
     /** 회원가입. 성공하면 201과 만들어진 회원 정보(userId, email, nickname)를 돌려준다. */
