@@ -652,9 +652,13 @@ AlphabetInc,GOOGL,Alphabet Inc. (Class A),NASDAQ,ko_manual,safe,,manual,space re
 아날로그 디바이스,ADI,Analog Devices,NASDAQ,ko_manual,safe,,manual,
 애플,AAPL,Apple Inc.,NASDAQ,ko_manual,safe,,manual,
 어플라이드머티어리얼즈,AMAT,Applied Materials,NASDAQ,ko_manual,safe,,manual,
+어플라이드머티어리얼스,AMAT,Applied Materials,NASDAQ,ko_manual,safe,,rule,즈->스 음차 변형 자동 파생
 어플라이드 머티어리얼즈,AMAT,Applied Materials,NASDAQ,ko_manual,safe,,manual,
+어플라이드 머티어리얼스,AMAT,Applied Materials,NASDAQ,ko_manual,safe,,rule,즈->스 음차 변형 자동 파생
 어플라이드 머티리얼즈,AMAT,Applied Materials,NASDAQ,ko_manual,safe,,manual,
 어플라이드머티리얼즈,AMAT,Applied Materials,NASDAQ,ko_manual,safe,,manual,space removed
+어플라이드 머티리얼스,AMAT,Applied Materials,NASDAQ,ko_manual,safe,,rule,즈->스 음차 변형 자동 파생
+어플라이드머티리얼스,AMAT,Applied Materials,NASDAQ,ko_manual,safe,,rule,"즈->스 음차 변형, 공백 제거"
 앱러빈,APP,AppLovin,NASDAQ,ko_manual,safe,,manual,
 암홀딩스,ARM,Arm Holdings,NASDAQ,ko_manual,safe,,manual,
 ARM홀딩스,ARM,Arm Holdings,NASDAQ,ko_manual,safe,,manual,
@@ -667,9 +671,13 @@ Arm홀딩스,ARM,Arm Holdings,NASDAQ,ko_manual,safe,,manual,
 오토매틱데이터프로세싱,ADP,Automatic Data Processing,NASDAQ,ko_manual,safe,,manual,
 오토매틱 데이터 프로세싱,ADP,Automatic Data Processing,NASDAQ,ko_manual,safe,,manual,
 액손엔터프라이즈,AXON,Axon Enterprise,NASDAQ,ko_manual,safe,,manual,
+액손엔터프라이스,AXON,Axon Enterprise,NASDAQ,ko_manual,safe,,rule,즈->스 음차 변형 자동 파생
 액손 엔터프라이즈,AXON,Axon Enterprise,NASDAQ,ko_manual,safe,,manual,
+액손 엔터프라이스,AXON,Axon Enterprise,NASDAQ,ko_manual,safe,,rule,즈->스 음차 변형 자동 파생
 베이커휴즈,BKR,Baker Hughes,NASDAQ,ko_manual,safe,,manual,
+베이커휴스,BKR,Baker Hughes,NASDAQ,ko_manual,safe,,rule,즈->스 음차 변형 자동 파생
 베이커 휴즈,BKR,Baker Hughes,NASDAQ,ko_manual,safe,,manual,
+베이커 휴스,BKR,Baker Hughes,NASDAQ,ko_manual,safe,,rule,즈->스 음차 변형 자동 파생
 비케이알,BKR,Baker Hughes,NASDAQ,ko_manual,safe,,manual,
 부킹홀딩스,BKNG,Booking Holdings,NASDAQ,ko_manual,safe,,manual,
 부킹 홀딩스,BKNG,Booking Holdings,NASDAQ,ko_manual,safe,,manual,
@@ -678,11 +686,15 @@ Booking.com,BKNG,Booking Holdings,NASDAQ,ko_manual,safe,,manual,
 브로드컴,AVGO,Broadcom,NASDAQ,ko_manual,safe,,manual,
 케이던스,CDNS,Cadence Design Systems,NASDAQ,ko_manual,safe,,manual,
 케이던스디자인시스템즈,CDNS,Cadence Design Systems,NASDAQ,ko_manual,safe,,manual,
+케이던스디자인시스템스,CDNS,Cadence Design Systems,NASDAQ,ko_manual,safe,,rule,즈->스 음차 변형 자동 파생
 케이던스 디자인 시스템즈,CDNS,Cadence Design Systems,NASDAQ,ko_manual,safe,,manual,
+케이던스 디자인 시스템스,CDNS,Cadence Design Systems,NASDAQ,ko_manual,safe,,rule,즈->스 음차 변형 자동 파생
 신타스,CTAS,Cintas,NASDAQ,ko_manual,safe,,manual,
 시스코,CSCO,Cisco,NASDAQ,ko_manual,safe,,manual,
 시스코시스템즈,CSCO,Cisco,NASDAQ,ko_manual,safe,,manual,
+시스코시스템스,CSCO,Cisco,NASDAQ,ko_manual,safe,,rule,즈->스 음차 변형 자동 파생
 시스코 시스템즈,CSCO,Cisco,NASDAQ,ko_manual,safe,,manual,
+시스코 시스템스,CSCO,Cisco,NASDAQ,ko_manual,safe,,rule,즈->스 음차 변형 자동 파생
 코카콜라유로퍼시픽,CCEP,Coca-Cola Europacific Partners,NASDAQ,ko_manual,safe,,manual,
 코카콜라 유로퍼시픽,CCEP,Coca-Cola Europacific Partners,NASDAQ,ko_manual,safe,,manual,
 코카콜라유로퍼시픽파트너스,CCEP,Coca-Cola Europacific Partners,NASDAQ,ko_manual,safe,,manual,
@@ -726,7 +738,9 @@ Gilead,GILD,Gilead Sciences,NASDAQ,ko_manual,safe,,manual,
 케이엘에이,KLAC,KLA Corporation,NASDAQ,ko_manual,safe,,manual,
 KLA코퍼레이션,KLAC,KLA Corporation,NASDAQ,ko_manual,safe,,manual,
 크래프트하인즈,KHC,Kraft Heinz,NASDAQ,ko_manual,safe,,manual,
+크래프트하인스,KHC,Kraft Heinz,NASDAQ,ko_manual,safe,,rule,즈->스 음차 변형 자동 파생
 크래프트 하인즈,KHC,Kraft Heinz,NASDAQ,ko_manual,safe,,manual,
+크래프트 하인스,KHC,Kraft Heinz,NASDAQ,ko_manual,safe,,rule,즈->스 음차 변형 자동 파생
 램리서치,LRCX,Lam Research,NASDAQ,ko_manual,safe,,manual,
 램 리서치,LRCX,Lam Research,NASDAQ,ko_manual,safe,,manual,
 린데,LIN,Linde plc,NASDAQ,ko_manual,safe,,manual,
@@ -757,9 +771,12 @@ StrategyInc,MSTR,MicroStrategy,NASDAQ,ko_manual,safe,,manual,space removed
 "Strategy, Inc.",MSTR,MicroStrategy,NASDAQ,ko_manual,safe,,manual,
 "Strategy,Inc.",MSTR,MicroStrategy,NASDAQ,ko_manual,safe,,manual,space removed
 몬델리즈,MDLZ,Mondelez International,NASDAQ,ko_manual,safe,,manual,
+몬델리스,MDLZ,Mondelez International,NASDAQ,ko_manual,safe,,rule,즈->스 음차 변형 자동 파생
 몬델리즈인터내셔널,MDLZ,Mondelez International,NASDAQ,ko_manual,safe,,manual,
 모놀리식파워시스템즈,MPWR,Monolithic Power Systems,NASDAQ,ko_manual,safe,,manual,
+모놀리식파워시스템스,MPWR,Monolithic Power Systems,NASDAQ,ko_manual,safe,,rule,즈->스 음차 변형 자동 파생
 모놀리식 파워 시스템즈,MPWR,Monolithic Power Systems,NASDAQ,ko_manual,safe,,manual,
+모놀리식 파워 시스템스,MPWR,Monolithic Power Systems,NASDAQ,ko_manual,safe,,rule,즈->스 음차 변형 자동 파생
 몬스터베버리지,MNST,Monster Beverage,NASDAQ,ko_manual,safe,,manual,
 몬스터 베버리지,MNST,Monster Beverage,NASDAQ,ko_manual,safe,,manual,
 네비우스,NBIS,Nebius Group,NASDAQ,ko_manual,safe,,manual,
@@ -805,7 +822,9 @@ Pinduoduo,PDD,PDD Holdings,NASDAQ,ko_manual,safe,,manual,
 로퍼테크놀로지스,ROP,Roper Technologies,NASDAQ,ko_manual,safe,,manual,
 로퍼 테크놀로지스,ROP,Roper Technologies,NASDAQ,ko_manual,safe,,manual,
 로스스토어즈,ROST,Ross Stores,NASDAQ,ko_manual,safe,,manual,
+로스스토어스,ROST,Ross Stores,NASDAQ,ko_manual,safe,,rule,즈->스 음차 변형 자동 파생
 로스 스토어즈,ROST,Ross Stores,NASDAQ,ko_manual,safe,,manual,
+로스 스토어스,ROST,Ross Stores,NASDAQ,ko_manual,safe,,rule,즈->스 음차 변형 자동 파생
 샌디스크,SNDK,Sandisk,NASDAQ,ko_manual,safe,,manual,
 시게이트,STX,Seagate Technology,NASDAQ,ko_manual,safe,,manual,
 씨게이트,STX,Seagate Technology,NASDAQ,ko_manual,safe,,manual,
@@ -840,6 +859,9 @@ T-Mobile,TMUS,T-Mobile US,NASDAQ,ko_manual,safe,,manual,
 워너브러더스 디스커버리,WBD,Warner Bros. Discovery,NASDAQ,ko_manual,safe,,manual,
 워너브라더스,WBD,Warner Bros. Discovery,NASDAQ,ko_manual,safe,,manual,
 워너브러더스,WBD,Warner Bros. Discovery,NASDAQ,ko_manual,safe,,manual,
+워너브로스디스커버리,WBD,Warner Bros. Discovery,NASDAQ,ko_manual,safe,,manual,
+워너브로스 디스커버리,WBD,Warner Bros. Discovery,NASDAQ,ko_manual,safe,,manual,
+워너브로스,WBD,Warner Bros. Discovery,NASDAQ,ko_manual,safe,,manual,
 Warner Bros,WBD,Warner Bros. Discovery,NASDAQ,ko_manual,safe,,manual,
 WarnerBros,WBD,Warner Bros. Discovery,NASDAQ,ko_manual,safe,,manual,space removed
 웨스턴디지털,WDC,Western Digital,NASDAQ,ko_manual,safe,,manual,
@@ -1517,6 +1539,7 @@ IBK기업은행 알토스,,,,blocker,blocked,,manual,
 IBK 기업은행 알토스,,,,blocker,blocked,,manual,
 기업은행 알토스,,,,blocker,blocked,,manual,
 SK실트론,,,,blocker,blocked,,manual,
+LG-BCM,,,,blocker,blocked,,manual,
 SK쉴더스,,,,blocker,blocked,,manual,
 SK에코플랜트,,,,blocker,blocked,,manual,
 SK디앤디,,,,blocker,blocked,,manual,
