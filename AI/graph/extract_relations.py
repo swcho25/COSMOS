@@ -135,12 +135,32 @@ def classify(sent: str, a: str, b: str) -> tuple[str, str, str, float, str] | No
     return None
 
 
+def load_affiliates(path: Path) -> set[frozenset]:
+    """지분 엣지에서 계열 관계 쌍을 만든다.
+
+    현대차-현대모비스처럼 지분으로 묶인 회사끼리는 경쟁사가 아니다. 그런데 기사에는
+    "엘리엇이 현대차와 현대모비스 지분을 … 경쟁사 임원을 선임하려"처럼 제3자를 가리키는
+    '경쟁사'가 같은 문장에 흔히 들어온다. 우리가 이미 가진 DART 지분 엣지로 이걸 막는다.
+    """
+    import csv
+    if not path.exists():
+        return set()
+    with path.open(encoding="utf-8-sig", newline="") as f:
+        return {frozenset((r["src_ticker"], r["dst_ticker"])) for r in csv.DictReader(f)}
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--sample", default=HERE / "data" / "relation_sample.jsonl", type=Path)
+    ap.add_argument("--ownership", default=HERE / "data" / "edges_ownership.csv", type=Path)
     ap.add_argument("--dump", type=Path, help="추출된 관계를 JSONL로 저장 (검수용)")
     ap.add_argument("--show", type=int, default=4, help="유형별 예시 개수")
+    # 검수(무작위 25건)에서 near+kw 가 오탐의 절반을 차지했다 — 키워드가 두 기업 근처에 있을 뿐
+    # 그 관계의 당사자가 누구인지는 말해주지 않는 패턴이다. 0.6 이면 near+kw(0.5)가 빠진다.
+    ap.add_argument("--min-conf", type=float, default=0.6,
+                    help="이 신뢰도 미만 패턴은 버린다 (0.5=near+kw 포함, 0.6=제외)")
     args = ap.parse_args()
+    affiliates = load_affiliates(args.ownership)
 
     rows = [json.loads(l) for l in args.sample.open(encoding="utf-8")]
     hits, by_type, by_pattern = [], Counter(), Counter()
@@ -154,8 +174,12 @@ def main() -> None:
         if not got:
             continue
         src_alias, dst_alias, rel, conf, pat = got
+        if conf < args.min_conf:
+            continue
         src = tk[0] if src_alias == al[0] else tk[1]
         dst = tk[1] if src_alias == al[0] else tk[0]
+        if rel == "COMPETE" and frozenset((src, dst)) in affiliates:
+            continue                                    # 지분으로 묶인 계열사는 경쟁사가 아니다
         by_type[rel] += 1
         by_pattern[(rel, pat)] += 1
         hits.append({"record_id": r["record_id"], "published_date": r["published_date"],
