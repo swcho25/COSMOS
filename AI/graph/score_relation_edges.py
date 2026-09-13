@@ -100,10 +100,12 @@ def main() -> None:
         if lift < args.lift_floor:
             dropped.append((r, lift, "lift 1 미만 (배경보다 드묾)"))
             continue
-        # 상대 근거(lift)와 절대 근거(기사 수) 중 강한 쪽을 가중치로 쓴다.
-        w_lift = math.log10(1 + lift) / math.log10(1 + LIFT_FULL)
-        w_docs = math.log10(1 + n_rel) / math.log10(1 + DOCS_FULL)
-        weight = round(min(1.0, max(w_lift, w_docs)), 4)
+        # 상대 근거(lift)와 절대 근거(기사 수)의 기하평균. 처음엔 max 를 썼는데 그러면
+        # 근거 3건짜리(lift 높음)가 305건짜리와 같은 점수가 돼 화면 정렬이 뒤집혔다
+        # (LG씨엔에스-Adobe 3건 82.3점 > 삼성전자-LG전자 305건 81.2점). 둘 다 높아야 높게 준다.
+        w_lift = min(1.0, math.log10(1 + lift) / math.log10(1 + LIFT_FULL))
+        w_docs = min(1.0, math.log10(1 + n_rel) / math.log10(1 + DOCS_FULL))
+        weight = round(math.sqrt(w_lift * w_docs), 4)
         out.append({**r, "weight": weight, "co_docs": n_co, "rate": round(n_rel / n_co, 5),
                     "lift": round(lift, 2),
                     "evidence": r["evidence"] + f";lift={lift:.1f};co_docs={n_co}"})
