@@ -1,6 +1,7 @@
 package com.cosmos.api.user.service;
 
 import com.cosmos.api.global.error.BusinessException;
+import com.cosmos.api.global.security.AuthErrorCode;
 import com.cosmos.api.global.security.JwtTokenProvider;
 import com.cosmos.api.global.security.RefreshTokenStore;
 import com.cosmos.api.user.dto.LoginRequest;
@@ -45,5 +46,35 @@ public class AuthService {
         refreshTokenStore.save(user.getUserId(), refreshToken);
 
         return new LoginResult(accessToken, refreshToken);
+    }
+
+    /**
+     * Access Token 재발급.
+     *
+     * <p>쿠키의 Refresh Token을 검증한 뒤, 서버(Redis)가 보관한 것과 같은지까지 대조한다.
+     * 로그아웃했거나 다른 기기에서 다시 로그인해 교체된 토큰은 서버 사본과 달라져 거부된다.
+     *
+     * @throws BusinessException 쿠키가 없거나 대조 실패면 TOKEN_INVALID, 기한이 지났으면 TOKEN_EXPIRED
+     */
+    @Transactional(readOnly = true)
+    public String reissueAccessToken(String refreshToken) {
+        if (refreshToken == null || refreshToken.isBlank()) {
+            throw new BusinessException(AuthErrorCode.TOKEN_INVALID);
+        }
+
+        Long userId = jwtTokenProvider.parseRefreshToken(refreshToken);
+
+        boolean matchesStored = refreshTokenStore.find(userId)
+                .filter(stored -> stored.equals(refreshToken))
+                .isPresent();
+        if (!matchesStored) {
+            throw new BusinessException(AuthErrorCode.TOKEN_INVALID);
+        }
+
+        // 권한이 바뀌었거나 탈퇴했을 수 있으므로 현재 회원 정보를 다시 읽는다
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new BusinessException(AuthErrorCode.TOKEN_INVALID));
+
+        return jwtTokenProvider.createAccessToken(user.getUserId(), user.getRole());
     }
 }

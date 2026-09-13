@@ -12,6 +12,7 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Date;
+import java.util.UUID;
 import javax.crypto.SecretKey;
 import org.springframework.stereotype.Component;
 
@@ -84,6 +85,9 @@ public class JwtTokenProvider {
         var builder = Jwts.builder()
                 .subject(String.valueOf(userId))
                 .claim(CLAIM_TYPE, type.name())
+                // 발급 시각은 초 단위라 같은 초에 두 번 발급하면 토큰이 같아진다.
+                // 고유 번호를 넣어 매번 다른 토큰이 되게 하고, 재로그인 시 이전 토큰이 확실히 무효가 되게 한다.
+                .id(UUID.randomUUID().toString())
                 .issuedAt(Date.from(now))
                 .expiration(Date.from(now.plus(validity)))
                 .signWith(key);
