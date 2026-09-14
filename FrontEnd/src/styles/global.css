@@ -545,6 +545,23 @@ button:disabled {
 .hd .login-link:hover {
   color: var(--text);
 }
+/* 사용 안내(`?`) — 은하 화면에서만 보이는 헤더 우측 버튼 */
+.hd .help-btn {
+  display: inline-grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  color: var(--text-3);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.03);
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+.hd .help-btn:hover {
+  color: var(--text);
+  background: rgba(109, 140, 255, 0.16);
+  border-color: rgba(109, 140, 255, 0.4);
+}
 .profile-btn {
   display: flex;
   align-items: center;
@@ -661,7 +678,8 @@ button:disabled {
 .toasts {
   position: fixed;
   left: 50%;
-  bottom: 22px;
+  /* 은하 화면 하단 중앙의 상시 "읽는 법" 바(높이 32 + 여백) 위에 뜬다 */
+  bottom: 72px;
   transform: translateX(-50%);
   display: flex;
   flex-direction: column;
@@ -694,44 +712,6 @@ button:disabled {
     opacity: 1;
     transform: none;
   }
-}
-
-/* ------------------------------------------------------------------ */
-/* 3D 콜아웃                                                             */
-/* ------------------------------------------------------------------ */
-.scene-callout {
-  width: 300px;
-  padding: 14px 16px;
-  border-radius: 14px;
-  background: rgba(16, 22, 34, 0.9);
-  border: 1px solid var(--border);
-  box-shadow: var(--shadow-card);
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-.scene-callout .kick {
-  color: var(--primary-2);
-}
-.callout-close {
-  color: var(--text-3);
-  font-size: 18px;
-  line-height: 1;
-  padding: 0 6px;
-  border-radius: 6px;
-}
-.callout-close:hover {
-  color: var(--text);
-  background: rgba(255, 255, 255, 0.08);
-}
-.scene-callout strong {
-  font-size: 14px;
-  font-weight: 700;
-  line-height: 1.45;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
 }
 
 /* ------------------------------------------------------------------ */
