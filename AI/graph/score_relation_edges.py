@@ -38,12 +38,14 @@ from __future__ import annotations
 
 import argparse
 import csv
+import datetime as dt
 import math
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 LIFT_FULL = 50.0        # 이 배수면 weight 1.0 (상대 근거 기준점)
 DOCS_FULL = 200.0       # 이 기사 수면 weight 1.0 (절대 근거 기준점)
+RECENCY_HALF_LIFE = 2.0  # 마지막 근거가 이만큼(년) 지나면 가중치 절반
 
 
 def load_comention(path: Path) -> dict[tuple, int]:
@@ -65,6 +67,10 @@ def main() -> None:
                     help="이만큼 많은 기사가 같은 관계를 말하면 lift 미달이어도 남긴다")
     ap.add_argument("--lift-floor", type=float, default=1.0,
                     help="절대 근거로 통과해도 이 lift 미만이면 버린다(배경보다 드물면 반증)")
+    ap.add_argument("--half-life", type=float, default=RECENCY_HALF_LIFE,
+                    help="마지막 근거가 이만큼(년) 지나면 가중치 절반")
+    ap.add_argument("--max-age-years", type=float, default=5.0,
+                    help="마지막 근거가 이보다 오래되면 끝난 관계로 보고 버린다")
     ap.add_argument("--names", default=HERE.parent / "ner" / "data" / "companies.csv", type=Path)
     args = ap.parse_args()
 
@@ -78,6 +84,9 @@ def main() -> None:
     tot_rel = sum(int(r["n_docs"]) for r in rows)
     tot_co = sum(co.get(tuple(sorted((r["src_ticker"], r["dst_ticker"]))), 0) for r in rows)
     p0 = tot_rel / tot_co if tot_co else 0.0
+
+    # 최근성 기준일은 '오늘'이 아니라 데이터가 끝나는 날. 배치 시점과 무관하게 재현된다.
+    ref_date = max(dt.date.fromisoformat(r["last_date"]) for r in rows)
 
     out, dropped = [], []
     for r in rows:
@@ -105,7 +114,15 @@ def main() -> None:
         # (LG씨엔에스-Adobe 3건 82.3점 > 삼성전자-LG전자 305건 81.2점). 둘 다 높아야 높게 준다.
         w_lift = min(1.0, math.log10(1 + lift) / math.log10(1 + LIFT_FULL))
         w_docs = min(1.0, math.log10(1 + n_rel) / math.log10(1 + DOCS_FULL))
-        weight = round(math.sqrt(w_lift * w_docs), 4)
+        # 최근성. 집계는 2012년치까지 훑으므로 그대로 두면 끝난 관계가 현재 관계처럼 뜬다
+        # (마지막 근거가 2023년 이전인 엣지가 32%였다: LG전자-Kraft Heinz 2021-01,
+        #  SK텔레콤-GE HealthCare 2021-09 등). 마지막 근거로부터의 경과로 반감시킨다.
+        age = (ref_date - dt.date.fromisoformat(r["last_date"])).days / 365.25
+        recency = 0.5 ** (max(0.0, age) / args.half_life)
+        if age > args.max_age_years:
+            dropped.append((r, lift, f"마지막 근거 {age:.1f}년 전"))
+            continue
+        weight = round(math.sqrt(w_lift * w_docs) * recency, 4)
         out.append({**r, "weight": weight, "co_docs": n_co, "rate": round(n_rel / n_co, 5),
                     "lift": round(lift, 2),
                     "evidence": r["evidence"] + f";lift={lift:.1f};co_docs={n_co}"})
