@@ -7,7 +7,7 @@ event_study_propagation.py 의 판정 결과로 목표가 바뀌었다.
       "이 뉴스로 어디가 흔들렸나"를 보여주는 화면용 지표다. 이 구분을 흐리면 안 된다.
 
 이 모듈이 책임지는 것은 세 가지다.
-  1) 잔차 패널 — 미래정보 없이 만든 비정상 수익률
+  1) 잔차 패널 — 직전 연도 베타로 만든 비정상 수익률
   2) 시간 분할 — train / val / test 를 날짜로 자르고, 각 구간에서 쓸 수 있는 엣지만 남긴다
   3) 세션 정렬 — KOSPI/NASDAQ 의 서로 다른 달력을 한 패널로 붙인다
 
@@ -24,6 +24,8 @@ build_correlation_edges.residualize() 는 주어진 구간 전체로 베타를 �
   beta_mode="inyear" 당해 연도 베타 (build_correlation_edges 와 동일, 비교용)
 
 첫 해(2016)는 직전 연도가 없어 버린다. 실측 차이는 measure_beta_mode() 로 확인할 것.
+단, log_returns() 의 윈저라이즈 경계는 아직 전 구간 분위수를 쓴다. 베타의 시간 분리와
+별개로 남아 있는 미래정보 한계이며 HANDOFF_STORY3.md §9 에 기록돼 있다.
 
 ────────────────────────────────────────────────────────────────────────────
 엣지 as-of 필터
@@ -47,7 +49,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from build_correlation_edges import MIN_FIT, MIN_GROUP, log_returns
+from build_correlation_edges import MIN_FIT, MIN_GROUP, lag_align, log_returns
 
 HERE = Path(__file__).resolve().parent
 PRICES = HERE / "data" / "prices_daily.parquet"
@@ -198,6 +200,200 @@ def load_relation_edges(relations: Path = RELATIONS, scores: Path = SCORES,
                          orientation="forward" if v.relationship_type_code in undirected
                          else "reverse", **base))
     return pd.DataFrame(rows).drop_duplicates(["src", "dst", "rel_type", "orientation"])
+
+
+EDGE_SETS = ("relation", "ownership", "sector", "co_mention")
+
+
+def build_edge_table(panel: Panel, as_of: str | None = "2024-01-01",
+                     sets: tuple[str, ...] = EDGE_SETS,
+                     direction_csv: Path | None = None,
+                     co_mention_path: Path | None = None) -> pd.DataFrame:
+    """방향 있는 (src -> dst) 엣지 하나당 한 행 + 특징 컬럼.
+
+    correlation 엣지는 **일부러 뺐다**. 2025-09~2026-09 가격으로 만든 것이라 test 구간을
+    이미 보고 만든 엣지다. 베이스라인에서 rank-IC 0.279 가 나왔지만 그 숫자는 미래정보다.
+
+    co_mention 기본 파일(edges_co_mention.csv)은 2012~2026 누적이라 test 구간 기사도 가중치에
+    들어간다. 서버에서 날짜를 잘라 다시 집계한 것이 data/edges_co_mention_pre2024.csv 이고,
+    co_mention_path 로 넘기면 그걸 쓴다. 평가용으로는 이쪽을 써야 한다.
+        spark-submit ... build_comention_edges.py --until 2024-01-01 \
+            --out ~/ner-work/edges_co_mention_pre2024.csv
+        7,383 -> 6,126쌍 (1,259쌍은 2024년 이후 기사로만 존재하던 엣지였다).
+        공통 쌍의 npmi 상관은 0.98 이지만 SK스퀘어처럼 분할 이후 노출이 는 종목은 크게 바뀐다
+        (032830-402340 npmi -0.085 -> +0.215).
+    현재 비교는 pre2024 파일로 고정한다. 전 기간 파일을 쓴 옛 실행과 숫자를 섞지 않는다.
+    """
+    tickers = set(panel.tickers)
+    rows: dict[tuple[str, str], dict] = {}
+
+    def slot(a: str, b: str) -> dict:
+        return rows.setdefault((a, b), {"src": a, "dst": b})
+
+    if "relation" in sets:
+        rel = load_relation_edges(as_of=as_of)
+        if direction_csv and Path(direction_csv).exists():
+            d = pd.read_csv(direction_csv, dtype=str)
+            byp = {(frozenset((r.source_stock_code, r.target_stock_code)),
+                    r.relationship_type_code): r.impact_direction
+                   for r in d.itertuples(index=False)}
+            rel["impact"] = [byp.get((frozenset((v.src, v.dst)), v.rel_type), v.impact)
+                             for v in rel.itertuples(index=False)]
+        for v in rel.itertuples(index=False):
+            if v.src not in tickers or v.dst not in tickers:
+                continue
+            s = slot(v.src, v.dst)
+            s[f"rel_{v.rel_type}"] = 1.0
+            s["rel_sign"] = -1.0 if v.impact == "NEGATIVE" else 1.0
+            s["rel_score"] = max(s.get("rel_score", 0.0), v.score / 100.0)
+            s["rel_conf"] = max(s.get("rel_conf", 0.0), v.confidence)
+            s["rel_reverse"] = 1.0 if v.orientation == "reverse" else 0.0
+
+    def undirected(path: Path, cols: dict[str, str]) -> None:
+        if not path.exists():
+            return
+        e = pd.read_csv(path, dtype={"src_ticker": str, "dst_ticker": str})
+        for v in e.itertuples(index=False):
+            a, b = v.src_ticker, v.dst_ticker
+            if a not in tickers or b not in tickers:
+                continue
+            for x, y in ((a, b), (b, a)):
+                s = slot(x, y)
+                for feat, col in cols.items():
+                    s[feat] = float(getattr(v, col))
+
+    if "ownership" in sets:
+        undirected(HERE / "data" / "edges_ownership.csv", {"own_w": "weight"})
+    if "sector" in sets:
+        undirected(HERE / "data" / "edges_sector.csv", {"sector": "weight"})
+    if "co_mention" in sets:
+        undirected(co_mention_path or (HERE / "data" / "edges_co_mention.csv"),
+                   {"com_w": "weight", "com_npmi": "npmi"})
+
+    df = pd.DataFrame(list(rows.values()))
+    feats = ["rel_SUPPLY", "rel_INVEST", "rel_PARTNER", "rel_COMPETE", "rel_sign", "rel_score",
+             "rel_conf", "rel_reverse", "own_w", "sector", "com_w", "com_npmi"]
+    for c in feats:
+        if c not in df.columns:
+            df[c] = 0.0
+    df[feats] = df[feats].fillna(0.0)
+    df["cross_market"] = [float(panel.market[a] != panel.market[b])
+                          for a, b in zip(df["src"], df["dst"])]
+    df["same_industry"] = [float(panel.industry.get(a) == panel.industry.get(b))
+                           for a, b in zip(df["src"], df["dst"])]
+    df["src_nasdaq"] = [float(panel.market[a] == "NASDAQ") for a in df["src"]]
+    df["has_rel"] = (df[["rel_SUPPLY", "rel_INVEST", "rel_PARTNER",
+                         "rel_COMPETE"]].sum(axis=1) > 0).astype(float)
+
+    # 산업 원핫을 소스·타깃 양쪽에 붙인다. same_industry 한 칸으로는 "같은 업종이면 같이
+    # 움직인다"까지밖에 못 쓴다. 원핫이 있으면 **업종 쌍별** 전달을 배울 수 있다
+    # (반도체 충격 -> 장비/부품은 크게, 은행은 거의 안 옮는 식). 단순 가중 베이스라인이
+    # 표현할 수 없는 부분이 여기다.
+    for side in ("src", "dst"):
+        oh = pd.get_dummies(df[side].map(panel.industry).fillna("NA"),
+                            prefix=f"ind_{side}", dtype=float)
+        df = pd.concat([df, oh], axis=1)
+    return df
+
+
+BASE_FEATURES = ["rel_SUPPLY", "rel_INVEST", "rel_PARTNER", "rel_COMPETE", "rel_sign",
+                 "rel_score", "rel_conf", "rel_reverse", "own_w", "sector", "com_w",
+                 "com_npmi", "cross_market", "same_industry", "src_nasdaq", "has_rel"]
+
+
+def feature_cols(df: pd.DataFrame, industry: bool = True) -> list[str]:
+    ind = [c for c in df.columns if c.startswith(("ind_src_", "ind_dst_"))]
+    return BASE_FEATURES + (sorted(ind) if industry else [])
+
+
+FEATURE_COLS = BASE_FEATURES      # 하위호환 (baseline_onehop 등이 참조)
+
+
+def train_corr(panel, fit: set[str]) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """(같은시장 잔차 상관, 교차시장 잔차 상관). 지정한 분할 구간에서만 추정한다.
+
+    교차시장은 NASDAQ(t-1)->KOSPI(t) 로 맞춘 뒤 상관을 낸다 (build_correlation_edges 가
+    실측으로 고른 정렬. 같은 날짜로 맞추면 평균 상관이 -0.006 으로 죽는다).
+    """
+    resid = panel.resid
+    mask = pd.Series(np.isin(panel.split.to_numpy(), list(fit)), index=resid.index)
+    kospi = [t for t in panel.tickers if panel.market[t] == "KOSPI"]
+    nasdaq = [t for t in panel.tickers if panel.market[t] == "NASDAQ"]
+    kdays = resid.loc[resid[kospi].notna().any(axis=1)].index
+    cross = pd.concat([resid.loc[kdays, kospi], lag_align(resid, nasdaq, kdays)], axis=1)
+    same_c = resid[mask].corr(min_periods=120)
+    cross_c = cross[mask.reindex(cross.index, fill_value=False)].corr(min_periods=120)
+    return same_c, cross_c
+
+
+def coef_matrix(panel, rule: str, same_c, cross_c, direction: dict, alpha: float = 0.5):
+    """규칙 하나를 (n_tickers x n_tickers) 계수 행렬로 편다. W[src, dst]."""
+    tk = panel.tickers
+    pos = {t: i for i, t in enumerate(tk)}
+    ind = {t: panel.industry.get(t, "NA") for t in tk}
+    n = len(tk)
+
+    def corr(a: str, b: str) -> float:
+        c = same_c if panel.market[a] == panel.market[b] else cross_c
+        try:
+            v = c.at[a, b]
+        except KeyError:
+            return np.nan
+        return float(v) if np.isfinite(v) else np.nan
+
+    same_ind = np.zeros((n, n))
+    for a in tk:
+        for b in tk:
+            if a != b and ind[a] == ind[b]:
+                same_ind[pos[a], pos[b]] = 1.0
+
+    if rule == "industry":
+        return same_ind
+    if rule == "industry_signed":
+        W = same_ind.copy()
+        for (a, b), d in direction.items():
+            if a in pos and b in pos and d == "NEGATIVE":
+                W[pos[a], pos[b]] = W[pos[b], pos[a]] = -abs(W[pos[a], pos[b]]) or -1.0
+        return W
+    if rule == "relation_score":
+        W = np.zeros((n, n))
+        for (a, b), d in direction.items():
+            if a in pos and b in pos:
+                s = -1.0 if d == "NEGATIVE" else 1.0
+                W[pos[a], pos[b]] = W[pos[b], pos[a]] = s
+        return W
+
+    # 상관 기반 규칙들
+    C = np.full((n, n), np.nan)
+    for a in tk:
+        for b in tk:
+            if a != b:
+                C[pos[a], pos[b]] = corr(a, b)
+    if rule == "pair_corr":
+        return np.nan_to_num(C)
+
+    # 업종쌍 평균: (소스 업종, 타깃 업종) 칸마다 그 안의 쌍 상관 평균
+    keys = sorted({ind[t] for t in tk})
+    ki = {k: j for j, k in enumerate(keys)}
+    rows = np.array([ki[ind[t]] for t in tk])
+    P = np.full((len(keys), len(keys)), np.nan)
+    N = np.zeros((len(keys), len(keys)))
+    for i in range(len(keys)):
+        for j in range(len(keys)):
+            block = C[np.ix_(rows == i, rows == j)]
+            vals = block[np.isfinite(block)]
+            if len(vals):
+                P[i, j], N[i, j] = vals.mean(), len(vals)
+    IP = np.nan_to_num(P[np.ix_(rows, rows)])
+    np.fill_diagonal(IP, 0.0)
+    if rule == "industry_pair":
+        return IP
+    if rule == "pair_shrunk":
+        # 쌍별 추정을 업종쌍 평균 쪽으로 고정 비율 수축한다. 쌍별 관측일 수는 서로 다르며,
+        # 현재 구현은 표본수별 수축을 하지 않는다. 이력 부족 쌍의 별도 평가는 후속 과제다.
+        # alpha 는 val 로 고른다. alpha=1 이면 pair_corr, 0 이면 industry_pair 와 같다.
+        return np.where(np.isfinite(C), alpha * np.nan_to_num(C) + (1 - alpha) * IP, IP)
+    raise ValueError(rule)
 
 
 def measure_beta_mode() -> None:

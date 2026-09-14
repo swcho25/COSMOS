@@ -1,60 +1,62 @@
 """Story 3 — impact_direction 을 관계 유형이 아니라 쌍별 가격 반응에서 추정한다.
 
   PYTHONUTF8=1 ../ner/.venv/Scripts/python.exe estimate_edge_direction.py
-  PYTHONUTF8=1 ../ner/.venv/Scripts/python.exe estimate_edge_direction.py --min-val-gain 0.10
+  PYTHONUTF8=1 ../ner/.venv/Scripts/python.exe estimate_edge_direction.py --factors market+industry
 
 왜 고치는가
   build_relationship_seed.py 는 유형만 보고 부호를 준다
   (IMPACT = SUPPLY/INVEST/PARTNER POSITIVE, COMPETE NEGATIVE).
-  event_study_propagation.py 실측에서 COMPETE 43쌍 중 **32쌍이 반대**였다.
-    삼성전자-SK하이닉스 +547bp, NAVER-카카오 +253, 신한지주-KB금융 +236 (같이 움직인다)
-    Intel-AMD -186bp, Apple-삼성전자 -63 (진짜 정면 대체재만 반대로 움직인다)
-  "경쟁사"라는 라벨 하나로 두 부류를 같이 묶은 게 원인이다. 국내 경쟁사는 대체로 같은 산업
-  충격을 같이 맞는 쪽이 커서 같이 움직이고, 글로벌 점유율 싸움만 실제로 반대로 간다.
-  baseline_onehop.py 에서도 부호를 붙인 쪽이 더 나빴다 (rank-IC 0.052 < 무부호 0.085).
-
-어떻게 정하는가 (3단 분할을 지킨다)
-  train 2017~2022  쌍별 **동시 잔차 상관** r 을 추정한다.
-  val   2023       |r| 임계값과 **유형별로 가격추정을 쓸지 말지**를 고른다.
-  test  2024~2026  손대지 않고 최종 보고만 한다.
-  같은 시장 쌍은 같은 세션, 교차시장 쌍은 NASDAQ(t-1)->KOSPI(t) 로 맞춘다
-  (build_correlation_edges 가 실측으로 고른 정렬. 같은 날짜로 맞추면 상관이 -0.006 로 죽는다).
-
-유형별로 켜고 끄는 이유가 실제로 있었다. 처음엔 전 유형에 가격추정을 밀어넣었는데
-**INVEST 만 test 적중률이 86%->77% 로 나빠졌다.** 지분 관계는 "모회사 호재는 자회사 호재"
-라는 기본값이 이미 거의 맞아서, 6년치 상관으로 추정한 부호가 그 prior 를 이기지 못한다.
-좋은 prior 를 잡음으로 덮어쓰면 안 된다. 어느 유형이 그런지는 val 로 고른다.
+  COMPETE 의 NEGATIVE 가 가격과 정면으로 어긋난다 — test 구간에서 유형 기본값 적중률이
+  **5%** 다. 국내 "경쟁사"는 같은 산업 충격을 같이 맞는 쪽이 압도적이라 같이 움직인다
+  (SK하이닉스-삼성전자, NAVER-카카오, 신한지주-KB금융 ...).
 
 ════════════════════════════════════════════════════════════════════════════
-실측 결과 (beta_mode=prior, val 이 고른 |r| 임계 0.03, --min-val-gain 0.05)
+기준선을 제대로 잡을 것 — 이 스크립트가 한 번 틀렸던 지점
 ════════════════════════════════════════════════════════════════════════════
-  type      n   가격추정  바뀜   val 적중(기본->가격)   test 적중(기본->채택)
-  COMPETE   23    O       13      26% -> 84%           14% -> 57%   (n=21)
-  INVEST    44    X        0      79% -> 81%           86% -> 86%   (n=44)
-  PARTNER  236    O       67      54% -> 62%           52% -> 63%   (n=231)
-  SUPPLY    14    X        0      71% -> 57%           64% -> 64%   (n=14)
-  전체     317           80                            55% -> 66%   (n=310)
+처음에는 "유형 기본값 55% -> 쌍별 추정 66%" 로 보고했다. 두 가지가 잘못이었다.
 
-COMPETE 에서 부호가 뒤집힌 13쌍 (train r -> test r). 전부 국내 동종업계다.
-  SK하이닉스-삼성전자 +0.568 -> +0.522   NAVER-카카오 +0.439 -> +0.444
-  KT-LG유플러스 +0.440 -> +0.364         신한지주-KB금융 +0.409 -> +0.491
-  SK하이닉스-Micron +0.277 -> +0.274     LG화학-SK이노베이션 +0.176 -> +0.359
-NEGATIVE 로 남은 것 중 가격이 실제로 음수라고 말한 건 2쌍뿐이다.
-  AMD-INTC -0.148 (다만 test 는 +0.086 으로 뒤집힌다), 삼성전자-AVGO -0.053 -> -0.055
-나머지 8쌍은 |r| 이 임계 미만이거나(삼성전자-AAPL +0.023 등) 상장 이력이 짧아
-(삼성에피스홀딩스) 판단을 보류하고 유형 기본값을 남긴 것이다.
+1) **허수아비를 상대했다.** 유형 기본값(COMPETE 만 NEGATIVE)은 약한 기준선이다. 파라미터가
+   0개인 "**전부 POSITIVE**" 가 같은 표본에서 더 높다. 이걸 안 놓고 비교하면 "경쟁사도 같이
+   움직인다"를 발견한 공을 쌍별 추정이 가져가 버린다. 실제로 COMPETE 는 전부 POSITIVE 가
+   test 95% 로 쌍별 추정(90%)보다 낫다 — 부호를 더 갈라봐야 손해다.
+2) **쓰이는 공간이 아닌 데서 쟀다.** 부호를 market+industry 잔차로 추정했는데 영향도 모델
+   (build_impact_scores.py / train_impact_gnn.py)은 market-only 잔차를 쓴다. 산업 LOO 팩터를
+   빼면 같은 업종 안에서 잔차 합이 0 에 묶여 **기계적인 음의 상관**이 생기고(그룹 5종목이면
+   -0.09~-0.16), 그걸 관계의 부호로 착각하게 된다. 공간을 맞추면 숫자가 이렇게 바뀐다.
 
-정직하게 남겨둘 것 — --min-val-gain 0.05 는 test 를 한 번 본 뒤에 넣은 가드다.
-처음엔 "val 에서 더 높으면 채택"이었고 그때 INVEST 가 val 79%->81% (44쌍 중 1쌍 차이)로
-통과했다가 test 에서 86%->75% 로 뒤집혔다. 1쌍 차이를 근거로 삼는 게 애초에 잘못이라
-가드 자체는 test 를 안 봤어도 넣었어야 맞지만, 순서상 test 를 한 번 본 뒤에 넣은 것은
-사실이다. 위 test 숫자는 그만큼 낙관 쪽으로 치우쳐 있을 수 있다.
+     잔차 공간              유형기본  전부POS  (옛)출하본
+     market+industry         54.8%   59.7%   66.8%   <- 옛 보고가 선 곳
+     market only (모델이 씀)  57.4%   63.5%   63.5%   <- 이득이 사라진다
+     raw (화면 수익률)         91.8%   99.1%   75.0%   <- 오히려 크게 나쁘다
+
+   그래서 --factors 기본값을 **market** 으로 바꿨다. 소비하는 쪽과 같은 정의여야 한다.
+
+어떻게 정하는가 (3단 분할)
+  train 2017~2022  쌍별 동시 잔차 상관 r 을 추정
+  val   2023       **완성된 규칙들끼리** 통째로 비교해 하나를 고른다
+  test  2024~2026  손대지 않고 보고만
+  유형별로 규칙을 섞는 안(유형마다 가격추정을 켤지 끌지)도 후보에 넣되, val 에서 더 나은
+  쪽만 채택한다. 현재 market 잔차에서 채택된 것은 **유형별 혼합 (|r|>=0.05)** 이다.
+  유형당 표본이 적으므로 이 결과를 다른 시장·기간까지 일반화하지 않는다.
+  같은 시장 쌍은 같은 세션, 교차시장 쌍은 NASDAQ(t-1)->KOSPI(t) 로 맞춘다.
+
+현재 실측 (market 잔차, test 유효 쌍 310개)
+  규칙                         val      test
+  유형 기본값                  63.8%    57.4%
+  전부 POSITIVE (파라미터 0개)   68.8%    63.5%
+  유형별 혼합 (|r|>=0.05)       73.5%    71.9%
+  채택 규칙의 test 유형별 적중률: COMPETE 95%, PARTNER 68%, SUPPLY 86%, INVEST 77%.
+  COMPETE 는 전부 POSITIVE 를 채택한다. INVEST 는 전부 POSITIVE 84% 보다 낮다.
 
 한계
-  - PARTNER 63% 는 절반보다 나을 뿐 높은 수치가 아니다. 협력 관계는 부호가 애초에 한쪽으로
-    쏠려 있지 않다(같이 오르기도, 한쪽만 오르기도 한다). 화면에 부호를 굵게 쓸 근거로는 약하다.
-  - 부호를 "동시 상관"에서 가져오므로 이건 인과가 아니라 동조 방향이다. event_study 에서
-    다음날 전파가 0으로 나온 이상, 이 부호는 "같이 움직이는 방향"으로만 읽어야 한다.
+  - 이건 인과가 아니라 **동조 방향**이다. event_study_propagation.py 에서 다음 세션 전파가
+    0으로 나왔으므로 "A 가 오르면 B 가 오른다"가 아니라 "같이 움직인다"로 읽어야 한다.
+  - 부호만 쓰면 세기를 버린다. 현재 U2 의 industry_signed IC 는 0.2022 (4,073이벤트),
+    industry 는 0.2034 (3,410이벤트) 다. 유효 이벤트 수가 달라 이 두 평균을 그대로 빼면
+    안 된다. pair_corr 의 U3 는 0.2054 다. 이 부호표는 DB 의 impact_direction 칸을 채우고,
+    순위는 build_impact_scores.py 의 계수 크기로 정하는 것이 현재 제품용 선택이다.
+  - 교차시장 쌍(29%)은 NASDAQ(t-1)->KOSPI(t) 한 정렬로만 추정했다. KOSPI->NASDAQ 방향은
+    같은 달력날짜가 맞는 정렬인데 거기서는 따로 재지 않았다.
 """
 from __future__ import annotations
 
@@ -74,6 +76,7 @@ TYPE_DEFAULT = {"SUPPLY": "POSITIVE", "INVEST": "POSITIVE",
                 "PARTNER": "POSITIVE", "COMPETE": "NEGATIVE"}
 FIELDS = ["source_market", "source_stock_code", "target_market", "target_stock_code",
           "relationship_type_code", "impact_direction", "source", "corr_train", "n_train"]
+MIN_DAYS = 60
 
 
 def aligned_frames(panel: Panel) -> tuple[pd.DataFrame, pd.DataFrame]:
@@ -82,7 +85,8 @@ def aligned_frames(panel: Panel) -> tuple[pd.DataFrame, pd.DataFrame]:
     kospi = [t for t in panel.tickers if panel.market[t] == "KOSPI"]
     nasdaq = [t for t in panel.tickers if panel.market[t] == "NASDAQ"]
     kospi_days = resid.loc[resid[kospi].notna().any(axis=1)].index
-    cross = pd.concat([resid.loc[kospi_days, kospi], lag_align(resid, nasdaq, kospi_days)], axis=1)
+    cross = pd.concat([resid.loc[kospi_days, kospi], lag_align(resid, nasdaq, kospi_days)],
+                      axis=1)
     return resid, cross
 
 
@@ -91,7 +95,7 @@ def pair_corr(same: pd.DataFrame, cross: pd.DataFrame, a: str, b: str, cross_mkt
     f = cross if cross_mkt else same
     m = mask.reindex(f.index, fill_value=False)
     d = f.loc[m, [a, b]].dropna()
-    if len(d) < 60:
+    if len(d) < MIN_DAYS:
         return float("nan"), len(d)
     return float(d[a].corr(d[b])), len(d)
 
@@ -101,15 +105,14 @@ def main() -> None:
     ap.add_argument("--relations", default=RELATIONS, type=Path)
     ap.add_argument("--scores", default=SCORES, type=Path)
     ap.add_argument("--out", default=OUT, type=Path)
-    ap.add_argument("--grid", nargs="*", type=float,
-                    default=[0.03, 0.05, 0.08, 0.12, 0.20],
-                    help="val 에서 고를 |r| 임계 후보")
-    ap.add_argument("--min-val-gain", type=float, default=0.05,
-                    help="val 적중률이 이만큼은 올라야 유형에 가격추정을 쓴다")
+    ap.add_argument("--grid", nargs="*", type=float, default=[0.0, 0.03, 0.05, 0.08, 0.12, 0.20],
+                    help="쌍별 부호를 믿을 |r| 임계 후보. 미만이면 전부 POSITIVE 로 둔다")
     ap.add_argument("--beta-mode", choices=("prior", "inyear"), default="prior")
+    ap.add_argument("--factors", choices=("market", "market+industry", "none"), default="market",
+                    help="부호를 추정할 잔차 공간. **소비하는 모델과 같아야 한다** (docstring 2번)")
     args = ap.parse_args()
 
-    panel = build_panel(beta_mode=args.beta_mode)
+    panel = build_panel(beta_mode=args.beta_mode, factors=args.factors)
     same, cross = aligned_frames(panel)
     masks = {s: pd.Series(panel.split.to_numpy() == s, index=panel.resid.index)
              for s in ("train", "val", "test")}
@@ -124,96 +127,92 @@ def main() -> None:
                      "src_mkt": v.source_market, "dst_mkt": v.target_market,
                      "default": TYPE_DEFAULT[v.relationship_type_code],
                      "r_train": r["train"][0], "n_train": r["train"][1],
-                     "r_val": r["val"][0], "n_val": r["val"][1],
-                     "r_test": r["test"][0], "n_test": r["test"][1]})
+                     "r_val": r["val"][0], "r_test": r["test"][0], "n_test": r["test"][1]})
     rep = pd.DataFrame(recs)
 
-    def decide(frame: pd.DataFrame, thr: float) -> pd.Series:
-        """train 상관으로 부호를 정하되 |r|<thr 이면 유형 기본값."""
+    def by_corr(frame: pd.DataFrame, thr: float) -> pd.Series:
+        """train 상관 부호. |r|<thr 이면 판단을 보류하고 전부 POSITIVE 로 둔다."""
         use = np.isfinite(frame["r_train"]) & (frame["r_train"].abs() >= thr)
-        return pd.Series(np.where(use, np.where(frame["r_train"] > 0, "POSITIVE", "NEGATIVE"),
-                                  frame["default"]), index=frame.index)
+        return pd.Series(np.where(use & (frame["r_train"] < 0), "NEGATIVE", "POSITIVE"),
+                         index=frame.index)
 
-    def hit(frame: pd.DataFrame, chosen: pd.Series, split: str) -> float:
-        m = np.isfinite(frame[f"r_{split}"]) & (frame[f"n_{split}"] >= 60)
+    def hit(chosen: pd.Series, split: str, frame: pd.DataFrame | None = None) -> float:
+        f = rep if frame is None else frame
+        m = np.isfinite(f[f"r_{split}"]) & (f["n_test"] >= MIN_DAYS)
         if not m.any():
             return float("nan")
-        return float(((chosen[m] == "POSITIVE") == (frame.loc[m, f"r_{split}"] > 0)).mean())
+        return float(((chosen[m] == "POSITIVE") == (f.loc[m, f"r_{split}"] > 0)).mean())
 
-    # 1) val 로 임계값을 고른다 (전체 적중률 최대)
-    scores = {t: hit(rep, decide(rep, t), "val") for t in args.grid}
-    thr = max(scores, key=lambda k: scores[k])
-
-    # 2) val 로 유형마다 가격추정을 쓸지 정한다. 기본값이 더 나으면 그대로 둔다.
-    #    단순히 "더 높으면 채택"은 위험하다. val 은 1년(n=44 짜리 유형도 있다)이라 한두 쌍
-    #    차이로 뒤집힌다. 실제로 INVEST 는 val 에서 79%->81% (44쌍 중 1쌍 차이)로 간신히
-    #    앞섰는데 test 에서는 86%->75% 로 뒤집혔다. 의미 있는 폭만 인정한다.
-    use_price, val_tbl = {}, {}
+    # ---- 완성된 규칙들을 통째로 val 에서 비교한다
+    cands: dict[str, pd.Series] = {
+        "유형 기본값": rep["default"],
+        "전부 POSITIVE": pd.Series("POSITIVE", index=rep.index),
+    }
+    for thr in args.grid:
+        cands[f"쌍별 상관 부호 |r|>={thr}"] = by_corr(rep, thr)
+    # 유형별 혼합안: 유형마다 val 에서 더 나은 쪽(전부POS / 쌍별)을 고른 뒤 이어붙인다
+    thr_best = max(args.grid, key=lambda t: hit(by_corr(rep, t), "val"))
+    mixed = pd.Series("POSITIVE", index=rep.index)
     for t, g in rep.groupby("type"):
-        h_price = hit(g, decide(g, thr), "val")
-        h_def = hit(g, g["default"], "val")
-        use_price[t] = bool(np.isfinite(h_price) and h_price - h_def >= args.min_val_gain)
-        val_tbl[t] = (h_def, h_price)
+        pick_corr = hit(by_corr(g, thr_best), "val", g)
+        pick_pos = hit(pd.Series("POSITIVE", index=g.index), "val", g)
+        mixed[g.index] = (by_corr(g, thr_best) if (np.isfinite(pick_corr)
+                                                   and pick_corr > pick_pos)
+                          else "POSITIVE")
+    cands[f"유형별 혼합 (|r|>={thr_best})"] = mixed
 
-    chosen = pd.Series(index=rep.index, dtype=object)
-    for t, g in rep.groupby("type"):
-        chosen[g.index] = decide(g, thr) if use_price[t] else g["default"]
+    print(f"관계 {len(rel)}개 | 잔차 공간 factors={args.factors} | test 유효 쌍 "
+          f"{int((np.isfinite(rep.r_test) & (rep.n_test >= MIN_DAYS)).sum())}")
+    print(f"\n{'규칙':<26}{'val 적중':>10}{'test 적중':>11}{'NEG 개수':>9}")
+    for name, pred in cands.items():
+        print(f"{name:<26}{hit(pred, 'val'):>10.1%}{hit(pred, 'test'):>11.1%}"
+              f"{int((pred == 'NEGATIVE').sum()):>9}")
+
+    pick = max(cands, key=lambda k: hit(cands[k], "val"))
+    chosen = cands[pick]
     rep["chosen"] = chosen
-    rep["source"] = np.where((rep["chosen"] != rep["default"]) |
-                             rep["type"].map(use_price) & np.isfinite(rep["r_train"]) &
-                             (rep["r_train"].abs() >= thr), "price", "type-default")
+    print(f"\n  val 이 고른 규칙: **{pick}**  ->  test {hit(chosen, 'test'):.1%}")
+
+    ok = rep[np.isfinite(rep["r_test"]) & (rep["n_test"] >= MIN_DAYS)]
+    print(f"\n{'type':<10}{'n':>5}{'유형기본':>9}{'전부POS':>9}{'채택':>7}{'NEG':>6}")
+    for t, g in ok.groupby("type"):
+        gp = g["r_test"] > 0
+        print(f"{t:<10}{len(g):>5}{((g['default'] == 'POSITIVE') == gp).mean():>9.0%}"
+              f"{gp.mean():>9.0%}{((chosen[g.index] == 'POSITIVE') == gp).mean():>7.0%}"
+              f"{int((chosen[g.index] == 'NEGATIVE').sum()):>6}")
+    gp = ok["r_test"] > 0
+    print(f"{'전체':<10}{len(ok):>5}{((ok['default'] == 'POSITIVE') == gp).mean():>9.0%}"
+          f"{gp.mean():>9.0%}{((chosen[ok.index] == 'POSITIVE') == gp).mean():>7.0%}"
+          f"{int((chosen[ok.index] == 'NEGATIVE').sum()):>6}")
+
+    neg = rep[rep["chosen"] == "NEGATIVE"]
+    if len(neg):
+        nm = pd.read_csv(HERE.parent / "ner" / "data" / "company_industry.csv",
+                         dtype=str).set_index("ticker")["name_official"]
+        print(f"\n  NEGATIVE 로 간 {len(neg)}쌍 (train r -> test r)")
+        for v in neg.sort_values("r_train").head(12).itertuples(index=False):
+            print(f"    {nm.get(v.a, v.a):<16} - {nm.get(v.b, v.b):<16} {v.type:<8}"
+                  f" {v.r_train:+.3f} -> {v.r_test:+.3f}")
 
     args.out.parent.mkdir(parents=True, exist_ok=True)
     with args.out.open("w", encoding="utf-8", newline="") as f:
         w = csv.DictWriter(f, fieldnames=FIELDS)
         w.writeheader()
-        for v, ch, so in zip(rel.itertuples(index=False), rep["chosen"], rep["source"]):
-            i = rep.index[(rep["a"] == v.source_stock_code) & (rep["b"] == v.target_stock_code) &
-                          (rep["type"] == v.relationship_type_code)][0]
+        for v, ch in zip(rel.itertuples(index=False), chosen):
+            i = rep.index[(rep["a"] == v.source_stock_code)
+                          & (rep["b"] == v.target_stock_code)
+                          & (rep["type"] == v.relationship_type_code)][0]
+            rt = rep.at[i, "r_train"]
             w.writerow({"source_market": v.source_market,
                         "source_stock_code": v.source_stock_code,
                         "target_market": v.target_market,
                         "target_stock_code": v.target_stock_code,
                         "relationship_type_code": v.relationship_type_code,
-                        "impact_direction": ch, "source": so,
-                        "corr_train": (round(rep.at[i, "r_train"], 4)
-                                       if np.isfinite(rep.at[i, "r_train"]) else ""),
+                        "impact_direction": ch,
+                        "source": "price" if ch != TYPE_DEFAULT[v.relationship_type_code]
+                                  or np.isfinite(rt) else "fallback",
+                        "corr_train": round(float(rt), 4) if np.isfinite(rt) else "",
                         "n_train": int(rep.at[i, "n_train"])})
-
-    ok = rep[np.isfinite(rep["r_test"]) & (rep["n_test"] >= 60)].copy()
-    ok["hit_new"] = (ok["chosen"] == "POSITIVE") == (ok["r_test"] > 0)
-    ok["hit_old"] = (ok["default"] == "POSITIVE") == (ok["r_test"] > 0)
-
-    print(f"관계 {len(rel)}개 | val 로 고른 |r| 임계 = {thr} "
-          f"(후보별 val 적중 {({k: round(v, 3) for k, v in scores.items()})})")
-    print(f"가격추정을 쓰기로 한 유형: "
-          f"{[t for t, u in use_price.items() if u]} / 기본값 유지: "
-          f"{[t for t, u in use_price.items() if not u]}")
-    print(f"기본값과 달라진 관계 {(rep['chosen'] != rep['default']).sum()}개\n")
-    print(f"{'type':<9}{'n':>5}{'가격':>6}{'바뀜':>6}   {'val 적중(기본->가격)':<22}"
-          f"{'test 적중(기본->채택)':<20}")
-    for t, g in rep.groupby("type"):
-        gg = ok[ok["type"] == t]
-        hd, hp = val_tbl[t]
-        mark = "O" if use_price[t] else "X"
-        print(f"{t:<9}{len(g):>5}{mark:>6}{(g['chosen'] != g['default']).sum():>6}   "
-              f"{hd:>6.0%} -> {hp:<6.0%}        "
-              f"{gg['hit_old'].mean():>6.0%} -> {gg['hit_new'].mean():<6.0%} (n={len(gg)})")
-    print(f"{'전체':<9}{len(rep):>5}{'':>6}{(rep['chosen'] != rep['default']).sum():>6}   "
-          f"{'':>16}      {ok['hit_old'].mean():>6.0%} -> {ok['hit_new'].mean():<6.0%} "
-          f"(n={len(ok)})")
-
-    flip = rep[(rep["chosen"] != rep["default"]) & (rep["type"] == "COMPETE")]
-    if len(flip):
-        print(f"\n  COMPETE 부호가 뒤집힌 쌍 {len(flip)}개 (train r / test r)")
-        for v in flip.sort_values("r_train", ascending=False).itertuples(index=False):
-            print(f"    {v.a:>7} - {v.b:<7} train {v.r_train:+.3f}  test {v.r_test:+.3f}")
-    kept = rep[(rep["type"] == "COMPETE") & (rep["chosen"] == "NEGATIVE")]
-    if len(kept):
-        print(f"  NEGATIVE 로 남은 COMPETE {len(kept)}개")
-        for v in kept.sort_values("r_train").itertuples(index=False):
-            print(f"    {v.a:>7} - {v.b:<7} train {v.r_train:+.3f}  test {v.r_test:+.3f} "
-                  f"({v.source})")
     print(f"\n  -> {args.out}")
 
 

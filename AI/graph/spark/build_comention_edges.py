@@ -31,6 +31,10 @@ def main():
                     help="drop pairs (n_docs>=50) where one publisher accounts for more than this share")
     ap.add_argument("--out", required=True)
     ap.add_argument("--as-of", default=dt.date.today().isoformat())
+    ap.add_argument("--until", default=None,
+                    help="이 날짜(YYYY-MM-DD) 이전 기사만 집계한다. 모델 평가용으로 학습 구간만 "
+                         "써서 엣지를 만들 때 필요하다 — 전 기간으로 만든 엣지를 과거 구간 "
+                         "평가에 쓰면 가중치에 미래 기사가 들어간다")
     args = ap.parse_args()
 
     from pyspark.sql import SparkSession, functions as F, Window
@@ -48,6 +52,10 @@ def main():
         s = spark.read.parquet(f"{root}/spans").filter(F.col("confidence") >= args.min_confidence)
         spans = s if spans is None else spans.unionByName(s)
     spans = spans.select("record_id", "ticker", "start", "published_date")
+    if args.until:
+        # 전체 개수(n_docs_total)와 종목별 등장수(n_a)도 같이 잘려야 pmi 가 일관된다.
+        # spans 에서 자르면 아래 집계가 전부 이 부분집합 위에서 계산되므로 그대로 두면 된다.
+        spans = spans.filter(F.col("published_date") < F.lit(args.until))
     docs = spans.select("record_id", "ticker", "published_date").dropDuplicates(["record_id", "ticker"])
 
     n_docs_total = docs.select("record_id").distinct().count()

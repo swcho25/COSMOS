@@ -64,10 +64,10 @@ RELATIONSHIP_TYPES = [
 # 유형만 보고 주는 기본 부호. COMPETE·PARTNER 는 이것만으로는 틀린다 (아래 참고).
 IMPACT = {"SUPPLY": "POSITIVE", "INVEST": "POSITIVE", "PARTNER": "POSITIVE", "COMPETE": "NEGATIVE"}
 # estimate_edge_direction.py 가 쌍별 가격 반응으로 추정한 부호. 있으면 그쪽을 쓴다.
-# "COMPETE 니까 NEGATIVE" 는 23쌍 중 13쌍에서 틀렸다 — 삼성전자-SK하이닉스, NAVER-카카오,
-# 신한지주-KB금융 처럼 국내 동종업계는 같은 산업 충격을 같이 맞아 같이 움직인다. 실제로
-# 반대로 가는 건 Intel-AMD 같은 글로벌 점유율 싸움뿐이다. test 구간(2024~2026) 부호
-# 적중률 55%->66%. 근거와 한계는 estimate_edge_direction.py docstring 참고.
+# "COMPETE 니까 NEGATIVE" 는 test 구간 적중률이 5% 다 — 국내 동종업계는 같은 산업 충격을
+# 같이 맞아 같이 움직인다 (삼성전자-SK하이닉스, NAVER-카카오, 신한지주-KB금융).
+# 기준선은 유형 기본값이 아니라 **파라미터 0개인 "전부 POSITIVE"** 로 잡아야 한다. test
+# 구간 부호 적중률 63.5%(전부POS) -> 71.9%(쌍별). 근거·한계는 그쪽 docstring 참고.
 IMPACT_OVERRIDE = DATA / "db" / "relationship_impact_direction.csv"
 CORROBORATION_SHARE = 0.25   # 점수에서 보강 신호가 차지하는 몫
 SECTOR_SIGNAL = 0.3          # 같은 업종은 약한 근거라 고정 소액만 인정
@@ -115,6 +115,12 @@ def main() -> None:
     def corroboration(a: str, b: str) -> float:
         p = pair(a, b)
         return max(co.get(p, 0.0), corr.get(p, 0.0), SECTOR_SIGNAL if p in sect else 0.0)
+
+    # 주의(모델 평가용으로 score 를 쓸 때): corr 은 edges_correlation.csv 에서 오는데 그 파일은
+    # 2025-09~2026-09 가격 창으로 만들어졌다. 스토리 3 의 test 구간(2024-01~) 안이다. 317관계
+    # 중 21개에서 이 항이 실제로 max 를 차지한다. 화면용 세기로는 문제가 없지만, score 를
+    # 예측 모델의 특징으로 넣으면 그 21개에 미래정보가 실린다. 실측 영향은 관계 베이스라인
+    # rank-IC 0.0298 -> 0.0297 (KOSPI), NASDAQ 은 변화 없음 — 무시할 크기지만 알고 쓸 것.
 
     # ---- 유형이 정해진 엣지들
     typed: list[dict] = []
