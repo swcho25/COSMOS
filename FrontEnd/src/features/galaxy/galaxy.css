@@ -1412,7 +1412,6 @@
 .galaxy:has(.tour-dim) .hud-hop,
 .galaxy:has(.tour-dim) .hud-panel-tag,
 .galaxy:has(.tour-dim) .hud-surprise,
-.galaxy:has(.tour-dim) .hud-hints,
 .galaxy:has(.tour-dim) .hud-readbar {
   opacity: 0.22;
   pointer-events: none;

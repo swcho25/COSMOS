@@ -12,7 +12,6 @@ import { Icon } from "@/components/ui";
 import CameraPresets from "./CameraPresets";
 import CompanyPanel from "./CompanyPanel";
 import HelpHub, { HelpHotkey } from "./HelpHub";
-import HintChips from "./HintChips";
 import HopSummary from "./HopSummary";
 import IndustryPicker from "./IndustryPicker";
 import LegendCard from "./LegendCard";
@@ -368,9 +367,8 @@ export default function GalaxyPage() {
 
       {/* 우하단: 관계 필터·범례 카드 (P0-10, 종류/영향 분리) — 두 뷰 모두. 접힘 상태의 진입점은 하단 중앙 읽는 법 바다 */}
       <LegendCard />
-      {/* 하단 중앙: 상시 "읽는 법" 1행 (P0-1) · 좌하단: 조작 힌트 칩 (P0-7) */}
+      {/* 하단 중앙: 상시 "읽는 법" 1행 (P0-1). 조작법은 여기 대신 ? 허브 6절·투어 4/4·기업 툴팁이 안내한다 */}
       <ReadBar />
-      <HintChips />
       {/* 왼쪽: 뜻밖의 관계 — 예상 밖의 연결만 골라 보여 주는 이 제품의 핵심 카드. 행 호버 = 씬 강조, 클릭 = 근거 패널 */}
       <SurpriseRail model={focusId ? systemModel : galaxyModel} onPickCompany={pickCompany} />
 

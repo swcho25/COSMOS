@@ -166,23 +166,9 @@ export const LEGEND_UI = {
   edgeLabelsTitle: "선 중간에 공급·투자·협력·경쟁 글자를 붙입니다 (상위 관계만)",
 };
 
-/* ---- 조작 힌트 칩 (P0-7) — 해당 조작을 한 번 하면 그 칩만 회색이 된다 ---- */
-export interface HintChip {
-  id: "rotate" | "zoom" | "move" | "dragPlanet" | "path";
-  keys: string;
-  does: string;
-}
-export const HINT_CHIPS: HintChip[] = [
-  { id: "rotate", keys: "드래그", does: "회전" },
-  { id: "zoom", keys: "휠", does: "확대" },
-  { id: "move", keys: "WASD", does: "이동" },
-  { id: "dragPlanet", keys: "행성 끌기", does: "자리 옮기기" },
-  { id: "path", keys: "Shift+클릭", does: "두 기업 사이 경로" },
-];
-export const HINTS_SEEN_KEY = "cosmos_hints_seen";
-/** 노드 툴팁의 한 줄 힌트 — 조작 힌트 칩(path)과 같은 문구에서 만든다. 같은 조작을 두 문장으로 적지 않는다 */
+/** 기업 툴팁의 한 줄 힌트 — 조작법 표(CONTROL_HINTS)의 경로 항목과 같은 문구. 같은 조작을 두 문장으로 적지 않는다 */
 export const TIP_PATH_HINT = (() => {
-  const h = HINT_CHIPS.find((c) => c.id === "path")!;
+  const h = CONTROL_HINTS.find((c) => c.keys.startsWith("Shift"))!;
   return `${h.keys} = ${h.does}`;
 })();
 
