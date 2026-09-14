@@ -3,3 +3,6 @@ data/ownership_*.csv
 data/prices_raw/
 data/prices_daily.parquet
 data/prices_manifest.json
+# 관계추출 중간 산출물 (기사 본문 포함, 서버에서 재생성 가능)
+data/relation_*.jsonl
+data/rel_hits.jsonl
