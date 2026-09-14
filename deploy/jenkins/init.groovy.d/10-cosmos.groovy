@@ -1,6 +1,5 @@
 import com.cloudbees.plugins.credentials.CredentialsScope
 import com.cloudbees.plugins.credentials.SystemCredentialsProvider
-import com.cloudbees.plugins.credentials.domains.Domain
 import com.cloudbees.plugins.credentials.impl.UsernamePasswordCredentialsImpl
 import com.dabsquared.gitlabjenkins.GitLabPushTrigger
 import com.dabsquared.gitlabjenkins.trigger.TriggerOpenMergeRequest
@@ -55,16 +54,18 @@ if (hasGitUserFile != hasGitPasswordFile) {
 if (hasGitUserFile) {
     def gitUser = readSecret('git-username')
     def gitPassword = readSecret('git-password')
-    def store = SystemCredentialsProvider.getInstance().getStore()
-    def existingCredential = store.getCredentials(Domain.global()).find { it.id == credentialId }
+    def provider = SystemCredentialsProvider.getInstance()
+    def credentials = provider.getCredentials()
+    def existingCredential = credentials.find { it.id == credentialId }
     def credential = new UsernamePasswordCredentialsImpl(
         CredentialsScope.GLOBAL, credentialId, 'COSMOS GitLab repository read access', gitUser, gitPassword
     )
     if (existingCredential) {
-        store.updateCredentials(Domain.global(), existingCredential, credential)
+        credentials.set(credentials.indexOf(existingCredential), credential)
     } else {
-        store.addCredentials(Domain.global(), credential)
+        credentials.add(credential)
     }
+    provider.save()
 } else {
     // Leave a UI-created credential untouched. Missing credentials are allowed
     // while the secured controller waits for the project Deploy Token owner.
@@ -79,9 +80,10 @@ if (agent != null && !(agent instanceof DumbSlave)) {
 }
 if (agent == null) {
     agent = new DumbSlave('cosmos-agent', '/opt/cosmos/jenkins-agent', launcher)
+} else if (agent.getRemoteFS() != '/opt/cosmos/jenkins-agent') {
+    throw new IllegalStateException('Existing cosmos-agent has an unexpected remote root directory')
 }
 agent.setNodeDescription('Dedicated EC2 host agent; Docker builds execute here, never on the controller')
-agent.setRemoteFS('/opt/cosmos/jenkins-agent')
 agent.setNumExecutors(1)
 agent.setLabelString('cosmos-build')
 agent.setMode(Node.Mode.EXCLUSIVE)
