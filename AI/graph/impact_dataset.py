@@ -24,8 +24,9 @@ build_correlation_edges.residualize() 는 주어진 구간 전체로 베타를 �
   beta_mode="inyear" 당해 연도 베타 (build_correlation_edges 와 동일, 비교용)
 
 첫 해(2016)는 직전 연도가 없어 버린다. 실측 차이는 measure_beta_mode() 로 확인할 것.
-단, log_returns() 의 윈저라이즈 경계는 아직 전 구간 분위수를 쓴다. 베타의 시간 분리와
-별개로 남아 있는 미래정보 한계이며 HANDOFF_STORY3.md §9 에 기록돼 있다.
+기존 실험 재현용 기본값에서는 log_returns() 의 윈저라이즈 경계가 전 구간 분위수다.
+새 U3 모델은 winsor_fit_end="2022-12-31" 로 이 경계를 과거 이력에서만 추정한다.
+기본값의 잔여 한계는 HANDOFF_STORY3.md §9 에 기록돼 있다.
 
 ────────────────────────────────────────────────────────────────────────────
 엣지 as-of 필터
@@ -122,14 +123,24 @@ class Panel:
 
 
 def build_panel(prices: Path = PRICES, industry: Path = INDUSTRY, winsor: float = 0.005,
-                beta_mode: str = "prior", factors: str = "market+industry") -> Panel:
+                beta_mode: str = "prior", factors: str = "market+industry",
+                winsor_fit_end: str | None = None) -> Panel:
+    """잔차 패널. winsor_fit_end 를 주면 그 날짜까지의 가격 이력으로만 클리핑 경계를 정한다.
+
+    기존 실험 재현은 기본값(None)을 유지한다. U3 서빙 모델은 2022-12-31 을 사용한다.
+    """
     df = pd.read_parquet(prices, columns=["ticker", "market", "trading_at", "adj_close"])
     market = df.drop_duplicates("ticker").set_index("ticker")["market"]
     ind = pd.read_csv(industry, dtype=str).set_index("ticker")["industry_id"]
 
     px = df.pivot_table(index="trading_at", columns="ticker", values="adj_close")
     px.index = pd.to_datetime(px.index)
-    r = log_returns(px.sort_index(), winsor)
+    r = log_returns(px.sort_index(), winsor if winsor_fit_end is None else 0.0)
+    if winsor_fit_end is not None and winsor > 0:
+        fit = r.loc[:winsor_fit_end]
+        if fit.empty:
+            raise ValueError("윈저라이즈 추정 구간에 관측이 없습니다")
+        r = r.clip(lower=fit.quantile(winsor), upper=fit.quantile(1 - winsor), axis=1)
 
     by_market: dict[object, list[str]] = {}
     by_industry: dict[object, list[str]] = {}

@@ -1,4 +1,7 @@
-"""Story 3 최종 산출물 — 당일 영향도 계수. 학습 모델 대신 룩업테이블을 쓴다.
+"""Story 3 계수표 기준선 — 당일 영향도 계수. 이전 표 기반 출하안을 재현한다.
+
+후속 사용자 결정으로 현재 주모델은 train_impact_u3.py 의 GNN 이다. 이 스크립트는
+기존 계수표 결과의 재현용이며, 같은 조건의 최신 비교는 train_impact_u3.py 에서 수행한다.
 
   PYTHONUTF8=1 ../ner/.venv/Scripts/python.exe build_impact_scores.py
   PYTHONUTF8=1 ../ner/.venv/Scripts/python.exe build_impact_scores.py --refit train+val

@@ -15,3 +15,4 @@ data/impact_gnn_*.csv
 data/impact_gnn_*.log
 data/impact_coefficients*.csv
 data/impact_scores_eval.csv
+artifacts/
