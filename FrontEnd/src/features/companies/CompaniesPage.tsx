@@ -150,7 +150,7 @@ export default function CompaniesPage() {
                 투자·지분 관계
               </button>
             </div>
-            <span className="pill num">{universe.data?.nodes.length ?? 0} COMPANIES</span>
+            <span className="pill num">기업 {universe.data?.nodes.length ?? 0}개</span>
           </div>
         </div>
 

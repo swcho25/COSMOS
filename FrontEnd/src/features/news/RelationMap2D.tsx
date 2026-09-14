@@ -1,10 +1,12 @@
-import type { GraphEdge, LatestGraphNode } from "@/api/types";
+import type { GraphEdge, LatestGraphNode, NewsRelatedCompany } from "@/api/types";
 import { RELATIONSHIP_ORDER, relationshipMeta } from "@/lib/meta";
-import { Empty } from "@/components/ui";
+import { CompanyAvatar, Empty, SentimentBadge } from "@/components/ui";
 
 interface Props {
   nodes: LatestGraphNode[];
   edges: GraphEdge[];
+  /** 언급 기업들 사이에 관계가 하나도 없을 때, 대신 보여줄 기업별 감성·관련도. 없어도 동작한다. */
+  related?: NewsRelatedCompany[];
   highlightId?: string | null;
   onPickCompany: (id: string) => void;
 }
@@ -22,7 +24,7 @@ interface Props {
  * 기업들" 사이의 관계만 담고, 모든 엣지의 두 끝은 항상 이 기업들 중 하나다 — 그래서 더 이상
  * "직접 언급 기업 vs 그 밖의 기업"을 구분할 필요가 없어, 관계 유형별 묶음 하나로만 정리한다.
  */
-export default function RelationMap2D({ nodes, edges, highlightId, onPickCompany }: Props) {
+export default function RelationMap2D({ nodes, edges, related, highlightId, onPickCompany }: Props) {
   if (!nodes.length) return <Empty>관계 지도를 그릴 기업이 없습니다.</Empty>;
 
   const byId = new Map(nodes.map((n) => [n.companyId, n]));
@@ -35,7 +37,35 @@ export default function RelationMap2D({ nodes, edges, highlightId, onPickCompany
       .sort((a, b) => b.score - a.score),
   })).filter((g) => g.rows.length > 0);
 
-  if (!groups.length) return <Empty>이 뉴스와 이어지는 관계가 없습니다.</Empty>;
+  /*
+   * 언급 기업이 1개뿐인 뉴스(전체 뉴스 중 상당수)는 애초에 "관계"가 존재할 수 없다 — 비교할 상대가
+   * 없기 때문이다. 이걸 그냥 빈 화면으로 두면 정작 그 기업이 어떤 감성·관련도로 언급됐는지도 사라져
+   * 버리므로, 관계가 없을 땐 대신 언급 기업 카드를 보여준다. 새 데이터를 쓰지 않고 이미 받아 온
+   * relatedCompanies(감성·관련도·영향도)만 재사용한다.
+   */
+  if (!groups.length) {
+    const relatedById = new Map((related ?? []).map((r) => [r.companyId, r]));
+    return (
+      <div className="rel2d-wrap">
+        <div className="meta">직접 언급된 기업들 사이에 뚜렷한 관계는 없어, 언급된 기업 정보만 보여줍니다.</div>
+        <div className="rel2d-group mt-8">
+          {nodes.map((n) => {
+            const r = relatedById.get(n.companyId);
+            return (
+              <button key={n.companyId} type="button" className={`rank ${n.companyId === highlightId ? "on" : ""}`} onClick={() => onPickCompany(n.companyId)}>
+                <CompanyAvatar name={n.name} stockCode={n.stockCode} industry={n.industryName} size={32} radius={16} />
+                <span className="nm">
+                  <b>{n.name}</b>
+                  <span className="meta num">{[n.industryName, n.stockCode].filter(Boolean).join(" · ")}</span>
+                </span>
+                {r && <SentimentBadge value={r.sentiment} />}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="rel2d-wrap">
@@ -57,8 +87,9 @@ export default function RelationMap2D({ nodes, edges, highlightId, onPickCompany
                 <button type="button" className={`rel2d-chip ${a.companyId === highlightId ? "on" : ""}`} onClick={() => onPickCompany(a.companyId)}>
                   {a.name}
                 </button>
-                <span className="meta" style={{ color: g.meta.color, flex: "none" }}>
-                  {g.meta.label} · {Math.round(e.score)}
+                {/* 그룹 헤더가 이미 유형을 보여주므로 행에는 점수만 남긴다 (예전엔 "협력 · 82"처럼 유형을 반복했다) */}
+                <span className="meta num" style={{ color: g.meta.color, flex: "none" }}>
+                  {Math.round(e.score)}
                 </span>
                 <button type="button" className={`rel2d-chip ${b.companyId === highlightId ? "on" : ""}`} onClick={() => onPickCompany(b.companyId)}>
                   {b.name}
