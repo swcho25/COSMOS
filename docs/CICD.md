@@ -110,3 +110,16 @@ COSMOS_SMOKE_URL=https://j15c205.p.ssafy.io bash deploy/scripts/deploy.sh <relea
 ```
 
 `deploy-test.sh`는 가짜 Docker/curl로 정상 배포·실패·복구 실패·신호 종료·잘못된 태그를 검증하며 실제 컨테이너를 조작하지 않는다.
+
+## 최초 설치 검증 기록 — 2026-09-14
+
+- EC2의 Java 21 Docker 환경에서 백엔드 17개 suite, 85개 테스트 통과(실패·오류·skip 0).
+- 프론트 ESLint 및 실제 API 모드의 TypeScript/Vite 빌드 통과.
+- 배포·롤백 스크립트의 8개 시나리오와 ShellCheck 통과.
+- Jenkins의 Declarative Pipeline 검증 API에서 Jenkinsfile 문법 검증 통과.
+- 컨트롤러 실행기 0, WebSocket 에이전트 실행기 1 및 online 확인. 익명 API 접근은 403, CSRF 활성.
+- 최초 앱 릴리스 `3e6b3f4-bootstrap`을 수동 배포하고 HTTPS `/healthz`의 `UP` 응답 확인.
+
+Jenkins의 GitLab 체크아웃 및 Webhook을 통한 전체 자동 배포는 사용자가 Deploy Token·Webhook을 등록하고 MR을 `dev`에 병합한 뒤 검증해야 한다. 위 테스트는 이 자동 배포 검증을 대신하지 않는다.
+
+새 운영 DB에는 공개된 그래프 스냅샷이 아직 없다. `/api/graphs/latest`의 `GRAPH_SNAPSHOT_NOT_FOUND` 응답과 프론트의 그래프 로딩 실패 표시는 현재 데이터 미적재 상태다. 임의의 목업을 운영 결과처럼 넣지 않으며, 정식 Loader 또는 팀의 검증된 초기 적재 절차로 스냅샷을 준비한다.
