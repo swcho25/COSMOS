@@ -135,17 +135,35 @@ export function Skeleton({ h = 14, w = "100%", style }: { h?: number; w?: number
 export function Empty({ children }: { children: ReactNode }) {
   return <div className="empty">{children}</div>;
 }
-export function Kpi({ label, value, unit, tone, children }: { label: string; value: ReactNode; unit?: string; tone?: string; children?: ReactNode }) {
-  return (
-    <div className="card kpi">
-      <div className="lab">{label}</div>
+/** onClick 을 주면 이 수치가 어떻게 나왔는지 보여주는 근거 화면 등을 열 수 있도록 button 으로 렌더링한다. */
+export function Kpi({ label, value, unit, tone, children, onClick }: { label: string; value: ReactNode; unit?: string; tone?: string; children?: ReactNode; onClick?: () => void }) {
+  const body = (
+    <>
+      <div className="lab">
+        {label}
+        {/* 클릭 가능한 Kpi 는 hover 전에도 '눌러볼 수 있다'는 게 드러나야 하므로 화살표를 덧붙인다 */}
+        {onClick && (
+          <span className="kpi-hint" aria-hidden="true">
+            {" "}
+            ▸
+          </span>
+        )}
+      </div>
       <div className="kpi-v num" style={{ color: tone }}>
         {value}
         {unit && <span className="lab" style={{ marginLeft: 4 }}>{unit}</span>}
       </div>
       {children}
-    </div>
+    </>
   );
+  if (onClick) {
+    return (
+      <button type="button" className="card kpi kpi-click" onClick={onClick}>
+        {body}
+      </button>
+    );
+  }
+  return <div className="card kpi">{body}</div>;
 }
 
 /* ------------------------------ 외부 클릭 감지 ------------------------------ */

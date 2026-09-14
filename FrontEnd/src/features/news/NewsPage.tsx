@@ -1,13 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
-import type { GraphEdge, LatestGraph, LatestGraphNode, NewsDetail, NewsRelatedCompany, Sentiment } from "@/api/types";
-import { fmtDateTime, fmtRelative } from "@/lib/format";
+import type { GraphEdge, LatestGraph, LatestGraphNode, NewsDetail, NewsRelatedCompany, RelationshipType, Sentiment } from "@/api/types";
+import { fmtDateTime, fmtRelative, josa } from "@/lib/format";
 import { SENTIMENTS, SENTIMENT_META, marketLabel, relationshipMeta } from "@/lib/meta";
 import { useCompany, useIndustries, useLatestGraph, useNewsDetail, useNewsFeed, useToggleScrap, useToggleWatch } from "@/lib/queries";
 import { useSession } from "@/store/session";
 import { useUi } from "@/store/ui";
-import { CompanyAvatar, Empty, Icon, Kpi, ScoreBar, SentimentBadge, Skeleton, TypeBadge } from "@/components/ui";
+import { CompanyAvatar, Empty, Icon, Kpi, ScoreBar, SentimentBadge, Skeleton } from "@/components/ui";
+import KpiEvidenceDialog, { type KpiEvidenceKind } from "./KpiEvidenceDialog";
 import NewsDetailDialog from "./NewsDetailDialog";
 import RelationMap2D from "./RelationMap2D";
 import "./news.css";
@@ -31,6 +32,7 @@ export default function NewsPage() {
   const [keywordInput, setKeywordInput] = useState("");
   const [keyword, setKeyword] = useState("");
   const [showDetail, setShowDetail] = useState(false);
+  const [kpiModal, setKpiModal] = useState<KpiEvidenceKind | null>(null);
 
   // 입력마다 요청이 나가지 않도록 디바운스한다 (live 모드에서 백엔드 호출 폭주 방지)
   useEffect(() => {
@@ -91,6 +93,24 @@ export default function NewsPage() {
         confidence: detail.data.evidence.length ? Math.round((detail.data.evidence.reduce((s, e) => s + (e.confidence ?? 0), 0) / detail.data.evidence.length) * 100) : null,
       }
     : null;
+
+  /**
+   * "주요 경로" 카드는 2홉 이상일 때만 의미가 있는데 실제로는 거의 항상 1홉이라 자리가 비다시피
+   * 했다. "왜 이 기업까지 영향이 이어지는지"는 랭킹 카드의 hop≥1 행 아래로 옮기고(각 행 바로
+   * 아래 rank-why), 이 카드 자리는 뉴스가 언급한 기업들의 산업·관계 유형 분포로 바꿨다 —
+   * 새 API 호출 없이 관계 지도에 이미 쓰던 mapNodes/mapEdges만으로 계산되고, 기사가 짧아도
+   * (기업 1~2개라도) 항상 채워진다.
+   */
+  const industryDist = useMemo(() => {
+    const m = new Map<string, number>();
+    mapNodes.forEach((n) => m.set(n.industryName, (m.get(n.industryName) ?? 0) + 1));
+    return [...m.entries()].sort((a, b) => b[1] - a[1]).map(([name, count]) => ({ name, count }));
+  }, [mapNodes]);
+  const relDist = useMemo(() => {
+    const m = new Map<RelationshipType, number>();
+    mapEdges.forEach((e) => m.set(e.relationshipType, (m.get(e.relationshipType) ?? 0) + 1));
+    return [...m.entries()].sort((a, b) => b[1] - a[1]).map(([type, count]) => ({ type, count, meta: relationshipMeta(type) }));
+  }, [mapEdges]);
 
   return (
     <div className="page">
@@ -208,10 +228,15 @@ export default function NewsPage() {
         {/* ---------------- 우측 ---------------- */}
         <section aria-label="관계 분석">
           <div className="kpi-row">
-            <Kpi label="선택 뉴스 연결 기업" value={kpi?.companies ?? "-"} unit="개사" />
-            <Kpi label="긍정 / 부정 기업" value={kpi ? `${kpi.pos} / ${kpi.neg}` : "-"} tone={kpi && kpi.neg > kpi.pos ? "var(--neg-fg)" : undefined} />
-            <Kpi label="대표 근거 문장" value={kpi?.evidence ?? "-"} unit="개" />
-            <Kpi label="분석 신뢰도" value={kpi?.confidence ?? "-"} unit="/100" />
+            <Kpi label="선택 뉴스 연결 기업" value={kpi?.companies ?? "-"} unit="개사" onClick={detail.data ? () => setKpiModal("companies") : undefined} />
+            <Kpi
+              label="긍정 / 부정 기업"
+              value={kpi ? `${kpi.pos} / ${kpi.neg}` : "-"}
+              tone={kpi && kpi.neg > kpi.pos ? "var(--neg-fg)" : undefined}
+              onClick={detail.data ? () => setKpiModal("sentiment") : undefined}
+            />
+            <Kpi label="대표 근거 문장" value={kpi?.evidence ?? "-"} unit="개" onClick={detail.data ? () => setKpiModal("evidence") : undefined} />
+            <Kpi label="분석 신뢰도" value={kpi?.confidence ?? "-"} unit="/100" onClick={detail.data ? () => setKpiModal("confidence") : undefined} />
           </div>
 
           <div className="card map-card">
@@ -285,7 +310,7 @@ export default function NewsPage() {
             </div> */}
             <div className="map-stage">
               {mapNodes.length ? (
-                <RelationMap2D nodes={mapNodes} edges={mapEdges} highlightId={companyId} onPickCompany={(id) => setCompany(id)} />
+                <RelationMap2D nodes={mapNodes} edges={mapEdges} related={detail.data?.relatedCompanies} highlightId={companyId} onPickCompany={(id) => setCompany(id)} />
               ) : (
                 <div className="stage-loading">
                   <span className="kick">relation map</span>
@@ -297,8 +322,11 @@ export default function NewsPage() {
           </div>
 
           {/* ---------------- 하단 분석 ---------------- */}
+          {/* 두 카드(랭킹·경로)는 각자 전체 폭을 쓰던 것을 데스크톱에서는 나란히 배치하도록 바꿨다 —
+              랭킹 목록의 점수 막대가 900px 가까이 늘어나 가늘고 길게 비어 보이던 문제가 있었다.
+              1100px 이하에서는 기존처럼 한 칸(1fr)으로 접혀 세로로 쌓인다. */}
           <div className="analysis">
-            <div className="card full">
+            <div className="card">
               <div className="kick">영향 분석</div>
               <div className="row between mt-8">
                 <h2 className="sect">영향도가 큰 기업</h2>
@@ -308,19 +336,31 @@ export default function NewsPage() {
                 {!analysis && [0, 1, 2].map((i) => <Skeleton key={i} h={52} style={{ marginTop: 10 }} />)}
                 {analysis?.ranking.map((r, i) => (
                   <button key={r.id} type="button" className="rank" onClick={() => setCompany(r.id)} title="이 기업 뉴스 보기">
-                    <span className="kick num idx">{String(i + 1).padStart(2, "0")}</span>
-                    <CompanyAvatar name={r.name} stockCode={r.stockCode} industry={r.industry} size={32} radius={16} />
-                    <span className="nm">
-                      <b>{r.name}</b>
-                      <span className="meta num">
-                        {[marketLabel(r.market), r.stockCode].filter(Boolean).join(" · ")}
+                    <span className="rank-row">
+                      <span className="kick num idx">{String(i + 1).padStart(2, "0")}</span>
+                      <CompanyAvatar name={r.name} stockCode={r.stockCode} industry={r.industry} size={32} radius={16} />
+                      <span className="nm">
+                        <b>{r.name}</b>
+                        <span className="meta num">
+                          {[marketLabel(r.market), r.stockCode].filter(Boolean).join(" · ")}
+                        </span>
+                      </span>
+                      <ScoreBar score={r.score} color={r.hop === 0 ? "#829CFF" : "#F5A623"} />
+                      <span className="sc">
+                        <b className="num">{r.score}</b>
+                        <span className="meta num">{r.hop === 0 ? "직접 언급" : `${r.hop} HOP`}</span>
                       </span>
                     </span>
-                    <ScoreBar score={r.score} color={r.hop === 0 ? "#829CFF" : "#F5A623"} />
-                    <span className="sc">
-                      <b className="num">{r.score}</b>
-                      <span className="meta num">{r.hop === 0 ? "직접 언급" : `${r.hop} HOP`}</span>
-                    </span>
+                    {/* 왜 이 기업까지 영향이 이어지는지 — 예전엔 별도 "주요 경로" 카드에서 1개만
+                        설명했는데, 랭킹에 있는 간접 전이(hop>0) 기업 전부에 대해 바로 아래에서
+                        보여주는 걸로 바꿨다. 새 계산 없이 이미 갖고 있던 via/from 정보만 쓴다. */}
+                    {r.hop > 0 && r.via && r.fromName && (
+                      <span className="rank-why">
+                        {r.name}
+                        {josa(r.name, "은", "는")} {r.fromName}
+                        {josa(r.fromName, "과", "와")} '{relationshipMeta(r.via.relationshipType).label}' 관계(점수 {Math.round(r.via.score)})로 이어져 있습니다.
+                      </span>
+                    )}
                   </button>
                 ))}
               </div>
@@ -332,43 +372,53 @@ export default function NewsPage() {
                   <i className="dot" style={{ background: "#F5A623" }} /> 간접 전이 (관계 점수로 감쇠)
                 </span>
               </div>
+              <div className="meta mt-8" style={{ lineHeight: 1.7 }}>
+                기사 영향도에 관계 점수(0~1)를 곱해 계산한 프로토타입 점수이며, 투자 판단 자료가 아닙니다.
+              </div>
             </div>
 
-            <div className="card full">
-              <div className="kick">주요 경로</div>
+            {/*
+              예전 "주요 경로" 카드는 2홉 이상일 때만 의미가 있었는데 실제로는 거의 항상 1홉이라
+              자리가 비다시피 했다. 그 "왜"는 위 랭킹 카드로 옮기고, 이 자리는 뉴스가 언급한
+              기업들의 산업·관계 유형 분포로 바꿔서 기사 길이와 무관하게 항상 채워지게 했다.
+            */}
+            <div className="card">
+              <div className="kick">기업·관계 개요</div>
               <div className="row between mt-8">
                 <h2 className="sect" style={{ fontSize: 20 }}>
-                  가장 강한 전이 경로
+                  산업·관계 유형 분포
                 </h2>
-                {analysis?.path && <span className="badge" style={{ background: "rgba(245,166,35,.13)", color: "var(--warn-fg)" }}>{analysis.path.strength}% 전이강도</span>}
+                <span className="pill">언급 기업 {mapNodes.length}개</span>
               </div>
-              {analysis?.path ? (
-                <div className="path">
-                  <div className="node">
-                    <span className="lab">이벤트</span>
-                    <b className="clamp-1" title={detail.data?.title}>
-                      {detail.data?.title.slice(0, 18)}…
-                    </b>
-                  </div>
-                  {analysis.path.steps.map((s, i) => (
-                    <div key={s.id} style={{ display: "contents" }}>
-                      <div className="hop">
-                        <span>→</span>
-                        {s.via && <TypeBadge type={s.via.relationshipType} />}
-                        {s.via && <span className="num">{Math.round(s.via.score)}</span>}
-                      </div>
-                      <button type="button" className="node" onClick={() => setCompany(s.id)} style={{ textAlign: "left" }}>
-                        <span className="lab">{i === 0 ? "직접 언급" : `${i} HOP`}</span>
-                        <b>{s.name}</b>
-                      </button>
+              <div className="dist-row mt-12">
+                <div className="dist-col">
+                  <div className="lab">산업 분포</div>
+                  {industryDist.length ? (
+                    <div className="dist-chips">
+                      {industryDist.map((d) => (
+                        <span key={d.name} className="dist-chip">
+                          {d.name} <b className="num">{d.count}</b>
+                        </span>
+                      ))}
                     </div>
-                  ))}
+                  ) : (
+                    <div className="meta mt-8">표시할 산업 정보가 없습니다.</div>
+                  )}
                 </div>
-              ) : (
-                <Empty>선택한 뉴스에서 이어지는 관계 경로가 없습니다.</Empty>
-              )}
-              <div className="meta mt-12" style={{ lineHeight: 1.7 }}>
-                기사 영향도에 관계 점수(0~1)를 곱해 가장 큰 곱을 갖는 경로를 표시합니다. 프로토타입 계산식이며 투자 판단 자료가 아닙니다.
+                <div className="dist-col">
+                  <div className="lab">관계 유형 분포</div>
+                  {relDist.length ? (
+                    <div className="dist-chips">
+                      {relDist.map((d) => (
+                        <span key={d.type} className="dist-chip">
+                          <i className="dot" style={{ background: d.meta.color }} /> {d.meta.label} <b className="num">{d.count}</b>
+                        </span>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="meta mt-8">언급된 기업들 사이의 직접적인 관계가 없습니다.</div>
+                  )}
+                </div>
               </div>
             </div>
           </div>
@@ -376,6 +426,7 @@ export default function NewsPage() {
       </div>
 
       <NewsDetailDialog open={showDetail} news={detail.data} activeCompanyId={companyId} onClose={() => setShowDetail(false)} onPickCompany={setCompany} />
+      <KpiEvidenceDialog kind={kpiModal} news={detail.data} onClose={() => setKpiModal(null)} onPickCompany={setCompany} />
     </div>
   );
 }
@@ -391,11 +442,9 @@ interface RankRow {
   industry: string;
   score: number;
   hop: number;
-}
-interface PathStep {
-  id: string;
-  name: string;
+  /** hop>0(간접 전이) 행에서 "왜 이 기업까지 이어지는지" 표시에 쓴다 */
   via: GraphEdge | null;
+  fromName: string | null;
 }
 const DECAY = 0.82;
 interface Best {
@@ -440,30 +489,27 @@ function analyze(detail: NewsDetail, graph: LatestGraph) {
     }
     frontier.push(...next);
   }
+  const nameOf = (id: string) => info.get(id)?.name ?? detail.relatedCompanies.find((r) => r.companyId === id)?.name ?? id;
   const ranking: RankRow[] = [...best.entries()]
     .map(([id, b]) => {
       const n = info.get(id);
       const rel = detail.relatedCompanies.find((r) => r.companyId === id);
-      return { id, name: n?.name ?? rel?.name ?? id, stockCode: n?.stockCode ?? "", market: n?.market ?? "", industry: n?.industryName ?? "", score: b.score, hop: b.hop };
+      return {
+        id,
+        name: n?.name ?? rel?.name ?? id,
+        stockCode: n?.stockCode ?? "",
+        market: n?.market ?? "",
+        industry: n?.industryName ?? "",
+        score: b.score,
+        hop: b.hop,
+        via: b.via,
+        fromName: b.from ? nameOf(b.from) : null,
+      };
     })
     .sort((a, b) => b.score - a.score)
     .slice(0, 6);
 
-  // 최강 경로: hop>=1 중 최고 점수 노드에서 역추적
-  let path: { strength: number; steps: PathStep[] } | null = null;
-  const end = [...best.entries()].filter(([, b]) => b.hop >= 1).sort((a, b) => b[1].score - a[1].score)[0];
-  if (end) {
-    const steps: PathStep[] = [];
-    let cur: string | null = end[0];
-    while (cur) {
-      const b: Best = best.get(cur)!;
-      steps.unshift({ id: cur, name: info.get(cur)?.name ?? detail.relatedCompanies.find((r) => r.companyId === cur)?.name ?? cur, via: b.via });
-      cur = b.from;
-    }
-    const start = best.get(steps[0].id)!.score;
-    path = { strength: start ? Math.round((end[1].score / start) * 100) : 0, steps };
-  }
-  return { ranking, path };
+  return { ranking };
 }
 
 export { relationshipMeta };

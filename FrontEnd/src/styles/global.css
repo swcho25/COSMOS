@@ -131,6 +131,21 @@ button:disabled {
   margin-top: 6px;
   line-height: 1.1;
 }
+/* onClick 이 있는 <Kpi> 는 button 으로 렌더링된다 — 값 근거를 보여주는 모달을 여는 용도 */
+.kpi-click {
+  display: block;
+  width: 100%;
+  text-align: left;
+  transition: border-color 0.15s, transform 0.15s;
+}
+.kpi-click:hover {
+  border-color: var(--border-strong);
+  transform: translateY(-1px);
+}
+.kpi-hint {
+  color: var(--primary-2);
+  opacity: 0.7;
+}
 .kick {
   font-family: var(--mono);
   font-size: 12px;
