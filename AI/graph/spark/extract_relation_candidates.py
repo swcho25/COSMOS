@@ -43,7 +43,7 @@ NEWS_URI = "hdfs://localhost:9000/datasets/news/snapshots/20260908-prepared/news
 SENT_BOUNDARY = re.compile(
     r"\n+"                             # 줄바꿈
     r"|(?<![0-9])[.!?]+[\s\u00a0]+"     # 문장부호 + 공백(줄바꿈 없는 공백 포함)
-    r"|(?<=[다요음임죠])\.(?=[가-힣])"   # "있다.이번"  — 한국어 기사에 흔한 붙임
+    r"|(?<=[다요음임죠])\.(?=[가-힣A-Za-z0-9])"   # "있다.이번" / "의미한다.LG" — 흔한 붙임
     r"|(?<=[a-z])\.(?=[A-Z])"          # "ended.The" — 영문 기사의 같은 현상
 )
 

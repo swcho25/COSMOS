@@ -68,6 +68,23 @@ KW_WINDOW = 45         # 키워드는 쌍 스팬 앞뒤 이 범위 안에 있어
 # 이 경계를 사이에 두고 있으면 서로 다른 문장에 있는 것이므로 관계로 보지 않는다.
 SENT_BREAK_INSIDE = re.compile(r"(?<=다)\.(?=[가-힣])")
 
+# 쌍 앞에 **기관이 주어로** 서 있으면, 뒤따르는 두 회사는 그 기관의 행위 대상으로 나란히
+# 놓인 것이지 서로의 관계가 아닐 때가 많다.
+#   "제휴평가위는 네이버와 카카오의 제휴 심사를 …"     -> 제휴는 위원회의 업무
+#   "국토교통부는 … 현대자동차와 카카오 등 14개 기업과" -> 둘은 협약 참여사 나열
+# 처음엔 주어를 가리지 않고 잡았더니 동사 관형형("경쟁하는 네이버와 카카오")까지 주어로
+# 읽어 정답을 더 많이 날렸다(제거 127건 중 절반 이상이 정답). 그래서 **기관처럼 생긴 것**으로
+# 좁혔다: 기관 접미사 또는 전부 대문자 약어.
+THIRD_PARTY_SUBJECT = re.compile(
+    r"(?:^|[\s,·(\"“])("
+    r"[가-힣A-Za-z0-9]{1,10}(?:위원회|평가위|금감원|공정위|연구원|진흥원|공사|협회|학회|재단|"
+    r"대학교|당국|정부|부처|청|부|처)"
+    r"|[A-Z]{2,6}"
+    r")(?:는|은)(?=\s)")
+# 다만 그 기관이 **전달자**일 뿐인 경우가 있다 — "WSJ은 'SK하이닉스는 엔비디아의 파트너'".
+# 기관과 쌍 사이에 따옴표나 보도 동사가 있으면 인용이므로 관계를 살린다.
+QUOTING_CONTEXT = re.compile(r"[\"“‘']|보도|전했|밝혔|따르면|제목의|기사")
+
 
 def find_pair(sent: str, a: str, b: str):
     i = sent.find(a)
@@ -90,6 +107,9 @@ def classify(sent: str, a: str, b: str) -> tuple[str, str, str, float, str] | No
         return None                                     # 근거 3: 너무 멀면 다른 절이다
     if SENT_BREAK_INSIDE.search(mid):
         return None                                     # 둘 사이에 문장 경계가 있다
+    orgs = [m for m in THIRD_PARTY_SUBJECT.finditer(sent[:i]) if m.group(1) not in (a, b)]
+    if orgs and not QUOTING_CONTEXT.search(sent[orgs[-1].end():i]):
+        return None                                     # 기관이 주어 — 둘은 그 행위의 대상
     lo = max(0, i - KW_WINDOW)
     hi = min(len(sent), j + len(b) + KW_WINDOW)
     window = sent[lo:hi]
