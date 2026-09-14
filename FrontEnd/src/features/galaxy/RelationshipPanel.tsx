@@ -1,9 +1,14 @@
-import type { MetricWindow } from "@/api/types";
+import type { MetricWindow, RelationshipEvidence } from "@/api/types";
 import { Empty, Icon, ImpactBadge, ScoreBar, Skeleton, TypeBadge } from "@/components/ui";
 import { fmtDateTime, fmtPctFrom01, fmtRelative, fmtScore, pct01 } from "@/lib/format";
+import type { SceneModel } from "@/lib/graph";
+import { EVIDENCE_UI, SURPRISE_UI } from "@/lib/guide";
 import { relationshipMeta, scoreBand } from "@/lib/meta";
 import { useRelationship, useRelationshipEvidence } from "@/lib/queries";
+import { SURPRISE_MIN, surpriseFor } from "@/lib/surprise";
 import { useGalaxy } from "@/store/galaxy";
+import { useUi } from "@/store/ui";
+import "./evidence.css";
 
 const WINDOWS: MetricWindow[] = ["7D", "30D", "90D"];
 
@@ -11,10 +16,44 @@ interface Props {
   relationshipId: string;
   onClose: () => void;
   onPickCompany: (id: string) => void;
+  /** 뜻밖 판정(surpriseFor)에 필요 — 없으면 "왜 뜻밖인가" 블록은 그리지 않는다 */
+  model?: SceneModel | null;
 }
 
-/** 관계선 선택 시: 양쪽 기업·유형·점수·영향 방향 + 근거 뉴스 */
-export default function RelationshipPanel({ relationshipId, onClose, onPickCompany }: Props) {
+/** 이 근거의 나이(발행 후 경과일)에 맞는 불투명도 — 숨기지 않고 물러나게만(EVIDENCE_UI.ageOpacity) */
+function ageOpacityOf(publishedAt: string | null) {
+  if (!publishedAt) return EVIDENCE_UI.ageOpacity[EVIDENCE_UI.ageOpacity.length - 1].opacity;
+  const days = (Date.now() - new Date(publishedAt).getTime()) / 86_400_000;
+  const band = EVIDENCE_UI.ageOpacity.find((b) => days <= b.maxDays);
+  return band?.opacity ?? 1;
+}
+
+/** 근거 문장 복사 — Clipboard API 실패 시(비보안 컨텍스트·권한 거부) textarea 폴백 */
+async function copyEvidenceSentence(e: RelationshipEvidence) {
+  const text = `"${e.evidenceSentence}" — ${e.publisher ?? ""}, ${(e.publishedAt ?? "").slice(0, 10)}, ${e.originalUrl}`;
+  try {
+    if (!navigator.clipboard?.writeText) throw new Error("clipboard unavailable");
+    await navigator.clipboard.writeText(text);
+  } catch {
+    try {
+      const ta = document.createElement("textarea");
+      ta.value = text;
+      ta.style.position = "fixed";
+      ta.style.opacity = "0";
+      document.body.appendChild(ta);
+      ta.focus();
+      ta.select();
+      document.execCommand("copy");
+      document.body.removeChild(ta);
+    } catch {
+      return; // 복사 실패 — 조용히 포기, 성공 토스트를 내지 않는다
+    }
+  }
+  useUi.getState().toast(EVIDENCE_UI.copied, "success");
+}
+
+/** 관계선 선택 시: 자동 추출 고지·(뜻밖이면) 이유·양쪽 기업·유형·점수·영향 방향 + 근거 뉴스 타임라인 */
+export default function RelationshipPanel({ relationshipId, onClose, onPickCompany, model }: Props) {
   const window = useGalaxy((s) => s.window);
   const setWindow = useGalaxy((s) => s.setWindow);
   const rel = useRelationship(relationshipId, window);
@@ -22,6 +61,16 @@ export default function RelationshipPanel({ relationshipId, onClose, onPickCompa
   const r = rel.data;
   const meta = r ? relationshipMeta(r.relationshipType) : null;
   const items = evidence.data?.pages.flatMap((p) => p.items) ?? [];
+  const sortedItems = [...items].sort((a, b) => new Date(b.publishedAt ?? 0).getTime() - new Date(a.publishedAt ?? 0).getTime());
+  const representativeId = sortedItems.reduce<{ id: string; score: number } | null>((best, e) => {
+    const s = e.contributionScore ?? -Infinity;
+    return !best || s > best.score ? { id: e.newsId, score: s } : best;
+  }, null)?.id;
+
+  const edge = model && r ? model.edgeById.get(relationshipId) : undefined;
+  const surprise = model && edge ? surpriseFor(model, edge) : null;
+  const isSurprise = (surprise?.score ?? 0) >= SURPRISE_MIN;
+  const lowConfidence = r?.confidence != null && r.confidence < EVIDENCE_UI.lowConfidenceBelow;
 
   return (
     <aside className="card panel" aria-label="기업 관계 상세">
@@ -40,8 +89,20 @@ export default function RelationshipPanel({ relationshipId, onClose, onPickCompa
         ) : (
           <>
             <div className="row between">
-              <TypeBadge type={r.relationshipType} directed={r.directionality === "DIRECTED"} />
-              <ImpactBadge value={r.impactDirection} />
+              <div className="row wrap" style={{ gap: 8 }}>
+                <TypeBadge type={r.relationshipType} directed={r.directionality === "DIRECTED"} />
+                <ImpactBadge value={r.impactDirection} />
+              </div>
+              <div className="row" style={{ gap: 6 }}>
+                {lowConfidence && <span className="ev-low-confidence">{EVIDENCE_UI.lowConfidence}</span>}
+                <span
+                  className="badge"
+                  style={{ background: lowConfidence ? "rgba(245,166,35,.14)" : "rgba(255,255,255,.06)", color: lowConfidence ? "var(--warn)" : "var(--text-3)" }}
+                  title={EVIDENCE_UI.autoExtractedHelp}
+                >
+                  {EVIDENCE_UI.autoExtracted} ⓘ
+                </span>
+              </div>
             </div>
             <div className="rel-pair mt-12">
               <button type="button" className="end" onClick={() => onPickCompany(r.sourceCompany.companyId)} title="이 기업 중심으로 보기">
@@ -81,6 +142,21 @@ export default function RelationshipPanel({ relationshipId, onClose, onPickCompa
                 </div>
               </div>
             </div>
+
+            {isSurprise && surprise && (
+              <div className="ev-why mt-16">
+                <div className="kick ev-why-title">{SURPRISE_UI.why}</div>
+                <ul className="ev-why-list">
+                  {surprise.reasons.map((rs) => (
+                    <li key={rs.key}>
+                      <b>{rs.label}</b>
+                      <span>{rs.detail}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
             <div className="stat-grid mt-16">
               <div className="stat">
                 <div className="lab">신뢰도</div>
@@ -99,38 +175,53 @@ export default function RelationshipPanel({ relationshipId, onClose, onPickCompa
             </div>
 
             <div className="row between mt-20">
-              <span className="kick">근거 뉴스</span>
-              <span className="meta">공시는 점수에만 반영되며 공개되지 않습니다</span>
+              <span className="kick">{EVIDENCE_UI.timelineKicker}</span>
+              <span className="meta">{EVIDENCE_UI.timelineOrder}</span>
             </div>
-            <div className="stack mt-12">
+            {sortedItems.length > 0 && <div className="meta ev-timeline-summary">{EVIDENCE_UI.timelineSummary(sortedItems.length, fmtRelative(sortedItems[0].publishedAt))}</div>}
+
+            <div className="ev-timeline mt-12">
               {evidence.isLoading && [0, 1].map((i) => <Skeleton key={i} h={96} style={{ borderRadius: 14 }} />)}
-              {!evidence.isLoading && !items.length && <Empty>공개 가능한 근거 뉴스가 없습니다.</Empty>}
-              {items.map((e) => (
-                <article key={e.newsId} className="news-card">
-                  <div className="row between">
-                    <span className="meta num">{[e.publisher, fmtRelative(e.publishedAt)].filter(Boolean).join(" · ")}</span>
-                    <span className="meta num" title="관계 점수 기여도">
-                      기여 {fmtPctFrom01(e.contributionScore, "")} · 신뢰 {fmtPctFrom01(e.confidence)}
-                    </span>
+              {!evidence.isLoading && !sortedItems.length && (
+                <div>
+                  <Empty>{EVIDENCE_UI.noEvidence}</Empty>
+                  <div className="meta mt-8">{EVIDENCE_UI.disclosure}</div>
+                </div>
+              )}
+              {sortedItems.map((e) => (
+                <div key={e.newsId} className="ev-item" style={{ opacity: ageOpacityOf(e.publishedAt) }}>
+                  <div className="ev-item-rail" aria-hidden="true">
+                    <i className="ev-item-dot" />
                   </div>
-                  <div className="title">{e.title}</div>
-                  <div className="evidence">
-                    <q>{e.evidenceSentence}</q>
-                  </div>
-                  <div className="foot">
-                    <span className="bar" style={{ flex: 1 }}>
+                  <div className="ev-item-body">
+                    <div className="row between">
+                      <span className="meta num">{[e.publisher, fmtRelative(e.publishedAt)].filter(Boolean).join(" · ")}</span>
+                      <span className="meta num">
+                        {EVIDENCE_UI.contribution} {(e.contributionScore ?? 0).toFixed(2)}
+                      </span>
+                    </div>
+                    <span className="bar ev-item-bar">
                       <i style={{ width: `${pct01(e.contributionScore)}%`, background: meta.color }} />
                     </span>
-                    <a href={e.originalUrl} target="_blank" rel="noreferrer" className="link-btn row" style={{ gap: 4 }}>
-                      원문 <Icon.External />
-                    </a>
+                    {e.newsId === representativeId && <span className="badge ev-rep-badge">{EVIDENCE_UI.representative}</span>}
+                    <div className="ev-item-quote">
+                      <q>{e.evidenceSentence}</q>
+                    </div>
+                    <div className="ev-item-actions">
+                      <button type="button" className="link-btn" onClick={() => void copyEvidenceSentence(e)}>
+                        {EVIDENCE_UI.copy}
+                      </button>
+                      <a href={e.originalUrl} target="_blank" rel="noreferrer" className="link-btn row" style={{ gap: 4 }}>
+                        {EVIDENCE_UI.original} <Icon.External />
+                      </a>
+                    </div>
                   </div>
-                </article>
+                </div>
               ))}
             </div>
             {evidence.hasNextPage && (
               <button type="button" className="more-btn" onClick={() => evidence.fetchNextPage()} disabled={evidence.isFetchingNextPage}>
-                더 보기
+                {EVIDENCE_UI.more}
               </button>
             )}
           </>

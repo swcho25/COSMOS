@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import type { AltitudeWindow, MetricWindow, PricePeriod, RelationshipType } from "@/api/types";
+import type { CameraPresetId } from "@/lib/guide";
 import { RELATIONSHIP_ORDER } from "@/lib/meta";
 import type { RoleKey } from "@/lib/roles";
 
@@ -51,8 +52,14 @@ interface GalaxyState {
   legendOpen: boolean;
   /** 상단 산업 선택판 펼침 여부 — ESC 한 겹으로 닫히도록 스토어에 둔다 */
   industryOpen: boolean;
-  /** 기업 중심 뷰의 최신 뉴스 콜아웃 닫힘 여부 (기업이 바뀌면 다시 열림) */
-  calloutHidden: boolean;
+  /** 선 중간의 관계 종류 글자(EdgeLabels) 표시 여부 */
+  showEdgeLabels: boolean;
+  /** 왼쪽 "뜻밖의 관계" 카드 펼침 여부 (접으면 꼬리표) */
+  surpriseOpen: boolean;
+  /** 카메라 프리셋 — 궤도(둘러보기) · 위에서(거리 비교) · 정면에서(고도 비교). Director 가 자세를 만든다 */
+  cameraPreset: CameraPresetId;
+  /** 프리셋을 고른 횟수 — 같은 프리셋을 다시 눌러도 카메라가 그 자세로 돌아가도록 값이 아니라 횟수로 알린다 */
+  cameraPresetNonce: number;
 
   /* ---- 액션 ---- */
   warpTo(companyId: string | null): void;
@@ -81,7 +88,9 @@ interface GalaxyState {
   setPanelOpen(v: boolean): void;
   toggleLegend(): void;
   setIndustryOpen(v: boolean): void;
-  hideCallout(): void;
+  setCameraPreset(p: CameraPresetId): void;
+  toggleEdgeLabels(): void;
+  toggleSurprise(): void;
 }
 
 export const useGalaxy = create<GalaxyState>((set, get) => ({
@@ -112,9 +121,13 @@ export const useGalaxy = create<GalaxyState>((set, get) => ({
   pricePeriod: "1M",
   searchOpen: false,
   panelOpen: true,
-  legendOpen: true,
+  // 범례 카드는 접힌 채로 시작한다 — 하단 중앙의 상시 "읽는 법" 바가 축약판이고, 누르면 펼쳐진다 (기획서 P0-1)
+  legendOpen: false,
   industryOpen: false,
-  calloutHidden: false,
+  cameraPreset: "orbit",
+  cameraPresetNonce: 0,
+  showEdgeLabels: true,
+  surpriseOpen: true,
 
   warpTo(companyId) {
     const s = get();
@@ -132,7 +145,6 @@ export const useGalaxy = create<GalaxyState>((set, get) => ({
       pinnedId: null,
       roleFilter: null,
       panelOpen: true,
-      calloutHidden: false,
       industryOpen: false,
     });
   },
@@ -222,7 +234,13 @@ export const useGalaxy = create<GalaxyState>((set, get) => ({
   setIndustryOpen(v) {
     set({ industryOpen: v });
   },
-  hideCallout() {
-    set({ calloutHidden: true });
+  setCameraPreset(p) {
+    set((s) => ({ cameraPreset: p, cameraPresetNonce: s.cameraPresetNonce + 1 }));
+  },
+  toggleEdgeLabels() {
+    set((s) => ({ showEdgeLabels: !s.showEdgeLabels }));
+  },
+  toggleSurprise() {
+    set((s) => ({ surpriseOpen: !s.surpriseOpen }));
   },
 }));

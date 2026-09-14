@@ -138,7 +138,7 @@ function relax(nodes: SceneNode[], edges: GraphEdge[], anchor: Map<string, Vec3>
         const dy = b.pos[1] - a.pos[1];
         const dz = b.pos[2] - a.pos[2];
         const d2 = dx * dx + dy * dy + dz * dz;
-        const min = (a.size + b.size) * 3.8 + 4;
+        const min = (a.size + b.size) * 4.6 + 7;
         if (d2 < min * min && d2 > 1e-6) {
           const d = Math.sqrt(d2);
           const push = ((min - d) / d) * 0.5;
@@ -601,13 +601,13 @@ export function layoutGalaxy(graph: LatestGraph, capT: CapScale = capScale(graph
 /* 기업 중심 — depth 가 궤도 반지름이 된다                                  */
 /* ------------------------------------------------------------------ */
 /** depth 별 궤도 반지름의 기본값 — 한 궤도에 행성이 많으면 layoutSystem 이 둘레를 확보하도록 키우고 바깥 궤도를 그만큼 밀어낸다 */
-export const ORBIT = [0, 24, 44, 62];
+export const ORBIT = [0, 32, 58, 82];
 /** 궤도 타원의 z 축 비율 — 비스듬히 내려다볼 때 원으로 보이도록 살짝 눌렀다 */
 const SYSTEM_SQUASH = 0.82;
 /** 궤도 둘레에서 행성 하나가 차지하는 길이 — 이보다 촘촘해지면 궤도 반지름을 키운다 (행성 지름 4~7 + 이름표 여유) */
-const RING_SPACING = 12;
+const RING_SPACING = 16;
 /** 이웃 궤도 사이 최소 간격 — 안쪽 궤도가 커지면 바깥 궤도도 이만큼은 밀려난다 */
-const RING_GAP = 18;
+const RING_GAP = 24;
 
 /**
  * 기업 중심 배치가 산업·시장·종목코드·시가총액 순위를 채우는 데 쓰는 조회 함수 (전체 우주 스냅샷에서 만든다).

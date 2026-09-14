@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useRef, type MutableRefObject } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
-import { AdaptiveDpr, Html, OrbitControls } from "@react-three/drei";
+import { AdaptiveDpr, OrbitControls } from "@react-three/drei";
 import { Bloom, ChromaticAberration, EffectComposer, Vignette } from "@react-three/postprocessing";
 import * as THREE from "three";
 import type { SceneEdge, SceneModel, Vec3 } from "@/lib/graph";
+import type { CameraPresetId } from "@/lib/guide";
 import { hoverPath } from "@/lib/path";
+import { surpriseSet } from "@/lib/surprise";
 import { hashString } from "@/lib/rng";
 import { neighborRoles } from "@/lib/roles";
 import { useGalaxy } from "@/store/galaxy";
@@ -12,11 +14,14 @@ import AltitudeDriver from "./AltitudeDriver";
 import Backdrop from "./Backdrop";
 import CompanyNodes from "./CompanyNodes";
 import EdgeArrows from "./EdgeArrows";
+import EdgeLabels from "./EdgeLabels";
 import GalaxyDust from "./GalaxyDust";
 import GhostNodes from "./GhostNodes";
 import OrbitKeys from "./OrbitKeys";
+import ReferenceRings from "./ReferenceRings";
 import RelationLines from "./RelationLines";
 import RoleRings from "./RoleRings";
+import TourAnchor from "./TourAnchor";
 import Warp from "./Warp";
 import { targetY } from "./altitude";
 import { cameraBusy } from "./cameraState";
@@ -29,8 +34,26 @@ const FALLBACK_POSE: Record<"galaxy" | "system", Pose> = {
   galaxy: { pos: [0, 90, 230], tgt: [0, 0, 0] },
   system: { pos: [0, 40, 118], tgt: [0, -2, 0] },
 };
+/**
+ * 프리셋별 카메라 높이(정규화한 y 성분). 궤도 = 지금까지의 비스듬한 자세, 위에서 = 거의 수직 부감(극각 하한 0.03rad 안),
+ * 정면에서 = 원반을 옆에서(극각 상한 0.62π 안) — 주가 고도의 높이 차가 그대로 보인다
+ */
+const PRESET_ELEV: Record<"galaxy" | "system", Record<CameraPresetId, number>> = {
+  galaxy: { orbit: 0.5, top: 0.965, front: 0.08 },
+  system: { orbit: 0.34, top: 0.965, front: 0.1 },
+};
+/**
+ * 프리셋별 거리 배율 (r / fit 기준). 궤도는 원반이 세로로 눌려 보여 0.72 로도 들어오고, 위에서는 눌림이 없어 1 이 필요하다.
+ * 정면에서는 세로가 아니라 가로가 먼저 잘리므로 종횡비만큼 가까워질 수 있다 (세로로 긴 화면은 fit 이 이미 종횡비를 반영한다)
+ */
+function distScale(kind: "galaxy" | "system", preset: CameraPresetId, aspect: number) {
+  if (preset === "top") return kind === "galaxy" ? 1.02 : 1.1;
+  if (preset === "front") return aspect >= 1 ? 1.1 / aspect : 1.1;
+  return kind === "galaxy" ? 0.72 : 1.0;
+}
+
 /** 모델의 바깥 반지름이 화면에 들어오도록 카메라 자세를 만든다 (fov 52 기준) */
-function poseFor(model: SceneModel | null, kind: "galaxy" | "system", aspect = 1.6): Pose {
+function poseFor(model: SceneModel | null, kind: "galaxy" | "system", aspect = 1.6, preset: CameraPresetId = "orbit"): Pose {
   if (!model || !model.nodes.length) return FALLBACK_POSE[kind];
   let r = 10;
   // 주가 고도가 켜져 있으면 행성이 원반 위·아래로 최대 ±ALT_SPAN 만큼 떠 있다 — 그 높이도 프레임에 들어와야 한다
@@ -45,9 +68,9 @@ function poseFor(model: SceneModel | null, kind: "galaxy" | "system", aspect = 1
   });
   // 세로로 긴 화면은 가로가 먼저 잘리므로 종횡비만큼 물러난다
   const fit = Math.tan((52 * Math.PI) / 360) * Math.min(1, aspect);
-  const dist = (r / fit) * (kind === "galaxy" ? 0.72 : 0.82);
-  // 은하는 약 30° 위에서 비스듬히 — 원반이 타원으로 보이면서 핵의 허브가 다른 행성에 가리지 않는다
-  const elev = kind === "galaxy" ? 0.5 : 0.34;
+  const dist = (r / fit) * distScale(kind, preset, aspect);
+  // 궤도 프리셋의 은하는 약 30° 위에서 비스듬히 — 원반이 타원으로 보이면서 핵의 허브가 다른 행성에 가리지 않는다
+  const elev = PRESET_ELEV[kind][preset];
   return { pos: [0, dist * elev, dist * Math.sqrt(1 - elev * elev)], tgt: [0, kind === "galaxy" ? 0 : -2, 0] };
 }
 /**
@@ -90,6 +113,8 @@ function Director({ warpRef, galaxy, system, next }: { warpRef: MutableRefObject
     warpDir: new THREE.Vector3(),
     warpAim: new THREE.Vector3(),
     speed: 0,
+    /** 마지막으로 반영한 카메라 프리셋 선택 횟수 — 마운트 시점 값으로 시작해 첫 프레임에 연출이 튀지 않게 */
+    presetNonce: useGalaxy.getState().cameraPresetNonce,
   }).current;
 
   // 항상 "지금 카메라가 있는 곳"에서 시작한다 — 워프 커밋도 순간이동 없이 이어 붙인다
@@ -126,7 +151,7 @@ function Director({ warpRef, galaxy, system, next }: { warpRef: MutableRefObject
     if (introDone.current || !galaxy) return;
     introDone.current = true;
     fitted.current = galaxy;
-    const pose = poseFor(galaxy, "galaxy", (camera as THREE.PerspectiveCamera).aspect);
+    const pose = poseFor(galaxy, "galaxy", (camera as THREE.PerspectiveCamera).aspect, useGalaxy.getState().cameraPreset);
     camera.position.set(...pose.pos).multiplyScalar(1.7);
     startAnim(pose, 2.4);
     rig.lastPhase = "galaxy";
@@ -177,7 +202,9 @@ function Director({ warpRef, galaxy, system, next }: { warpRef: MutableRefObject
         if (controls) controls.target.add(SHIFT);
         const kind: "galaxy" | "system" = s.warpTarget ? "system" : "galaxy";
         fitted.current = dst;
-        startAnim(poseFor(dst ?? (s.warpTarget ? system : galaxy), kind, (camera as THREE.PerspectiveCamera).aspect), WARP_END - WARP_COMMIT - 0.05);
+        startAnim(poseFor(dst ?? (s.warpTarget ? system : galaxy), kind, (camera as THREE.PerspectiveCamera).aspect, s.cameraPreset), WARP_END - WARP_COMMIT - 0.05);
+        // 착지 자세가 이미 지금 프리셋이다 — 워프 중 고른 프리셋을 착지 뒤 한 번 더 연출하지 않게 여기서 맞춘다
+        rig.presetNonce = s.cameraPresetNonce;
         rig.speed = 0;
         rig.lastPhase = "warp-committed";
       }
@@ -201,15 +228,25 @@ function Director({ warpRef, galaxy, system, next }: { warpRef: MutableRefObject
       morphState.fade = 1;
       // 착지 후 0.6s 동안 빔이 자란다 (landedAt 0 = 아직 워프한 적 없음 → 마운트 램프에만 맡긴다)
       morphState.reveal = morphState.landedAt === 0 ? 1 : Math.min(1, (now - morphState.landedAt) / REVEAL_MS);
+      const aspect = (camera as THREE.PerspectiveCamera).aspect;
       if (rig.lastPhase !== s.phase && rig.lastPhase !== "warp-committed") {
-        startAnim(s.phase === "system" ? poseFor(system, "system", (camera as THREE.PerspectiveCamera).aspect) : poseFor(galaxy, "galaxy", (camera as THREE.PerspectiveCamera).aspect), 1.4);
+        startAnim(s.phase === "system" ? poseFor(system, "system", aspect, s.cameraPreset) : poseFor(galaxy, "galaxy", aspect, s.cameraPreset), 1.4);
       }
       if (rig.lastPhase !== s.phase) rig.lastPhase = s.phase;
-      // 워프 중에 그래프가 도착했거나 필터로 모델이 바뀐 경우: 진행 중인 애니메이션이 끝난 뒤 현재 모델에 다시 맞춘다
       const model = s.phase === "system" ? system : galaxy;
+      const kind: "galaxy" | "system" = s.phase === "system" ? "system" : "galaxy";
+      // 카메라 프리셋을 골랐다 (같은 것을 다시 눌러도 횟수가 오른다) — 진행 중 연출이 있어도 그 자리에서 새 자세로 이어 간다
+      if (s.cameraPresetNonce !== rig.presetNonce) {
+        rig.presetNonce = s.cameraPresetNonce;
+        if (model && introDone.current) {
+          fitted.current = model;
+          startAnim(poseFor(model, kind, aspect, s.cameraPreset), 1.2);
+        }
+      }
+      // 워프 중에 그래프가 도착했거나 필터로 모델이 바뀐 경우: 진행 중인 애니메이션이 끝난 뒤 현재 모델에 다시 맞춘다
       if (model && fitted.current !== model && !rig.anim && introDone.current) {
         fitted.current = model;
-        startAnim(poseFor(model, s.phase === "system" ? "system" : "galaxy", (camera as THREE.PerspectiveCamera).aspect), 1.0);
+        startAnim(poseFor(model, kind, aspect, s.cameraPreset), 1.0);
       }
     }
     warpRef.current = intensity;
@@ -254,24 +291,15 @@ function Effects({ warpRef }: { warpRef: MutableRefObject<number> }) {
   );
 }
 
-export interface Callout {
-  companyId: string;
-  kicker: string;
-  title: string;
-  meta: string;
-  onClose?: () => void;
-}
-
 interface ContentProps {
   galaxy: SceneModel | null;
   system: SceneModel | null;
   /** 워프 목적지 배치 — 커밋(0.6s) 시점에 있으면 모프하고, 없으면 기존 팝인으로 폴백한다 */
   next?: SceneModel | null;
-  callout: Callout | null;
   warpRef: MutableRefObject<number>;
 }
 
-function Content({ galaxy, system, next = null, callout, warpRef }: ContentProps) {
+function Content({ galaxy, system, next = null, warpRef }: ContentProps) {
   const focusId = useGalaxy((s) => s.focusId);
   const hoveredId = useGalaxy((s) => s.hoveredId);
   const hoveredEdgeId = useGalaxy((s) => s.hoveredEdgeId);
@@ -300,6 +328,8 @@ function Content({ galaxy, system, next = null, callout, warpRef }: ContentProps
     () => (model ? computeEmphasis(model, { hoveredId, hoveredEdgeId, selectedEdgeId, minScore, activeTypes: activeTypes as Set<string>, budget: edgeBudget, path, roleFilter }) : null),
     [model, hoveredId, hoveredEdgeId, selectedEdgeId, minScore, activeTypes, edgeBudget, path, roleFilter],
   );
+  // 뜻밖 간선 집합 — 선 위 글자(EdgeLabels)에 ✦ 를 붙인다. 모델당 한 번만 스캔한다
+  const surprise = useMemo(() => (model ? surpriseSet(model) : new Set<string>()), [model]);
 
   useEffect(() => {
     document.body.style.cursor = hoveredId || hoveredEdgeId ? "pointer" : pinnedId ? "crosshair" : "";
@@ -308,7 +338,6 @@ function Content({ galaxy, system, next = null, callout, warpRef }: ContentProps
     };
   }, [hoveredId, hoveredEdgeId, pinnedId]);
 
-  const calloutNode = callout && model ? model.nodeById.get(callout.companyId) : undefined;
   // 별가루 시드는 구성원 목록에서 뽑는다 — 노드 수만 같고 내용이 다른 스냅샷·필터가 같은 별가루를 재생하지 않게.
   // 성단은 산업 하나당 하나라 clusters.length<=1 이 곧 layoutGalaxy 의 single(팔 인력 off) 조건이다
   const dust = useMemo(
@@ -337,6 +366,8 @@ function Content({ galaxy, system, next = null, callout, warpRef }: ContentProps
             {dust && <GalaxyDust seed={dust.seed} radius={dust.radius} spiral={dust.spiral} warpRef={warpRef} />}
             {/* 주가 고도는 은하 뷰에만 — 기업 중심 뷰의 궤도는 depth 가 정하므로 높이에 다른 의미를 얹지 않는다 */}
             {model.kind === "galaxy" && <AltitudeDriver model={model} />}
+            {/* 첫 방문 투어의 스포트라이트 앵커 — 대상이 없으면 아무 일도 하지 않는다 */}
+            {model.kind === "galaxy" && <TourAnchor model={model} />}
             <RelationLines
               model={model}
               edges={model.edges}
@@ -348,22 +379,11 @@ function Content({ galaxy, system, next = null, callout, warpRef }: ContentProps
               warpFx
             />
             <EdgeArrows model={model} emphasis={emphasis} />
+            {/* 선 중간의 관계 종류 글자(P0-5) · 허브 링 / 0선 기준면 / depth 링(P0-6) */}
+            <EdgeLabels model={model} emphasis={emphasis} surprise={surprise} />
+            <ReferenceRings model={model} />
             <RoleRings model={model} hoveredId={hoveredId} roles={roleTags} />
             <CompanyNodes model={model} emphasis={emphasis} hoveredId={hoveredId} onHover={setHovered} onClick={warpTo} onPin={togglePin} showLabels={showLabels} roleTags={roleTags} />
-            {callout && calloutNode && (
-              <Html position={[calloutNode.pos[0], calloutNode.pos[1] - calloutNode.size * 3.2, calloutNode.pos[2]]} center zIndexRange={[5, 0]} style={{ pointerEvents: "none", transform: "translateY(50%)" }}>
-                <div className="scene-callout" style={{ pointerEvents: "auto" }}>
-                  <div className="row between">
-                    <span className="kick">{callout.kicker}</span>
-                    <button type="button" className="callout-close" onClick={callout.onClose} aria-label="뉴스 알림 닫기">
-                      ×
-                    </button>
-                  </div>
-                  <strong>{callout.title}</strong>
-                  <span className="meta">{callout.meta}</span>
-                </div>
-              </Html>
-            )}
           </group>
         )}
       </group>

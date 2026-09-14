@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
 import * as THREE from "three";
 import { useGalaxy } from "@/store/galaxy";
+import { useUi } from "@/store/ui";
 import { codeOf, focusScrolls, isTyping, modalOpen } from "./keyboard";
 
 /** 방향키 회전 각속도(rad/s)와 Shift 가속 배율 — 한 바퀴에 약 5초, Shift 로 2초 남짓 */
@@ -87,8 +88,9 @@ export default function OrbitKeys({ bound = PAN_BOUND }: { bound?: number }) {
       if (e.altKey || e.ctrlKey) return;
       const s = useGalaxy.getState();
       // 모달(로그인 등)이 떠 있으면 그 안의 버튼에 포커스가 있어도 뒤의 은하를 움직이지 않는다
-      // 상단 산업 선택판이 열려 있을 때도 마찬가지 — 판을 보는 중에 방향키가 뒤의 은하를 돌리지 않게
-      if (s.searchOpen || s.industryOpen || isTyping() || modalOpen()) return;
+      // 상단 산업 선택판이 열려 있을 때도 마찬가지 — 판을 보는 중에 방향키가 뒤의 은하를 돌리지 않게.
+      // `?` 도움말 허브는 비모달(aria-modal 없음)이라 modalOpen() 에 잡히지 않으므로 따로 본다 — 매뉴얼을 읽는 중에 WASD·←→ 가 은하를 돌리면 안 된다
+      if (s.searchOpen || s.industryOpen || useUi.getState().helpOpen || isTyping() || modalOpen()) return;
       // 패널 목록 안에 포커스가 있으면 방향키는 그 목록의 스크롤이다 (W A S D 에는 기본 동작이 없어 그대로 받는다)
       if (arrow && focusScrolls(code === "ArrowUp" || code === "ArrowDown" ? "y" : "x")) return;
       st.keys.add(code);
