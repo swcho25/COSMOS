@@ -49,6 +49,16 @@ public class AuthService {
     }
 
     /**
+     * 로그아웃. 서버가 보관한 Refresh Token을 지워 더 이상 재발급되지 않게 한다.
+     *
+     * <p>이미 발급된 Access Token은 회수할 수 없으므로 최대 남은 수명(30분)까지는 유효하다.
+     * 프론트도 보관 중인 Access Token을 함께 버려야 한다.
+     */
+    public void logout(Long userId) {
+        refreshTokenStore.delete(userId);
+    }
+
+    /**
      * Access Token 재발급.
      *
      * <p>쿠키의 Refresh Token을 검증한 뒤, 서버(Redis)가 보관한 것과 같은지까지 대조한다.
