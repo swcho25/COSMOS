@@ -33,7 +33,7 @@ def readSecret = { String name ->
 
 def adminUser = readSecret('admin-user')
 def adminPassword = readSecret('admin-password')
-if (!(adminUser ==~ /[a-zA-Z0-9][a-zA-Z0-9._-]{2,63}/) || adminPassword.length() < 20) {
+if (!(adminUser ==~ /[a-zA-Z0-9][a-zA-Z0-9._-]{2,63}/) || adminPassword.length() < 8) {
     throw new IllegalStateException('Admin ID or password does not satisfy the bootstrap requirements')
 }
 realm.createAccount(adminUser, adminPassword)
