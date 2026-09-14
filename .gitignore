@@ -6,3 +6,5 @@
 *.key
 deploy/reports/
 deploy/releases/
+__pycache__/
+*.py[cod]
