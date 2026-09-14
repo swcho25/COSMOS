@@ -3,7 +3,7 @@ import type { ImpactDirection } from "@/api/types";
 import { ImpactBadge, IndustryBadge, Skeleton, TypeBadge } from "@/components/ui";
 import { fmtPctFrom01, fmtRelative, fmtScore } from "@/lib/format";
 import type { SceneModel } from "@/lib/graph";
-import { EVIDENCE_UI, SURPRISE_UI, TIP_PATH_HINT } from "@/lib/guide";
+import { EVIDENCE_UI, SURPRISE_UI, TIP_NODE_HINT } from "@/lib/guide";
 import { IMPACT_META, relationshipMeta } from "@/lib/meta";
 import { useRelationship, useTopEvidence } from "@/lib/queries";
 import { ROLE_META, roleColor, roleCounts } from "@/lib/roles";
@@ -121,8 +121,8 @@ export default function SceneTip({ model, pointer }: Props) {
             </span>
           ))}
         </div>
-        {/* Shift+클릭 발견성이 낮아 노드 툴팁에도 힌트를 남긴다 — PathStrip 이 이 기준으로 최단 경로를 켠다 */}
-        <div className="tip-hint">{TIP_PATH_HINT}</div>
+        {/* 클릭이 워프가 아니라 미리보기라는 것은 화면만 보고는 알 수 없다 — 툴팁 한 줄로 알린다 */}
+        <div className="tip-hint">{TIP_NODE_HINT}</div>
       </div>
     );
   }

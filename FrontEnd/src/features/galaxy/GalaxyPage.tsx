@@ -53,6 +53,8 @@ export default function GalaxyPage() {
   const focusId = useGalaxy((s) => s.focusId);
   const phase = useGalaxy((s) => s.phase);
   const selectedEdgeId = useGalaxy((s) => s.selectedEdgeId);
+  const selectedId = useGalaxy((s) => s.selectedId);
+  const selectCompany = useGalaxy((s) => s.selectCompany);
   const setScope = useGalaxy((s) => s.setScope);
   const toggleNeighbors = useGalaxy((s) => s.toggleNeighbors);
   const setIndustry = useGalaxy((s) => s.setIndustry);
@@ -185,8 +187,8 @@ export default function GalaxyPage() {
         if (ui.helpOpen) ui.closeHelp();
         else if (s.industryOpen) s.setIndustryOpen(false);
         else if (s.roleFilter) s.setRoleFilter(null);
-        else if (s.pinnedId) s.togglePin(s.pinnedId);
         else if (s.selectedEdgeId) selectEdge(null);
+        else if (s.selectedId) s.selectCompany(null);
         else if (s.focusId && s.phase !== "warp") s.backToGalaxy();
       }
     };
@@ -343,7 +345,7 @@ export default function GalaxyPage() {
       )}
       {/* 브레드크럼 아래: 중심 기업의 1홉 역할 요약 (칩을 누르면 그 역할만 남긴다) */}
       <HopSummary model={systemModel} />
-      {/* 상단 중앙: 최단 경로 스트립 — 기업 중심 뷰는 중심 기준, 은하 뷰는 Shift+클릭 핀 기준 (자기 모델로 재계산, Canvas 와 결합도 0) */}
+      {/* 상단 중앙: 최단 경로 스트립 — 기업 중심 뷰는 중심 기준, 은하 뷰는 미리보기로 고른 기업 기준 (자기 모델로 재계산, Canvas 와 결합도 0) */}
       <PathStrip model={focusId ? systemModel : galaxyModel} />
 
       {/* 좌하단: 상태 */}
@@ -373,19 +375,30 @@ export default function GalaxyPage() {
       <SurpriseRail model={focusId ? systemModel : galaxyModel} onPickCompany={pickCompany} />
 
       {/* 우측 패널 — 닫으면 오른쪽 가장자리 꼬리표로 접힌다 */}
-      {(focusId || selectedEdgeId) &&
+      {/* 은하 뷰에서 행성을 클릭하면 워프하지 않고 그 기업의 뉴스·연결 단계를 여기서 먼저 본다 — 더블클릭(또는 패널의 "관계망 보기")이 워프 */}
+      {(focusId || selectedEdgeId || selectedId) &&
         (panelOpen ? (
           <div className="hud hud-panel">
             {selectedEdgeId ? (
               <RelationshipPanel relationshipId={selectedEdgeId} onClose={() => setPanelOpen(false)} onPickCompany={pickCompany} model={focusId ? systemModel : galaxyModel} />
+            ) : focusId ? (
+              <CompanyPanel companyId={focusId} onClose={() => setPanelOpen(false)} onPickCompany={pickCompany} />
             ) : (
-              focusId && <CompanyPanel companyId={focusId} onClose={() => setPanelOpen(false)} onPickCompany={pickCompany} />
+              selectedId && (
+                <CompanyPanel
+                  companyId={selectedId}
+                  model={galaxyModel}
+                  onClose={() => selectCompany(null)}
+                  onPickCompany={(id) => (galaxyModel?.nodeById.has(id) ? selectCompany(id) : pickCompany(id))}
+                  onWarp={() => pickCompany(selectedId)}
+                />
+              )
             )}
           </div>
         ) : (
           <div className="hud hud-panel-tag">
             <button type="button" className="hud-tag vertical" onClick={() => setPanelOpen(true)} title="패널 펼치기">
-              {selectedEdgeId ? "기업 관계" : `${focusName} · 인텔리전스`}
+              {selectedEdgeId ? "기업 관계" : `${focusName ?? galaxyModel?.nodeById.get(selectedId ?? "")?.name ?? ""} · 인텔리전스`}
             </button>
           </div>
         ))}

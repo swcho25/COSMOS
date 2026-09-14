@@ -33,8 +33,8 @@ function markTourDone() {
   }
 }
 
-/** 4단계 캡션의 조작 요약 — 기획서 문구 "드래그=회전 · 휠=확대 · WASD=이동 · Shift+클릭=경로" */
-const WARP_KEYS = CONTROL_HINTS.filter((h) => ["드래그", "휠", "W A S D", "Shift + 클릭"].includes(h.keys));
+/** 4단계 캡션의 조작 요약 — 드래그·휠·WASD 와 클릭/더블클릭의 차이 */
+const WARP_KEYS = CONTROL_HINTS.filter((h) => ["드래그", "휠", "W A S D", "클릭", "더블클릭"].includes(h.keys));
 
 /**
  * 첫 방문 투어 — 실제 렌더된 은하 위에 스포트라이트를 뚫고 4단계 캡션으로 읽는 법을 가르친다 (기획서 §3).

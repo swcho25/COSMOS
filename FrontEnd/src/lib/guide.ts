@@ -59,8 +59,8 @@ export const TOUR_STEPS: Record<TourStepId, TourStepCopy> = {
   warp: {
     id: "warp",
     index: 4,
-    title: "기업을 누르면 그 기업의 관계망으로 들어갑니다",
-    body: ["돌아올 때는 ESC 또는 왼쪽 위 ←."],
+    title: "기업을 한 번 누르면 뉴스와 연결 단계가, 두 번 누르면 관계망이 열립니다",
+    body: ["미리보기에서 다른 기업에 커서를 올리면 두 기업 사이 경로가 위에 뜹니다.", "관계망에서 돌아올 때는 ESC 또는 왼쪽 위 ←."],
     primary: "시작하기",
   },
 };
@@ -110,7 +110,8 @@ export const CONTROL_HINTS: { keys: string; does: string }[] = [
   { keys: "W A S D", does: "시선 이동" },
   { keys: "← → ↑ ↓", does: "회전" },
   { keys: "행성 끌기", does: "자리 옮기기 (이 화면에서만)" },
-  { keys: "Shift + 클릭", does: "두 기업 사이 경로" },
+  { keys: "클릭", does: "기업 미리보기 — 뉴스·연결 단계가 옆에 뜬다" },
+  { keys: "더블클릭", does: "그 기업의 관계망으로" },
   { keys: "/", does: "기업 검색" },
   { keys: "?", does: "이 안내" },
   { keys: "ESC", does: "한 겹 닫기 · 은하로 복귀" },
@@ -166,11 +167,19 @@ export const LEGEND_UI = {
   edgeLabelsTitle: "선 중간에 공급·투자·협력·경쟁 글자를 붙입니다 (상위 관계만)",
 };
 
-/** 기업 툴팁의 한 줄 힌트 — 조작법 표(CONTROL_HINTS)의 경로 항목과 같은 문구. 같은 조작을 두 문장으로 적지 않는다 */
-export const TIP_PATH_HINT = (() => {
-  const h = CONTROL_HINTS.find((c) => c.keys.startsWith("Shift"))!;
-  return `${h.keys} = ${h.does}`;
-})();
+/** 기업 툴팁의 한 줄 힌트 — 조작법 표(CONTROL_HINTS)의 클릭·더블클릭 항목과 같은 문구 */
+export const TIP_NODE_HINT = "클릭 = 미리보기 · 더블클릭 = 관계망";
+
+/* ---- 기업 미리보기 (은하 뷰에서 행성 클릭) ---- */
+export const PREVIEW_UI = {
+  warp: "관계망 보기",
+  warpTitle: "이 기업을 중심으로 관계망을 다시 배치합니다 (행성 더블클릭과 같음)",
+  steps: "연결 단계",
+  hops: (h1: number, h2: number) => `1홉 ${h1} · 2홉 ${h2}`,
+  noLinks: "지금 필터 안에서는 이어진 기업이 없습니다.",
+  pickTitle: "이 기업을 미리보기로",
+  pathHint: "다른 행성에 커서를 올리면 이 기업에서 가는 경로가 위에 표시됩니다.",
+};
 
 /* ---- 공간 참조 구조 (P0-6) ---- */
 export const RINGS_UI = {
@@ -297,7 +306,8 @@ export const HELP_SECTIONS: HelpSection[] = [
     title: "기업 관계망으로 들어가기",
     summary: "클릭→워프, 궤도=몇 다리 건너인지, ESC로 복귀",
     body: [
-      "행성을 누르면 그 기업을 중심으로 관계망이 다시 배치됩니다.",
+      "행성을 한 번 누르면 오른쪽에 그 기업의 뉴스와 연결 단계(1홉 이웃을 역할별로, 2홉까지 닿는 기업 수)가 뜹니다. 이 상태에서 다른 행성에 커서를 올리면 두 기업 사이 경로가 위에 표시됩니다.",
+      "행성을 두 번 누르거나 패널의 '관계망 보기'를 누르면 그 기업을 중심으로 관계망이 다시 배치됩니다.",
       "가운데가 선택한 기업, 첫 궤도가 직접 관계(1다리), 바깥 궤도가 2·3다리 건넌 기업입니다.",
       "기업에 커서를 올리면 이웃에 역할(공급사·고객·투자자·피투자·협력·경쟁) 태그가 붙고, 상단 요약에서 역할별로 걸러 볼 수 있습니다.",
       "ESC 또는 왼쪽 위 ← 로 은하에 돌아옵니다.",

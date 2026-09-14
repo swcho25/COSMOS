@@ -20,8 +20,11 @@ interface GalaxyState {
   hoveredId: string | null;
   hoveredEdgeId: string | null;
   selectedEdgeId: string | null;
-  /** 경로 기준 기업 (Shift+클릭). 다른 기업을 호버하면 여기까지의 최단 경로가 강조된다. 파생값(경로)은 스토어에 두지 않는다 */
-  pinnedId: string | null;
+  /**
+   * 미리보기로 고른 기업 (은하 뷰에서 행성 클릭). 우측 패널에 뉴스·연결 단계가 뜨고, 다른 기업을 호버하면 여기서 가는 경로가 강조된다.
+   * 더블클릭(warpTo)하면 그 기업의 관계망으로 들어가며 이 값은 비워진다. 파생값(경로)은 스토어에 두지 않는다
+   */
+  selectedId: string | null;
   /** 기업 중심 뷰 1홉 요약에서 고른 역할 — 그 역할의 이웃·간선만 남긴다 */
   roleFilter: RoleKey | null;
 
@@ -70,7 +73,7 @@ interface GalaxyState {
   setHoveredEdge(id: string | null): void;
   selectEdge(id: string | null): void;
   clearSelection(): void;
-  togglePin(id: string): void;
+  selectCompany(id: string | null): void;
   setRoleFilter(r: RoleKey | null): void;
   setScope(scope: GalaxyScope): void;
   toggleNeighbors(): void;
@@ -103,7 +106,7 @@ export const useGalaxy = create<GalaxyState>((set, get) => ({
   hoveredId: null,
   hoveredEdgeId: null,
   selectedEdgeId: null,
-  pinnedId: null,
+  selectedId: null,
   roleFilter: null,
 
   scope: "all",
@@ -142,7 +145,7 @@ export const useGalaxy = create<GalaxyState>((set, get) => ({
       selectedEdgeId: null,
       hoveredId: null,
       hoveredEdgeId: null,
-      pinnedId: null,
+      selectedId: null,
       roleFilter: null,
       panelOpen: true,
       industryOpen: false,
@@ -165,15 +168,16 @@ export const useGalaxy = create<GalaxyState>((set, get) => ({
     if (get().hoveredEdgeId !== id) set({ hoveredEdgeId: id });
   },
   selectEdge(id) {
-    set((s) => ({ selectedEdgeId: s.selectedEdgeId === id ? null : id, panelOpen: true }));
+    // 간선을 고르면 기업 미리보기는 내려간다 — 우측 패널은 한 번에 하나
+    set((s) => ({ selectedEdgeId: s.selectedEdgeId === id ? null : id, selectedId: null, panelOpen: true }));
   },
   clearSelection() {
-    set({ selectedEdgeId: null, hoveredId: null, hoveredEdgeId: null, pinnedId: null, roleFilter: null });
+    set({ selectedEdgeId: null, selectedId: null, hoveredId: null, hoveredEdgeId: null, roleFilter: null });
   },
-  togglePin(id) {
-    // 워프 중에는 아직 이전 모델이 보이고 집을 수도 있다 — 그때 찍은 핀은 착지한 뷰에 없는 기업을 가리킨 채 남는다 (warpTo 와 같은 가드)
+  selectCompany(id) {
+    // 워프 중에는 아직 이전 모델이 보이고 집을 수도 있다 — 그때 고른 기업은 착지한 뷰에 없을 수 있다 (warpTo 와 같은 가드)
     if (get().phase === "warp") return;
-    set((s) => ({ pinnedId: s.pinnedId === id ? null : id }));
+    set({ selectedId: id, selectedEdgeId: null, panelOpen: true });
   },
   setRoleFilter(r) {
     set((s) => ({ roleFilter: s.roleFilter === r ? null : r }));
@@ -181,14 +185,14 @@ export const useGalaxy = create<GalaxyState>((set, get) => ({
 
   setScope(scope) {
     // 범위가 바뀌면 모델이 통째로 갈린다 — 새 모델에 없을 수 있는 상태(선택 간선·경로 핀·역할 필터)를 setIndustry 와 같게 턴다
-    set({ scope, selectedEdgeId: null, pinnedId: null, roleFilter: null, industryOpen: false });
+    set({ scope, selectedEdgeId: null, selectedId: null, roleFilter: null, industryOpen: false });
   },
   toggleNeighbors() {
     set((s) => ({ includeNeighbors: !s.includeNeighbors }));
   },
   setIndustry(id) {
     // 새 모델에는 없을 수 있는 상태(선택 간선·경로 핀·역할 필터)를 함께 턴다 — 핀이 남으면 crosshair 커서만 남고 경로가 잡히지 않는다
-    set({ industryId: id, selectedEdgeId: null, pinnedId: null, roleFilter: null });
+    set({ industryId: id, selectedEdgeId: null, selectedId: null, roleFilter: null });
   },
   setMinScore(v) {
     set({ minScore: Math.max(0, Math.min(100, v)) });

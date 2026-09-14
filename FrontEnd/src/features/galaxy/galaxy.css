@@ -1473,3 +1473,41 @@
     top: 172px;
   }
 }
+
+/* ------------------------------ 기업 미리보기 · 연결 단계 ------------------------------ */
+.panel-steps {
+  padding: 12px 18px 10px;
+  border-bottom: 1px solid var(--border);
+}
+.steps-role {
+  display: grid;
+  grid-template-columns: 96px minmax(0, 1fr);
+  gap: 8px;
+  align-items: start;
+  font-size: 12.5px;
+}
+.steps-role-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-3);
+  padding-top: 3px;
+  white-space: nowrap;
+}
+.steps-role-name b {
+  color: var(--text);
+}
+.steps-role-names {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.steps-role-names .chip {
+  padding: 2px 8px;
+  font-size: 12px;
+}
+
+/* 은하 뷰에서 미리보기 패널(우측 390px)이 열리면 상단 한 줄(검색·범위·산업)은 그 왼쪽에서 접힌다 — 기업 중심 뷰에는 상단 줄이 없어 해당 없음 */
+.galaxy:has(.hud-panel) .hud-top {
+  padding-right: calc(24px + 390px + 16px);
+}

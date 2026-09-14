@@ -313,30 +313,32 @@ function Content({ galaxy, system, next = null, warpRef }: ContentProps) {
   const selectEdge = useGalaxy((s) => s.selectEdge);
   const clearSelection = useGalaxy((s) => s.clearSelection);
   const warpTo = useGalaxy((s) => s.warpTo);
-  const pinnedId = useGalaxy((s) => s.pinnedId);
+  const selectedId = useGalaxy((s) => s.selectedId);
   const roleFilter = useGalaxy((s) => s.roleFilter);
-  const togglePin = useGalaxy((s) => s.togglePin);
+  const selectCompany = useGalaxy((s) => s.selectCompany);
 
   const model = focusId ? system : galaxy;
   // 최소 점수·관계 유형 필터 — 경로·역할 계산은 예산(상위만)은 무시하고 이 필터만 지킨다
   const allowed = useMemo(() => (e: SceneEdge) => e.score >= minScore && activeTypes.has(e.type), [minScore, activeTypes]);
   // 경로 기준·게이트는 hoverPath 한 곳에 있다 — HUD 스트립(PathStrip)과 규칙이 어긋나지 않게
-  const path = useMemo(() => hoverPath(model, hoveredId, pinnedId, allowed)?.path ?? null, [model, hoveredId, pinnedId, allowed]);
-  // 호버 노드의 이웃 역할 — 이웃 링(RoleRings)과 칩 역할 태그(CompanyNodes)가 같은 맵을 쓴다
-  const roleTags = useMemo(() => (model && hoveredId && model.nodeById.has(hoveredId) ? neighborRoles(model, hoveredId, allowed) : null), [model, hoveredId, allowed]);
+  const path = useMemo(() => hoverPath(model, hoveredId, selectedId, allowed)?.path ?? null, [model, hoveredId, selectedId, allowed]);
+  // 강조의 주인공 — 호버 중이면 호버 노드, 아니면 미리보기로 고른 기업 (고른 기업은 손을 떼도 이웃·역할이 켜져 있다)
+  const focusNode = hoveredId ?? (model && selectedId && model.nodeById.has(selectedId) ? selectedId : null);
+  // 주인공의 이웃 역할 — 이웃 링(RoleRings)과 칩 역할 태그(CompanyNodes)가 같은 맵을 쓴다
+  const roleTags = useMemo(() => (model && focusNode && model.nodeById.has(focusNode) ? neighborRoles(model, focusNode, allowed) : null), [model, focusNode, allowed]);
   const emphasis = useMemo(
-    () => (model ? computeEmphasis(model, { hoveredId, hoveredEdgeId, selectedEdgeId, minScore, activeTypes: activeTypes as Set<string>, budget: edgeBudget, path, roleFilter }) : null),
-    [model, hoveredId, hoveredEdgeId, selectedEdgeId, minScore, activeTypes, edgeBudget, path, roleFilter],
+    () => (model ? computeEmphasis(model, { hoveredId: focusNode, hoveredEdgeId, selectedEdgeId, minScore, activeTypes: activeTypes as Set<string>, budget: edgeBudget, path, roleFilter }) : null),
+    [model, focusNode, hoveredEdgeId, selectedEdgeId, minScore, activeTypes, edgeBudget, path, roleFilter],
   );
   // 뜻밖 간선 집합 — 선 위 글자(EdgeLabels)에 ✦ 를 붙인다. 모델당 한 번만 스캔한다
   const surprise = useMemo(() => (model ? surpriseSet(model) : new Set<string>()), [model]);
 
   useEffect(() => {
-    document.body.style.cursor = hoveredId || hoveredEdgeId ? "pointer" : pinnedId ? "crosshair" : "";
+    document.body.style.cursor = hoveredId || hoveredEdgeId ? "pointer" : "";
     return () => {
       document.body.style.cursor = "";
     };
-  }, [hoveredId, hoveredEdgeId, pinnedId]);
+  }, [hoveredId, hoveredEdgeId]);
 
   // 별가루 시드는 구성원 목록에서 뽑는다 — 노드 수만 같고 내용이 다른 스냅샷·필터가 같은 별가루를 재생하지 않게.
   // 성단은 산업 하나당 하나라 clusters.length<=1 이 곧 layoutGalaxy 의 single(팔 인력 off) 조건이다
@@ -382,8 +384,9 @@ function Content({ galaxy, system, next = null, warpRef }: ContentProps) {
             {/* 선 중간의 관계 종류 글자(P0-5) · 허브 링 / 0선 기준면 / depth 링(P0-6) */}
             <EdgeLabels model={model} emphasis={emphasis} surprise={surprise} />
             <ReferenceRings model={model} />
-            <RoleRings model={model} hoveredId={hoveredId} roles={roleTags} />
-            <CompanyNodes model={model} emphasis={emphasis} hoveredId={hoveredId} onHover={setHovered} onClick={warpTo} onPin={togglePin} showLabels={showLabels} roleTags={roleTags} />
+            <RoleRings model={model} hoveredId={focusNode} roles={roleTags} />
+            {/* 클릭 = 미리보기(뉴스·연결 단계 패널, 이웃 강조) · 더블클릭 = 그 기업의 관계망으로 워프 */}
+            <CompanyNodes model={model} emphasis={emphasis} hoveredId={focusNode} onHover={setHovered} onClick={selectCompany} onDoubleClick={warpTo} showLabels={showLabels} roleTags={roleTags} />
           </group>
         )}
       </group>
