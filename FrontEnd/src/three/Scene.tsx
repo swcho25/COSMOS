@@ -133,6 +133,7 @@ function Director({ warpRef, galaxy, system, next }: { warpRef: MutableRefObject
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [galaxy, camera]);
 
+  /* eslint-disable react-hooks/immutability -- The R3F frame callback controls the external Three.js camera and orbit controls. */
   useFrame((_, delta) => {
     const dt = Math.min(delta, 0.05);
     const s = useGalaxy.getState();
@@ -233,6 +234,7 @@ function Director({ warpRef, galaxy, system, next }: { warpRef: MutableRefObject
       if (controls.enabled !== free) controls.enabled = free;
     }
   });
+  /* eslint-enable react-hooks/immutability */
   return null;
 }
 

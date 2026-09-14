@@ -12,12 +12,6 @@ interface Props {
 export default function SearchPalette({ onPick }: Props) {
   const open = useGalaxy((s) => s.searchOpen);
   const setOpen = useGalaxy((s) => s.setSearchOpen);
-  const [q, setQ] = useState("");
-  const [cursor, setCursor] = useState(0);
-  const input = useRef<HTMLInputElement>(null);
-  const results = useCompanySearch(q, open);
-  const items = results.data?.items ?? [];
-
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
@@ -33,31 +27,39 @@ export default function SearchPalette({ onPick }: Props) {
     return () => window.removeEventListener("keydown", onKey);
   }, [setOpen]);
 
-  useEffect(() => {
-    if (open) {
-      setQ("");
-      setCursor(0);
-      setTimeout(() => input.current?.focus(), 10);
-    }
-  }, [open]);
-  useEffect(() => setCursor(0), [q]);
+  // 열 때마다 검색어와 선택 위치를 새로 초기화한다.
+  return open ? <SearchPaletteDialog onPick={onPick} onClose={() => setOpen(false)} /> : null;
+}
 
-  if (!open) return null;
+function SearchPaletteDialog({ onPick, onClose }: Props & { onClose: () => void }) {
+  const [q, setQ] = useState("");
+  const [cursor, setCursor] = useState(0);
+  const input = useRef<HTMLInputElement>(null);
+  const results = useCompanySearch(q);
+  const items = results.data?.items ?? [];
+
+  useEffect(() => {
+    const timer = setTimeout(() => input.current?.focus(), 10);
+    return () => clearTimeout(timer);
+  }, []);
 
   const pick = (id: string) => {
-    setOpen(false);
+    onClose();
     onPick(id);
   };
 
   return (
-    <div className="scrim" onMouseDown={(e) => e.target === e.currentTarget && setOpen(false)} role="presentation">
+    <div className="scrim" onMouseDown={(e) => e.target === e.currentTarget && onClose()} role="presentation">
       <div className="card palette" role="dialog" aria-modal="true" aria-label="기업 검색">
         <label className="field">
           <Icon.Search />
           <input
             ref={input}
             value={q}
-            onChange={(e) => setQ(e.target.value)}
+            onChange={(e) => {
+              setQ(e.target.value);
+              setCursor(0);
+            }}
             placeholder="기업명 또는 종목코드를 검색하세요"
             onKeyDown={(e) => {
               if (e.key === "ArrowDown") {

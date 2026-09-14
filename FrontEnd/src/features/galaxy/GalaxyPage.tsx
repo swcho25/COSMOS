@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import type { AltitudeWindow } from "@/api/types";
 import { useQueryClient } from "@tanstack/react-query";
@@ -256,7 +256,15 @@ export default function GalaxyPage() {
   const focusName = focusId ? systemModel?.nodeById.get(focusId)?.name ?? lookup(focusId)?.name ?? "…" : null;
   // 내 은하의 기준 스냅샷은 우주다 — 상태 카드의 시각·갱신 예정도 그 재료를 가리켜야 한다
   const snapshot = mineScope ? universe.data : latest.data;
-  const stale = snapshot ? Date.now() > Date.parse(snapshot.nextRefreshAt) : false;
+  const nextRefreshAt = snapshot?.nextRefreshAt;
+  const [now, setNow] = useState(Date.now);
+  useEffect(() => {
+    if (!nextRefreshAt) return;
+    // 갱신 예정 시각을 넘을 때 상태 표시를 갱신하고, 스냅샷 변경 시 예약을 교체한다.
+    const timer = setTimeout(() => setNow(Date.now()), Math.max(0, Date.parse(nextRefreshAt) - Date.now() + 1));
+    return () => clearTimeout(timer);
+  }, [nextRefreshAt]);
+  const stale = nextRefreshAt ? now > Date.parse(nextRefreshAt) : false;
   const scopeLoading = mineScope ? universe.isLoading || watchlist.isLoading : latest.isLoading;
   const loading = scopeLoading || (Boolean(focusId) && focusGraph.isLoading && !systemModel);
   const scopeError = mineScope ? universe.isError : latest.isError;

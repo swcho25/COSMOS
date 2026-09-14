@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import type { Candle } from "@/api/types";
 import { fmtShortDate } from "@/lib/format";
 
@@ -50,7 +50,7 @@ export default function PriceChart({ data, height = 150, color = "#829CFF", show
 
   const up = data.length > 1 && data[data.length - 1].closePrice >= data[0].closePrice;
   const stroke = color === "auto" ? (up ? "#4FE8C0" : "#FF8FA3") : color;
-  const gid = useMemo(() => `pc-${Math.random().toString(36).slice(2, 8)}`, []);
+  const gid = useId();
 
   return (
     <div ref={ref} style={{ width: "100%", height }}>
