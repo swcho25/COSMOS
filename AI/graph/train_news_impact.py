@@ -1,7 +1,18 @@
-"""Train-only targets, frozen-feature dataset and validation-selected GAT ensembles.
+"""Train/evaluate all three original Story 3 stages on identical temporal rows.
 
-The three-seed joint direction/magnitude learner is callable through fit_gat.
-Baseline models, shared evaluation and the command-line pipeline follow next.
+Stage1: frozen KR-FinBERT/FinBERT document polarity times direct prominence or
+two-hop signed graph attenuation (explicit heuristic, including COMPETE=-1).
+Stage2: graph-free LightGBM, using the SAME frozen text representation as GAT,
+financial sentiment, ticker, known static attributes and direct mention metadata.
+Stage3: 2-layer PyG GATv2, 3 seeds, joint 1/3-session direction/magnitude targets.
+
+PCA64, neutral abs-return q33, magnitude abs-return q95 and majority baseline
+are fit on train ONLY. GAT checkpoint selection uses val CE + magnitude Huber;
+LightGBM early stopping uses validation only. Test never changes model choice.
+Article-weighted loss/LightGBM weights avoid broad articles dominating training.
+Metrics are reported on exactly the same article-company rows for all stages,
+with separate markets/directness and paired SESSION-clustered uncertainty.
+Weights, graph, preprocessing, metrics and predictions are saved, not just logs.
 """
 from __future__ import annotations
 import argparse
@@ -30,6 +41,18 @@ def targets(y, train):
     return labels, magnitude, thresholds.astype("float32"), scales.astype("float32")
 
 
+def rule_predictions(docs, pairs, sentiment, threshold_norm):
+    result = np.empty(len(pairs), dtype="float32")
+    metadata = [{m["ticker"]: m for m in d["companies"]} for d in docs]
+    for i, r in enumerate(pairs.itertuples()):
+        m = metadata[r.article][r.rule_source]
+        prominence = {"title": 1., "lead": .8, "body": .5}.get(m["first_pos"], .5)
+        prominence *= min(1., .7 + .1 * m["n_mentions"])
+        result[i] = (sentiment[r.article, 2] - sentiment[r.article, 0]) * prominence * r.rule_weight * r.rule_sign
+    mag = np.repeat(abs(result)[:, None], 2, axis=1)
+    cls = np.where(result[:, None] > threshold_norm, 2, np.where(result[:, None] < -threshold_norm, 0, 1))
+    probs = np.eye(3, dtype="float32")[cls]
+    return probs, mag
 
 
 class TrainingData:
@@ -69,8 +92,40 @@ class TrainingData:
         self.dense_mag[self.article_idx, self.node_idx] = self.mag
         self.mask[self.article_idx, self.node_idx] = True
 
+    def tabular(self):
+        # No graph-derived feature: no candidate weight/sign/path/neighbor info.
+        a, n = self.article_idx, self.node_idx
+        static = np.stack([self.static[g][t] for g, t in zip(self.pairs.graph, n)])
+        return np.concatenate([self.text[a], self.sentiment[a], self.mentions[a, n],
+                               static, n[:, None]], axis=1).astype("float32")
 
 
+def fit_lightgbm(data):
+    x = data.tabular()
+    a = data.article_idx
+    counts = np.bincount(a)
+    weights = (1 / counts[a]).astype("float32")
+    prob, mag, versions = [], [], []
+    for h in range(2):
+        for task, y, objective in (("direction", data.cls[:, h], "multiclass"),
+                                    ("magnitude", data.mag[:, h], "regression_l1")):
+            params = dict(objective=objective, learning_rate=.04, num_leaves=23, min_data_in_leaf=100,
+                          max_depth=6, lambda_l2=5., feature_fraction=.8, seed=42, verbosity=-1,
+                          num_threads=4, force_col_wise=True, deterministic=True)
+            if task == "direction":
+                params["num_class"] = 3
+            train = lgb.Dataset(x[data.train], label=y[data.train], weight=weights[data.train],
+                                categorical_feature=[x.shape[1] - 1])
+            val = lgb.Dataset(x[data.val], label=y[data.val], weight=weights[data.val], reference=train)
+            model = lgb.train(params, train, num_boost_round=250, valid_sets=[val],
+                              callbacks=[lgb.early_stopping(25, verbose=False)])
+            filename = f"lightgbm_{task}_{(1, 3)[h]}d.txt"
+            model.save_model(str(data.out / filename))
+            pred = model.predict(x)
+            (prob if task == "direction" else mag).append(pred)
+            versions.append({"file": filename, "best_iteration": model.best_iteration})
+            print("LightGBM", task, h, model.best_iteration, flush=True)
+    return np.stack(prob, axis=1).astype("float32"), np.clip(np.stack(mag, axis=1), 0, 1).astype("float32"), versions
 
 
 def loss_fn(logits, pred_mag, cls, mag, mask):
@@ -175,3 +230,104 @@ def common_rank_score(x, y):
         return None
     ic = rank_ic(x, y)
     return ic if ic is not None else 0.
+
+
+def metrics(data, outputs):
+    rows, paired = [], []
+    daily = {}
+    for split in ("val", "test"):
+        for market in ("KOSPI", "NASDAQ"):
+            for scope in ("all", "direct", "indirect"):
+                mask = ((data.pairs.split == split) & (data.pairs.market == market)).to_numpy()
+                if scope != "all":
+                    mask &= data.pairs.is_direct.to_numpy() == (scope == "direct")
+                if not mask.any():
+                    continue
+                subset = data.pairs[mask]
+                for name, (p, m) in outputs.items():
+                    for h, horizon in enumerate((1, 3)):
+                        pred = p[mask, h].argmax(-1)
+                        signed = (p[mask, h, 2] - p[mask, h, 0]) * m[mask, h]
+                        correct = pred == data.cls[mask, h]
+                        temp = pd.DataFrame({"date": subset.anchor_date.to_numpy(), "article": subset.article.to_numpy(),
+                                             "correct": correct.astype(float), "signed": signed, "y": data.y[mask, h]})
+                        by_day = temp.groupby("date").correct.mean()
+                        daily[split, market, scope, horizon, name] = by_day
+                        groups = [g for _, g in temp.groupby("article") if len(g) >= 3 and np.ptp(g.y.to_numpy()) >= 1e-10]
+                        ics = [ic for g in groups if (ic := rank_ic(g.signed.to_numpy(), g.y.to_numpy())) is not None]
+                        # A constant prediction has undefined Spearman, but must
+                        # not silently remove hard articles from model comparison.
+                        # Report conventional IC separately; the common ranking
+                        # score assigns zero skill to a constant prediction.
+                        common_ranks = [common_rank_score(g.signed.to_numpy(), g.y.to_numpy()) for g in groups]
+                        rows.append(dict(split=split, market=market, scope=scope, model=name, horizon=horizon,
+                            n_pairs=len(subset), n_articles=subset.article.nunique(), n_sessions=len(by_day),
+                            direction_accuracy=float(correct.mean()), session_accuracy=float(by_day.mean()),
+                            signed_pooled_ic=rank_ic(signed, data.y[mask, h]),
+                            article_rank_ic=float(np.mean(ics)) if ics else None, n_ic_articles=len(ics),
+                            common_article_rank_score=float(np.mean(common_ranks)) if common_ranks else None,
+                            n_rank_articles=len(common_ranks),
+                            magnitude_mae=float(abs(m[mask, h] - data.mag[mask, h]).mean()),
+                            magnitude_ic=rank_ic(m[mask, h], abs(data.y[mask, h]))))
+                for horizon in (1, 3):
+                    g = daily[split, market, scope, horizon, "stage3"]
+                    for base in ("majority", "stage1", "stage2"):
+                        diff = (g - daily[split, market, scope, horizon, base]).dropna()
+                        se = float(diff.std(ddof=1) / np.sqrt(len(diff))) if len(diff) > 1 else 0.
+                        paired.append(dict(split=split, market=market, scope=scope, horizon=horizon, baseline=base,
+                                           metric="equal-session direction accuracy", delta=float(diff.mean()),
+                                           session_t=float(diff.mean() / se) if se > 0 else None, n_sessions=len(diff)))
+    pd.DataFrame(rows).to_csv(data.out / "evaluation.csv", index=False)
+    pd.DataFrame(paired).to_csv(data.out / "paired_session_comparison.csv", index=False)
+    return rows
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--seeds", type=int, default=3)
+    ap.add_argument("--out", type=Path, default=OUT)
+    ap.add_argument("--epochs", type=int, default=30)
+    ap.add_argument("--batch-size", type=int, default=24)
+    ap.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
+    args = ap.parse_args()
+    torch.set_num_threads(4)
+    started = time.monotonic()
+    data = TrainingData(args.out)
+    np.savez(data.out / "label_config.npz", thresholds=data.thresholds, scales=data.scales)
+    majority = np.stack([np.bincount(data.cls[data.train, h], minlength=3) / data.train.sum() for h in range(2)])
+    meanmag = data.mag[data.train].mean(0)
+    outputs = {"majority": (np.broadcast_to(majority, (len(data.pairs), 2, 3)),
+                             np.broadcast_to(meanmag, (len(data.pairs), 2)))}
+    outputs["stage1"] = rule_predictions(data.docs, data.pairs, data.sentiment, data.thresholds / data.scales)
+    lp, lm, lgb_info = fit_lightgbm(data)
+    outputs["stage2"] = lp, lm
+    gp, gm, gat_info = fit_gat(data, seeds=args.seeds, epochs=args.epochs, batch_size=args.batch_size, device=args.device)
+    outputs["stage3"] = gp, gm
+    for name, (p, m) in outputs.items():
+        np.savez_compressed(data.out / f"predictions_{name}.npz", probabilities=p, magnitude=m)
+    result = metrics(data, outputs)
+    metadata = {"task": "news-conditioned direction and magnitude", "horizons": [1, 3],
+        "primary_model": "stage3", "gnn": gat_info, "lightgbm": lgb_info, "n_companies": len(data.tickers),
+        "neutral_threshold_log_return": data.thresholds.tolist(), "strength_scale_log_return": data.scales.tolist(),
+        "train_pairs_per_ticker": {str(k): int(v) for k, v in data.pairs[data.train].ticker.value_counts().items()},
+        "text_cleaning": "news_content.py: remove live stock widgets, inserted headlines, sidebars",
+        "text_projection": "train PCA64 of frozen multilingual MiniLM shared by Stage2/Stage3",
+        "seconds": time.monotonic() - started, "torch": torch.__version__, "lightgbm_version": lgb.__version__,
+        "timestamp_precision": "date", "graph_policy": "annual past-only; serving 2026-09-14 snapshot",
+        "label_convention": json.loads((data.out / "dataset_audit.json").read_text())["label"],
+        "limitations": ["delayed daily-price proxy, not causal attribution or immediate news reaction",
+                        "sampled 202-company survivor universe; near-duplicate stories and same-day confounding remain",
+                        "historical ownership partially recovered when provided; historical sector attributes remain unavailable and masked",
+                        "historically retroactive pretrained NLP/alias versions; not a live historical backtest",
+                        "NASDAQ publisher timezone unknown; UTC-12 conservative date cutoff"]}
+    files = sorted(data.out.glob("gat_seed*.pt")) + sorted(data.out.glob("lightgbm_*.txt")) + [
+        data.out / n for n in ("graphs.json", "text_projection.npz", "label_config.npz", "pretrained.json", "companies.json")]
+    files += list(data.out.glob("aliases.csv"))
+    metadata["model_version"] = hashlib.sha256(b"".join(p.read_bytes() for p in files)).hexdigest()[:16]
+    (data.out / "metadata.json").write_text(json.dumps(metadata, indent=2), encoding="utf8")
+    print(json.dumps(metadata, indent=2), flush=True)
+    print(pd.DataFrame(result).query("split == 'test' and scope == 'all'").to_string(index=False), flush=True)
+
+
+if __name__ == "__main__":
+    main()
