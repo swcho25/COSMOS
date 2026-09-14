@@ -61,8 +61,14 @@ RELATIONSHIP_TYPES = [
     ("PARTNER", "협력", "UNDIRECTED"),
     ("COMPETE", "경쟁", "UNDIRECTED"),
 ]
-# 뉴스 호재가 관계를 타고 어떻게 전달되는지. 경쟁만 반대 부호다.
+# 유형만 보고 주는 기본 부호. COMPETE·PARTNER 는 이것만으로는 틀린다 (아래 참고).
 IMPACT = {"SUPPLY": "POSITIVE", "INVEST": "POSITIVE", "PARTNER": "POSITIVE", "COMPETE": "NEGATIVE"}
+# estimate_edge_direction.py 가 쌍별 가격 반응으로 추정한 부호. 있으면 그쪽을 쓴다.
+# "COMPETE 니까 NEGATIVE" 는 23쌍 중 13쌍에서 틀렸다 — 삼성전자-SK하이닉스, NAVER-카카오,
+# 신한지주-KB금융 처럼 국내 동종업계는 같은 산업 충격을 같이 맞아 같이 움직인다. 실제로
+# 반대로 가는 건 Intel-AMD 같은 글로벌 점유율 싸움뿐이다. test 구간(2024~2026) 부호
+# 적중률 55%->66%. 근거와 한계는 estimate_edge_direction.py docstring 참고.
+IMPACT_OVERRIDE = DATA / "db" / "relationship_impact_direction.csv"
 CORROBORATION_SHARE = 0.25   # 점수에서 보강 신호가 차지하는 몫
 SECTOR_SIGNAL = 0.3          # 같은 업종은 약한 근거라 고정 소액만 인정
 
@@ -88,10 +94,18 @@ def main() -> None:
     ap.add_argument("--companies", default=COMPANIES, type=Path)
     ap.add_argument("--out", default=OUT, type=Path)
     ap.add_argument("--as-of", default=dt.date.today().isoformat())
+    ap.add_argument("--impact-override", default=IMPACT_OVERRIDE, type=Path,
+                    help="쌍별 impact_direction 표. 없으면 유형 기본값만 쓴다")
     args = ap.parse_args()
 
     market = {r["ticker"]: r["market"] for r in read_csv(args.companies)}
     as_of_at = f"{args.as_of}T00:00:00Z"
+
+    # 쌍별 부호. 키는 (무순서 쌍, 유형) — 무방향 유형이 양쪽 행으로 들어와도 같은 값을 준다.
+    impact_by_pair: dict[tuple, str] = {}
+    for r in read_csv(args.impact_override):
+        k = (pair(r["source_stock_code"], r["target_stock_code"]), r["relationship_type_code"])
+        impact_by_pair[k] = r["impact_direction"]
 
     # ---- 보강 신호 (유형은 못 정하지만 세기를 받쳐준다)
     co = {pair(r["src_ticker"], r["dst_ticker"]): float(r["weight"]) for r in read_csv(args.co_mention)}
@@ -134,7 +148,8 @@ def main() -> None:
         score = 100.0 * ((1 - CORROBORATION_SHARE) * e["base"]
                          + CORROBORATION_SHARE * corroboration(src, dst))
         scores.append({**nat, "window_type": WINDOW_TYPE, "score": round(score, 6),
-                       "impact_direction": IMPACT[e["type"]],
+                       "impact_direction": impact_by_pair.get((pair(src, dst), e["type"]),
+                                                              IMPACT[e["type"]]),
                        "confidence": round(min(1.0, e["conf"]), 6),
                        "evidence_count": e["n_docs"],
                        "formula_version": FORMULA_VERSION, "as_of_at": as_of_at})
