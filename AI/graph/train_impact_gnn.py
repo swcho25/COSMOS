@@ -1,6 +1,7 @@
 """Story 3 — 전체 횡단면(U1) 영향도 GNN 실험 재현.
 
-현재 제품용 GNN 학습·저장·서빙은 train_impact_u3.py / impact_ranker.py / serve_impact.py.
+소스 기업만 받는 U3는 train_impact_u3.py / impact_ranker.py / serve_impact.py.
+원래 명세의 뉴스 입력 방향·강도 모델은 train_news_impact.py / serve_news_impact.py.
 아래 실측과 제품 권고는 U3 주모델 채택 이전의 비교 기록이다.
 
   PYTHONUTF8=1 ../ner/.venv/Scripts/python.exe train_impact_gnn.py
