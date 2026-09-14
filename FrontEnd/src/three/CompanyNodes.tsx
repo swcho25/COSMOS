@@ -392,6 +392,7 @@ export default function CompanyNodes({ model, emphasis, hoveredId, onHover, onCl
   const haloUniforms = useMemo(() => ({ uMap: { value: dotTexture() } }), []);
   const grad = toonGradient(3);
 
+  /* eslint-disable react-hooks/immutability -- R3F updates live positions and GPU buffers imperatively in its frame callback. */
   useFrame((state, dt) => {
     // 드래그 관성 — 목표점을 향한 스프링. 손을 뗀 뒤에도 속도가 남아 있는 동안 계속 미끄러진다
     if (GLIDE.active && GLIDE.live === live) {
@@ -608,6 +609,8 @@ export default function CompanyNodes({ model, emphasis, hoveredId, onHover, onCl
       } else rg.visible = false;
     }
   });
+
+  /* eslint-enable react-hooks/immutability */
 
   // 배지는 보이는 원판 안, 칩은 보이는 캡슐 안만 히트로 남긴다 (스템·투명 모서리·접힌 칩은 레이캐스트 단계에서 제외)
   const tagRaycast = useMemo(

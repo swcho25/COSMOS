@@ -296,6 +296,7 @@ export default function RelationLines({ edges, emphasis, model, onHover, onSelec
       const v = emphasis.edge.get(e.id) ?? 1;
       arr.fill(v, ei * built.vPer, (ei + 1) * built.vPer);
     });
+    // eslint-disable-next-line react-hooks/immutability -- Notify Three.js to upload the changed GPU attribute after commit.
     built.emphAttr.needsUpdate = true;
   }, [edges, emphasis, built]);
 
@@ -324,6 +325,7 @@ export default function RelationLines({ edges, emphasis, model, onHover, onSelec
   const haloUniforms = useMemo(() => ({ uDim: { value: 1 }, uInflate: { value: 1.7 }, uHalo: { value: 1 }, uFade: { value: 1 }, uReveal: { value: 1 } }), []);
   const pulseUniforms = useMemo(() => ({ uDim: { value: 1 }, uScale: { value: 600 } }), []);
 
+  /* eslint-disable react-hooks/immutability -- R3F updates shader uniforms and GPU buffers imperatively in its frame callback. */
   useFrame((state, delta) => {
     const dt = Math.min(delta, 0.05);
     // 드래그로 행성이 움직인 프레임에만 그 행성의 인접 간선을 다시 굽는다.
@@ -393,6 +395,8 @@ export default function RelationLines({ edges, emphasis, model, onHover, onSelec
     built.pSize.needsUpdate = true;
     built.pAlpha.needsUpdate = true;
   });
+
+  /* eslint-enable react-hooks/immutability */
 
   /** 지금 리빌 — 아직 자라는 중(또는 워프로 사라진) 빔은 보이지 않으므로 집히지도 않아야 한다 */
   const revealOf = () => GATES.get(built)?.reveal ?? 1;
