@@ -55,6 +55,8 @@ public class SecurityConfig {
                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
 
                 .authorizeHttpRequests(auth -> auth
+                        // 로그아웃은 "누구를 로그아웃시킬지" 알아야 하므로 로그인 상태에서만 호출한다
+                        .requestMatchers(HttpMethod.POST, "/api/auth/logout").authenticated()
                         // 회원가입·로그인·중복확인 등은 로그인 전에 호출하므로 열어둔다
                         .requestMatchers("/api/auth/**").permitAll()
                         .requestMatchers("/actuator/health", "/actuator/info").permitAll()

@@ -1,5 +1,6 @@
 package com.cosmos.api.user.controller;
 
+import com.cosmos.api.global.security.AuthUser;
 import com.cosmos.api.global.security.RefreshTokenCookie;
 import com.cosmos.api.user.dto.AvailabilityResponse;
 import com.cosmos.api.user.dto.LoginRequest;
@@ -17,6 +18,7 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.annotation.Validated;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.CookieValue;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -42,6 +44,15 @@ public class AuthController {
         return ResponseEntity.ok()
                 .header(HttpHeaders.SET_COOKIE, refreshTokenCookie.create(result.refreshToken()).toString())
                 .body(new TokenResponse(result.accessToken()));
+    }
+
+    /** 로그아웃. 서버의 Refresh Token을 폐기하고, 브라우저의 쿠키도 만료시켜 지운다. */
+    @PostMapping("/logout")
+    public ResponseEntity<Void> logout(@AuthenticationPrincipal AuthUser authUser) {
+        authService.logout(authUser.userId());
+        return ResponseEntity.noContent()
+                .header(HttpHeaders.SET_COOKIE, refreshTokenCookie.expire().toString())
+                .build();
     }
 
     /**
