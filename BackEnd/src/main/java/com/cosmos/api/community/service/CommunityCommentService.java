@@ -9,6 +9,8 @@ import com.cosmos.api.community.repository.CommunityCommentRepository;
 import com.cosmos.api.company.entity.Company;
 import com.cosmos.api.company.error.CompanyErrorCode;
 import com.cosmos.api.company.repository.CompanyRepository;
+import com.cosmos.api.global.cursor.TimeIdCursor;
+import com.cosmos.api.global.cursor.TimeIdCursorCodec;
 import com.cosmos.api.global.error.BusinessException;
 import com.cosmos.api.global.response.CursorPageResponse;
 import com.cosmos.api.global.security.AuthErrorCode;
@@ -31,7 +33,7 @@ public class CommunityCommentService {
     private final CommunityCommentRepository commentRepository;
     private final CompanyRepository companyRepository;
     private final UserRepository userRepository;
-    private final CommentCursorCodec cursorCodec;
+    private final TimeIdCursorCodec cursorCodec;
 
     /** 기업별 댓글 목록 (최신순). 비로그인도 볼 수 있다. */
     @Transactional(readOnly = true)
@@ -40,11 +42,11 @@ public class CommunityCommentService {
             throw new BusinessException(CompanyErrorCode.COMPANY_NOT_FOUND);
         }
 
-        CommentCursor from = cursorCodec.decode(cursor);
+        TimeIdCursor from = cursorCodec.decode(cursor);
         Pageable limit = pageOf(size);
         List<CommunityComment> rows = (from == null)
                 ? commentRepository.findFirstPageByCompany(companyId, limit)
-                : commentRepository.findNextPageByCompany(companyId, from.createdAt(), from.commentId(), limit);
+                : commentRepository.findNextPageByCompany(companyId, from.at(), from.id(), limit);
 
         return toPage(rows, size, CompanyCommentResponse::from);
     }
@@ -52,11 +54,11 @@ public class CommunityCommentService {
     /** 전체 커뮤니티 댓글 목록 (여러 기업 통합, 최신순). 비로그인도 볼 수 있다. */
     @Transactional(readOnly = true)
     public CursorPageResponse<CommunityCommentResponse> findAll(String cursor, int size) {
-        CommentCursor from = cursorCodec.decode(cursor);
+        TimeIdCursor from = cursorCodec.decode(cursor);
         Pageable limit = pageOf(size);
         List<CommunityComment> rows = (from == null)
                 ? commentRepository.findFirstPage(limit)
-                : commentRepository.findNextPage(from.createdAt(), from.commentId(), limit);
+                : commentRepository.findNextPage(from.at(), from.id(), limit);
 
         return toPage(rows, size, CommunityCommentResponse::from);
     }
@@ -79,7 +81,7 @@ public class CommunityCommentService {
         String nextCursor = null;
         if (hasNext) {
             CommunityComment last = pageRows.get(pageRows.size() - 1);
-            nextCursor = cursorCodec.encode(new CommentCursor(last.getCreatedAt(), last.getCommentId()));
+            nextCursor = cursorCodec.encode(new TimeIdCursor(last.getCreatedAt(), last.getCommentId()));
         }
         return CursorPageResponse.of(pageRows.stream().map(mapper).toList(), nextCursor, hasNext);
     }
