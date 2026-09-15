@@ -74,11 +74,15 @@ run_case() {
     export COSMOS_STATE_DIR="$case_dir/state"
     export COSMOS_ENV_FILE="$case_dir/app.env"
     export COSMOS_SMOKE_URL=https://test.invalid
+    export COSMOS_RDB_LOADER_COMPOSE_OVERRIDE="$case_dir/rdb-loader.override.yml"
     export FAKE_SCENARIO="$scenario"
     export FAKE_CALLS="$case_dir/calls"
     export FAKE_ACTIVE="$case_dir/active"
     : > "$COSMOS_ENV_FILE"
     : > "$FAKE_CALLS"
+    if [[ "${5:-}" == loader ]]; then
+        cp "$repository/deploy/rdb-loader/compose.override.yml" "$COSMOS_RDB_LOADER_COMPOSE_OVERRIDE"
+    fi
     if [[ "$with_previous" == yes ]]; then
         mkdir -p "$COSMOS_STATE_DIR/previous"
         cp "$fixture/repo/deploy/compose.yml" "$COSMOS_STATE_DIR/previous/compose.yml"
@@ -101,6 +105,23 @@ run_case success success candidate yes
 [[ "$(cat "$COSMOS_STATE_DIR/current")" == candidate ]] || fail 'successful release was not promoted'
 [[ "$(cat "$FAKE_ACTIVE")" == candidate ]] || fail 'successful candidate is not active'
 echo 'PASS: healthy candidate is promoted'
+
+if grep -q 'rdb-loader.compose.yml' "$FAKE_CALLS"; then
+    fail 'default deployment unexpectedly opted into host database access'
+fi
+echo 'PASS: default deployment keeps PostgreSQL on its internal network'
+
+run_case loader-access success candidate yes loader
+[[ "$status" == 0 ]] || fail 'loader-enabled release returned failure'
+cmp "$COSMOS_RDB_LOADER_COMPOSE_OVERRIDE" "$COSMOS_STATE_DIR/candidate/rdb-loader.compose.yml" || fail 'loader override was not preserved with release'
+grep ' up .* postgres redis' "$FAKE_CALLS" | grep -q -- "-f $COSMOS_STATE_DIR/candidate/rdb-loader.compose.yml" || fail 'database reconciliation omitted loader override'
+if bash "$fixture/repo/deploy/scripts/deploy.sh" subsequent >> "$fixture/loader-access/output" 2>&1; then
+    [[ "$(cat "$COSMOS_STATE_DIR/current")" == subsequent ]] || fail 'subsequent release was not promoted'
+else
+    fail 'subsequent release with installed loader override failed'
+fi
+grep ' up .* postgres redis' "$FAKE_CALLS" | grep -q -- "-f $COSMOS_STATE_DIR/subsequent/rdb-loader.compose.yml" || fail 'subsequent deployment removed loader database access'
+echo 'PASS: installed loader override persists across subsequent deployments'
 
 run_case health-failure health-failure candidate yes
 [[ "$status" != 0 ]] || fail 'unhealthy release returned success'

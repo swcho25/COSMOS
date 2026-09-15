@@ -33,10 +33,11 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
-@Transactional(readOnly = true)
+@Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
 public class GraphService {
 
     private static final String GRAPH_WINDOW = "30D";

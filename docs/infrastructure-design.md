@@ -450,6 +450,11 @@ Spark Task가 Worker에서 PostgreSQL에 직접 쓰지 않는다.
 
 이 절차는 일부 Executor 실패나 Job 재시도로 PostgreSQL에 불완전하거나 중복된 결과가 노출되는 것을 방지한다.
 
+구현은 `AI/rdb_loader`에 있으며 [RDB Loader 실행·연결 가이드](rdb-loader.md)를 따른다.
+완료 manifest와 파일별 SHA-256을 검증한 전체 스냅샷을 staging으로 복사하고,
+`CURRENT` 교체·`HISTORY` 누적·적재 영수증·`PUBLISHED` 전환을 한 트랜잭션으로 처리한다.
+Spring 그래프 조회는 `REPEATABLE READ`로 동일 요청 안에서 스냅샷과 점수의 시점을 맞춘다.
+
 ## 8. 모니터링
 
 ### 8.1 필수 확인 지표
