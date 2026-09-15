@@ -16,8 +16,8 @@
 - Access Token은 `Authorization: Bearer {accessToken}` 헤더로 전달한다.
 - Refresh Token 원문은 HttpOnly·Secure 쿠키로 전달한다.
 - 공개 조회 API는 비로그인 사용자도 호출할 수 있다.
-- 관심 기업, 뉴스 스크랩, 사용자 가중치, 댓글 작성·수정·삭제와 내 정보 API는 로그인이 필요하다.
-- 공개 API에 유효한 Access Token이 선택적으로 전달되면 사용자 가중치나 스크랩 여부를 응답에 반영할 수 있다.
+- 관심 기업, 뉴스 스크랩, 댓글 작성·수정·삭제와 내 정보 API는 로그인이 필요하다.
+- 공개 API에 유효한 Access Token이 선택적으로 전달되면 스크랩 여부 등을 응답에 반영할 수 있다.
 
 ### 성공 응답
 
@@ -80,9 +80,10 @@
 - 관리자 화면과 관리자 API는 MVP 범위에서 제외한다.
 - 공시는 관계 분석에 사용하지만 서비스 화면에 문서 자체를 공개하지 않는다.
 - 스크랩은 뉴스만 지원한다.
-- 전체 관계 그래프는 KOSPI 100과 NASDAQ 100의 최대 200개 기업을 대상으로 한다.
+- 전체 관계 그래프의 노드 수에는 고정 상한을 두지 않는다.
 - 기업 중심 그래프는 최대 3단계까지 탐색한다.
 - 그래프 API는 `PUBLISHED` 상태의 최신 스냅샷을 사용한다.
+- 사용자 뉴스·공시 가중치는 서버에 저장하지 않는다. 프론트엔드는 브라우저 탭의 `sessionStorage`에서만 유지한다.
 
 ## 2. API 목록
 
@@ -109,8 +110,6 @@
 | `GET` | `/api/users/me/watch-companies` | 내 관심 기업 목록 조회 |
 | `DELETE` | `/api/users/me/watch-companies/{companyId}` | 관심 기업 해제 |
 | `POST` | `/api/users/me/watch-companies/{companyId}` | 관심 기업 등록 |
-| `GET` | `/api/users/me/weight-setting` | 내 분석 가중치 조회 |
-| `PATCH` | `/api/users/me/weight-setting` | 내 분석 가중치 수정 |
 
 ### companies | 기업·산업
 
@@ -728,103 +727,6 @@ refresh token은 httpOnly 쿠키(`Set-Cookie`)로 전달
 </tr>
 </table>
 
-#### GET /api/users/me/weight-setting — 내 분석 가중치 조회
-
-#### 목적
-로그인 사용자의 뉴스·공시 개인화 가중치를 조회한다.
-#### 인증
-필수 — `Authorization: Bearer {accessToken}`
-#### Response — 200 OK
-```json
-{
-  "newsWeight": 50,
-  "disclosureWeight": 50,
-  "updatedAt": null
-}
-```
-#### Notes
-- 저장된 설정이 없으면 뉴스 50, 공시 50을 반환한다.
-- PostgreSQL에는 `newsWeight`만 저장하고 `disclosureWeight`는 `100 - newsWeight`로 계산한다.
-#### Errors
-<table header-row="true">
-<tr>
-<td>상태</td>
-<td>code</td>
-<td>언제</td>
-</tr>
-<tr>
-<td>401</td>
-<td>TOKEN_EXPIRED</td>
-<td>Access Token 만료</td>
-</tr>
-<tr>
-<td>401</td>
-<td>TOKEN_INVALID</td>
-<td>토큰 위조·형식 오류</td>
-</tr>
-<tr>
-<td>500</td>
-<td>INTERNAL_SERVER_ERROR</td>
-<td>가중치 조회 중 서버 오류</td>
-</tr>
-</table>
-
-#### PATCH /api/users/me/weight-setting — 내 분석 가중치 수정
-
-#### 목적
-로그인 사용자의 뉴스 가중치를 변경하고 개인화 그래프 캐시를 무효화한다.
-#### 인증
-필수 — `Authorization: Bearer {accessToken}`
-#### Request
-```json
-{
-  "newsWeight": 70
-}
-```
-<table header-row="true">
-<tr>
-<td>필드</td>
-<td>규칙</td>
-</tr>
-<tr>
-<td>newsWeight</td>
-<td>정수 0~100</td>
-</tr>
-</table>
-#### Response — 200 OK
-```json
-{
-  "newsWeight": 70,
-  "disclosureWeight": 30,
-  "updatedAt": "2026-09-07T05:00:00Z"
-}
-```
-#### Notes
-수정 성공 후 해당 사용자의 개인화 그래프 Redis 캐시를 무효화하고 다음 조회부터 새 값을 적용한다.
-#### Errors
-<table header-row="true">
-<tr>
-<td>상태</td>
-<td>code</td>
-<td>언제</td>
-</tr>
-<tr>
-<td>400</td>
-<td>VALIDATION_FAILED</td>
-<td>newsWeight 범위 또는 형식 오류</td>
-</tr>
-<tr>
-<td>401</td>
-<td>TOKEN_EXPIRED</td>
-<td>Access Token 만료</td>
-</tr>
-<tr>
-<td>500</td>
-<td>INTERNAL_SERVER_ERROR</td>
-<td>가중치 수정 중 서버 오류</td>
-</tr>
-</table>
-
 ### companies | 기업·산업
 
 #### GET /api/companies — 기업 목록·검색
@@ -1353,12 +1255,20 @@ HDFS의 기사 본문 전체는 제공하지 않으며 사용자는 `originalUrl
 
 ### graph | 관계 지도
 
+#### 관계 점수 표시 규칙
+
+- `score`는 시스템 기본 비율인 뉴스 50%·공시 50%로 계산한 공통 관계 점수다. 프론트엔드 슬라이더의 초기 `newsWeight`는 `0.5`다.
+- `newsScore`와 `disclosureScore`는 사용자가 현재 화면에서 비율을 조절할 때 사용하는 구성 점수다.
+- 두 구성 점수가 모두 있으면 `newsScore × newsWeight + disclosureScore × (1 - newsWeight)`로 표시 점수를 계산한다. 이때 `newsWeight`는 `0~1` 범위다.
+- 한쪽 구성 점수만 있으면 가중치와 관계없이 존재하는 점수를 사용하고, 둘 다 없으면 해당 관계를 표시하지 않는다.
+- 사용자 가중치와 계산 결과는 서버에 저장하지 않는다. 가중치는 같은 탭의 페이지 이동과 새로고침에서는 유지하고, 탭 세션 종료 후 다시 접속하면 기본 `score`를 사용한다.
+
 #### GET /api/graphs/companies/{companyId} — 기업 중심 관계 그래프 조회
 
 #### 목적
 기업 노드 선택 또는 검색 후 해당 기업을 중심으로 간접 관계망을 조회한다.
 #### 인증
-불필요. 유효한 Access Token이 있으면 사용자 가중치를 적용한다.
+불필요. 서버는 시스템 기본 가중치의 공통 점수와 뉴스·공시 구성 점수를 반환한다.
 #### Path Variable
 - `companyId`: 중심 기업 UUID
 #### Query Params
@@ -1400,6 +1310,8 @@ HDFS의 기사 본문 전체는 제공하지 않으며 사용자는 `originalUrl
       "targetCompanyId": "550e8400-e29b-41d4-a716-446655440011",
       "relationshipType": "SUPPLY",
       "score": 82.4,
+      "newsScore": 75.0,
+      "disclosureScore": 90.0,
       "impactDirection": "POSITIVE"
     }
   ]
@@ -1408,6 +1320,7 @@ HDFS의 기사 본문 전체는 제공하지 않으며 사용자는 `originalUrl
 #### Notes
 - `depth`는 중심 기업 0, 직접 관계 1, 간접 관계 2·3이다.
 - 단계별 흐림 효과는 프론트엔드가 `depth`를 이용해 표현한다.
+- `score`는 시스템 기본 비율의 공통 점수다. 사용자가 비율을 조절하면 프론트엔드는 `newsScore`와 `disclosureScore`를 현재 화면에서만 조합한다.
 #### Errors
 <table header-row="true">
 <tr>
@@ -1418,7 +1331,7 @@ HDFS의 기사 본문 전체는 제공하지 않으며 사용자는 `originalUrl
 <tr>
 <td>400</td>
 <td>VALIDATION_FAILED</td>
-<td>경로·깊이·노드 제한 값 오류</td>
+<td>경로 또는 깊이 값 오류</td>
 </tr>
 <tr>
 <td>404</td>
@@ -1442,7 +1355,7 @@ HDFS의 기사 본문 전체는 제공하지 않으며 사용자는 `originalUrl
 #### 목적
 전체 은하 최초 진입 또는 산업 필터 선택 시 최신 공개 관계 그래프를 조회한다.
 #### 인증
-불필요. 유효한 Access Token이 있으면 사용자 가중치를 적용한다.
+불필요. 서버는 시스템 기본 가중치의 공통 점수와 뉴스·공시 구성 점수를 반환한다.
 #### Query Params
 <table header-row="true">
 <tr>
@@ -1484,15 +1397,18 @@ HDFS의 기사 본문 전체는 제공하지 않으며 사용자는 `originalUrl
       "targetCompanyId": "550e8400-e29b-41d4-a716-446655440011",
       "relationshipType": "SUPPLY",
       "score": 82.4,
+      "newsScore": 75.0,
+      "disclosureScore": 90.0,
       "impactDirection": "POSITIVE"
     }
   ]
 }
 ```
 #### Notes
-- 기본 노드는 KOSPI 100과 NASDAQ 100 소속 최대 200개다.
+- 전체 그래프의 노드 수에는 고정 상한을 두지 않는다.
 - 그래프는 1시간 단위로 검증 후 교체한다.
 - 화면은 새 `snapshotId`를 확인한 뒤 사용자 선택으로 갱신할 수 있다.
+- 사용자가 조절한 가중치는 같은 탭의 새로고침에서는 유지되며, 탭 세션 종료 후 다시 접속하면 기본 `score`를 사용한다.
 #### Errors
 <table header-row="true">
 <tr>
@@ -1503,7 +1419,7 @@ HDFS의 기사 본문 전체는 제공하지 않으며 사용자는 `originalUrl
 <tr>
 <td>400</td>
 <td>VALIDATION_FAILED</td>
-<td>지원하지 않는 universe·산업·관계선 수</td>
+<td>지원하지 않는 universe 또는 잘못된 산업 식별자</td>
 </tr>
 <tr>
 <td>404</td>
@@ -1522,7 +1438,7 @@ HDFS의 기사 본문 전체는 제공하지 않으며 사용자는 `originalUrl
 #### 목적
 그래프 관계선 선택 시 양쪽 기업과 관계 유형·점수·영향 방향을 조회한다.
 #### 인증
-불필요. 유효한 Access Token이 있으면 사용자 가중치를 적용한다.
+불필요. 서버는 시스템 기본 가중치의 공통 점수와 뉴스·공시 구성 점수를 반환한다.
 #### Path Variable
 - `relationshipId`: 기업 관계 UUID
 #### Query Params
@@ -1543,6 +1459,8 @@ HDFS의 기사 본문 전체는 제공하지 않으며 사용자는 `originalUrl
   "directionality": "DIRECTED",
   "window": "30D",
   "score": 82.4,
+  "newsScore": 75.0,
+  "disclosureScore": 90.0,
   "impactDirection": "POSITIVE",
   "confidence": 0.88,
   "evidenceCount": 16,
@@ -1551,7 +1469,8 @@ HDFS의 기사 본문 전체는 제공하지 않으며 사용자는 `originalUrl
 }
 ```
 #### Notes
-공시는 점수 계산에 사용하지만 응답에서 공시 문서 자체를 공개하지 않는다.
+- 공시는 점수 계산에 사용하지만 응답에서 공시 문서 자체를 공개하지 않는다.
+- `newsScore`와 `disclosureScore` 중 한쪽이 `null`이면 프론트엔드는 존재하는 점수를 그대로 사용한다.
 #### Errors
 <table header-row="true">
 <tr>

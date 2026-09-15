@@ -95,7 +95,7 @@ flowchart TB
 | Nginx | TLS 종료, 정적 파일 제공, Spring Boot 리버스 프록시 |
 | Spring Boot | 인증, 비즈니스 로직, 기업·뉴스·관계·지표 API |
 | PostgreSQL | 기업 기준정보, 문서 메타데이터, 기간별 지표, 관계 기반 점수와 웹 조회 결과 |
-| Redis | 사용자별 가중치 결과 및 공통 그래프 캐시, Refresh Token 관리. 필요할 때만 사용 |
+| Redis | 공통 그래프 캐시와 Refresh Token 관리. 필요할 때만 사용 |
 
 Spring Boot는 사용자 요청 처리 중 HDFS 원본을 직접 조회하거나 Spark Job을 실행하지 않는다.
 
@@ -412,13 +412,20 @@ source_company_id
 target_company_id
 window_type: 7D | 30D | 90D
 news_score
-stock_score
 disclosure_score
+score
 evidence_count
 confidence
 measured_at
 formula_version
 ```
+
+- `news_score`와 `disclosure_score`는 동일한 점수 범위를 사용한다.
+- `score`는 시스템 기본 비율인 뉴스 50%·공시 50%로 계산한 공통 관계 점수다.
+- 해당 출처의 근거가 없으면 구성 점수는 `0`이 아닌 `NULL`로 기록한다.
+- 뉴스와 공시 점수가 모두 있으면 지정 비율로 조합하고, 한쪽만 있으면 존재하는 점수를 그대로 사용한다.
+- RDB Loader는 세 점수를 `RELATIONSHIP_SCORE_CURRENT`와 `RELATIONSHIP_SCORE_HISTORY`에 함께 적재한다.
+- 사용자 가중치와 개인화 결과는 서버에 저장하지 않는다. 프론트엔드는 가중치를 브라우저 탭의 `sessionStorage`에 보관하고 구성 점수를 즉시 조합한다.
 
 반복 작업의 핵심은 다음과 같다.
 
