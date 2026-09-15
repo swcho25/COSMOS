@@ -61,8 +61,14 @@ RELATIONSHIP_TYPES = [
     ("PARTNER", "협력", "UNDIRECTED"),
     ("COMPETE", "경쟁", "UNDIRECTED"),
 ]
-# 뉴스 호재가 관계를 타고 어떻게 전달되는지. 경쟁만 반대 부호다.
+# 유형만 보고 주는 기본 부호. COMPETE·PARTNER 는 이것만으로는 틀린다 (아래 참고).
 IMPACT = {"SUPPLY": "POSITIVE", "INVEST": "POSITIVE", "PARTNER": "POSITIVE", "COMPETE": "NEGATIVE"}
+# estimate_edge_direction.py 가 쌍별 가격 반응으로 추정한 부호. 있으면 그쪽을 쓴다.
+# "COMPETE 니까 NEGATIVE" 는 test 구간 적중률이 5% 다 — 국내 동종업계는 같은 산업 충격을
+# 같이 맞아 같이 움직인다 (삼성전자-SK하이닉스, NAVER-카카오, 신한지주-KB금융).
+# 기준선은 유형 기본값이 아니라 **파라미터 0개인 "전부 POSITIVE"** 로 잡아야 한다. test
+# 구간 부호 적중률 63.5%(전부POS) -> 71.9%(쌍별). 근거·한계는 그쪽 docstring 참고.
+IMPACT_OVERRIDE = DATA / "db" / "relationship_impact_direction.csv"
 CORROBORATION_SHARE = 0.25   # 점수에서 보강 신호가 차지하는 몫
 SECTOR_SIGNAL = 0.3          # 같은 업종은 약한 근거라 고정 소액만 인정
 
@@ -88,10 +94,18 @@ def main() -> None:
     ap.add_argument("--companies", default=COMPANIES, type=Path)
     ap.add_argument("--out", default=OUT, type=Path)
     ap.add_argument("--as-of", default=dt.date.today().isoformat())
+    ap.add_argument("--impact-override", default=IMPACT_OVERRIDE, type=Path,
+                    help="쌍별 impact_direction 표. 없으면 유형 기본값만 쓴다")
     args = ap.parse_args()
 
     market = {r["ticker"]: r["market"] for r in read_csv(args.companies)}
     as_of_at = f"{args.as_of}T00:00:00Z"
+
+    # 쌍별 부호. 키는 (무순서 쌍, 유형) — 무방향 유형이 양쪽 행으로 들어와도 같은 값을 준다.
+    impact_by_pair: dict[tuple, str] = {}
+    for r in read_csv(args.impact_override):
+        k = (pair(r["source_stock_code"], r["target_stock_code"]), r["relationship_type_code"])
+        impact_by_pair[k] = r["impact_direction"]
 
     # ---- 보강 신호 (유형은 못 정하지만 세기를 받쳐준다)
     co = {pair(r["src_ticker"], r["dst_ticker"]): float(r["weight"]) for r in read_csv(args.co_mention)}
@@ -101,6 +115,12 @@ def main() -> None:
     def corroboration(a: str, b: str) -> float:
         p = pair(a, b)
         return max(co.get(p, 0.0), corr.get(p, 0.0), SECTOR_SIGNAL if p in sect else 0.0)
+
+    # 주의(모델 평가용으로 score 를 쓸 때): corr 은 edges_correlation.csv 에서 오는데 그 파일은
+    # 2025-09~2026-09 가격 창으로 만들어졌다. 스토리 3 의 test 구간(2024-01~) 안이다. 317관계
+    # 중 21개에서 이 항이 실제로 max 를 차지한다. 화면용 세기로는 문제가 없지만, score 를
+    # 예측 모델의 특징으로 넣으면 그 21개에 미래정보가 실린다. 실측 영향은 관계 베이스라인
+    # rank-IC 0.0298 -> 0.0297 (KOSPI), NASDAQ 은 변화 없음 — 무시할 크기지만 알고 쓸 것.
 
     # ---- 유형이 정해진 엣지들
     typed: list[dict] = []
@@ -134,7 +154,8 @@ def main() -> None:
         score = 100.0 * ((1 - CORROBORATION_SHARE) * e["base"]
                          + CORROBORATION_SHARE * corroboration(src, dst))
         scores.append({**nat, "window_type": WINDOW_TYPE, "score": round(score, 6),
-                       "impact_direction": IMPACT[e["type"]],
+                       "impact_direction": impact_by_pair.get((pair(src, dst), e["type"]),
+                                                              IMPACT[e["type"]]),
                        "confidence": round(min(1.0, e["conf"]), 6),
                        "evidence_count": e["n_docs"],
                        "formula_version": FORMULA_VERSION, "as_of_at": as_of_at})
