@@ -58,6 +58,8 @@ npm run collect:universe -- --as-of 2026-09-15 --output output/universe-20260915
 
 최신 공시용 `cosmos-dart-daily.timer`는 Master에서 매시간 실행하도록 설치했다. 최초 실검증에서 2026-09-15 공시 11건이 HDFS 크기·SHA-256 검증까지 통과했다. 이 날짜를 재조회해 새 목록이 반영되고 기존 11건이 중복 게시되지 않는 것도 확인했다. 원천 미제공 문서는 pending으로 남기므로 timer 활성화가 모든 공시 본문의 확보 완료를 뜻하지 않는다.
 
+이어서 9월 14일 공시 40건의 게시도 검증했다. 2016-01-01~2026-09-09의 기존 51–100위 배치에서 HDFS에 빠져 있던 13,741건은 `/datasets/opendart/snapshots/20260915-recovered-rank51-100-delta`에 복구했다. 2026-09-15 14:00 KST 기준 30개 파일(1,079,950,235 bytes)의 크기·SHA-256 검증이 완료됐다. 과거 baseline은 그대로 유지하며 baseline에 이미 있던 빈 XML 1건도 품질 예외로 보존한다. 원천 손상 4건을 정상 본문 수집으로 계산하지 않는다.
+
 ## 검증
 
 ```bash

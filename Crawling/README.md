@@ -33,7 +33,7 @@ OpenDART / SEC EDGAR
 - 뉴스 수집기와 HDFS Writer는 Hadoop Master에서 동작 중이며 국내·해외 추가 적재를 확인했다.
 - 뉴스는 최신 목록과 미수집 기사·과거 기간을 순환한다. 모든 속보를 발행 즉시 수집하는 방식은 아니다. HelloT는 기존 기사 번호 범위 수집이며 일부 `article_not_found` 재시도가 있다.
 - DART는 기존 키를 사용하는 별도 일별 수집기와 매시간 timer를 Master에 설치했다. 최초 실검증에서 2026-09-15 공시 11건을 HDFS에 저장하고 전체 파일 크기·SHA-256을 검증했다. 원천 미제공·빈 본문은 pending으로 재시도한다.
-- DART 과거 배치의 원천 ZIP 손상은 보존하고, 기존 HDFS index와 비교해 아직 반영되지 않은 정상 문서만 recovery delta로 준비한다. 준비와 업로드 완료는 각 보고서로 구분한다.
+- DART 과거 배치에서 HDFS에 미반영된 13,741건을 recovery delta로 업로드하고 30개 파일 전체 크기·SHA-256을 검증했다(2026-09-15 14:00 KST). 원천 ZIP 손상과 기존 baseline의 빈 XML 1건은 보존하고 품질 예외로 기록했다.
 - SEC는 기존 배치 수집본과 새 주기 수집 코드·service/timer가 준비되어 있다. 운영자의 실제 연락처 설정을 받기 전에는 서비스를 활성화하지 않는다.
 
 뉴스의 기존 운영 서비스를 유지하면서 공시 주기 수집을 별도 service/timer로 관리한다. 코드 release와 큐·상태·키를 다른 경로에 두며 실제 적용 시 각 모듈의 재개·중복 처리 절차를 따른다. 최신 공시 실행·복구 절차는 [DART 운영 문서](disclosures/dart/docs/daily-polling.md)와 [SEC 운영 문서](disclosures/sec/README.md)를 참고한다.
