@@ -1,6 +1,8 @@
 package com.cosmos.api.community.service;
 
 import com.cosmos.api.community.dto.CommentResponse;
+import com.cosmos.api.community.dto.CommunityCommentResponse;
+import com.cosmos.api.community.dto.CompanyCommentResponse;
 import com.cosmos.api.community.entity.CommunityComment;
 import com.cosmos.api.community.error.CommunityErrorCode;
 import com.cosmos.api.community.repository.CommunityCommentRepository;
@@ -8,11 +10,16 @@ import com.cosmos.api.company.entity.Company;
 import com.cosmos.api.company.error.CompanyErrorCode;
 import com.cosmos.api.company.repository.CompanyRepository;
 import com.cosmos.api.global.error.BusinessException;
+import com.cosmos.api.global.response.CursorPageResponse;
 import com.cosmos.api.global.security.AuthErrorCode;
 import com.cosmos.api.user.entity.User;
 import com.cosmos.api.user.repository.UserRepository;
+import java.util.List;
 import java.util.UUID;
+import java.util.function.Function;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -24,6 +31,58 @@ public class CommunityCommentService {
     private final CommunityCommentRepository commentRepository;
     private final CompanyRepository companyRepository;
     private final UserRepository userRepository;
+    private final CommentCursorCodec cursorCodec;
+
+    /** 기업별 댓글 목록 (최신순). 비로그인도 볼 수 있다. */
+    @Transactional(readOnly = true)
+    public CursorPageResponse<CompanyCommentResponse> findByCompany(UUID companyId, String cursor, int size) {
+        if (companyRepository.findActiveById(companyId).isEmpty()) {
+            throw new BusinessException(CompanyErrorCode.COMPANY_NOT_FOUND);
+        }
+
+        CommentCursor from = cursorCodec.decode(cursor);
+        Pageable limit = pageOf(size);
+        List<CommunityComment> rows = (from == null)
+                ? commentRepository.findFirstPageByCompany(companyId, limit)
+                : commentRepository.findNextPageByCompany(companyId, from.createdAt(), from.commentId(), limit);
+
+        return toPage(rows, size, CompanyCommentResponse::from);
+    }
+
+    /** 전체 커뮤니티 댓글 목록 (여러 기업 통합, 최신순). 비로그인도 볼 수 있다. */
+    @Transactional(readOnly = true)
+    public CursorPageResponse<CommunityCommentResponse> findAll(String cursor, int size) {
+        CommentCursor from = cursorCodec.decode(cursor);
+        Pageable limit = pageOf(size);
+        List<CommunityComment> rows = (from == null)
+                ? commentRepository.findFirstPage(limit)
+                : commentRepository.findNextPage(from.createdAt(), from.commentId(), limit);
+
+        return toPage(rows, size, CommunityCommentResponse::from);
+    }
+
+    // 다음 페이지가 있는지 알려면 요청보다 1개 더 읽어 본다
+    private Pageable pageOf(int size) {
+        return PageRequest.of(0, size + 1);
+    }
+
+    /**
+     * 1개 더 읽어 온 결과를 페이지 응답으로 다듬는다.
+     * 여분이 있으면 잘라내고 hasNext=true, 마지막 항목으로 다음 커서를 만든다.
+     */
+    private <T> CursorPageResponse<T> toPage(
+            List<CommunityComment> rows, int size, Function<CommunityComment, T> mapper) {
+
+        boolean hasNext = rows.size() > size;
+        List<CommunityComment> pageRows = hasNext ? rows.subList(0, size) : rows;
+
+        String nextCursor = null;
+        if (hasNext) {
+            CommunityComment last = pageRows.get(pageRows.size() - 1);
+            nextCursor = cursorCodec.encode(new CommentCursor(last.getCreatedAt(), last.getCommentId()));
+        }
+        return CursorPageResponse.of(pageRows.stream().map(mapper).toList(), nextCursor, hasNext);
+    }
 
     @Transactional
     public CommentResponse create(Long userId, UUID companyId, String content) {
