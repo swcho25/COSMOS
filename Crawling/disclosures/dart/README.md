@@ -12,6 +12,7 @@ Python 3.11 이상을 사용한다. Python 실행·테스트는 표준 라이브
 | `scripts/dart_documents.py` | ZIP의 XML/HTML/TXT 본문·표 파싱; 외부 엔티티를 읽지 않음 |
 | `scripts/collect-opendart-kospi-top100.mjs` | 유니버스 생성 및 기존 2025 연간·2026 분기/반기 수집 |
 | `scripts/run_dart_hdfs_service.py` | 51–100위 3개 shard 관리, 할당량 대기·재시도·최종 HDFS 적재 |
+| `scripts/run_dart_daily.py` | 1–100위 최신 공시 날짜별 재조회·미게시 본문만 HDFS delta 적재 |
 | `scripts/prepare_dart_hdfs_snapshot.py` | 완전한 본문 행과 대응 원본 ZIP을 고정 스냅샷으로 패키징 |
 | `scripts/upload_dart_hdfs_snapshot.py` | 파일 크기·SHA-256 검증 후 HDFS 임시 경로를 최종 경로로 확정 |
 | `scripts/scan_dart_zip_credentials.py`, `scripts/import_dart_zip_hdfs.py` | 사용자 제공 CSV·본문 JSONL ZIP 검사 및 HDFS import |
@@ -49,9 +50,13 @@ npm run collect:universe -- --as-of 2026-09-15 --output output/universe-20260915
 
 ## 서버 재개와 HDFS
 
+최신 공시를 지속 수집하려면 [일별 주기 수집](docs/daily-polling.md)의 별도 runner와 hourly timer를 사용한다. 최근 3일 목록을 재조회하고 정상 본문만 검증 게시하며, 개별 오류/일시적 원천 미제공은 다음 pass에서 재시도한다. 과거 수집 출력과 다른 output을 사용한다.
+
 [HDFS 실행 절차](docs/hdfs.md)를 따른다. 서버 재개기는 기존 운영과 같은 **51–100위, 2016-01-01 시작, 3개 shard**를 대상으로 한다. `--end`를 명시하고 동일 값으로 재개한다. 임의 순위 범위는 단일 수집기 CLI를 사용한다.
 
-2026-09-15에 점검한 기존 운영 서비스는 `needs_attention / retries_exhausted`로 중지되어 있었다. 이 소스 정리는 서비스를 재기동하거나 그 상태를 해결한 작업이 아니다. `needs_attention` 상태를 자동 삭제하지 않으며 원인을 확인하고 보존된 상태·출력을 검토해야 재개할 수 있다.
+2026-09-15에 기존 운영 서비스의 `needs_attention / retries_exhausted` 원인을 확인했다. 추가 원천 ZIP 손상은 재다운로드한 바이트와 SHA-256까지 일치할 때만 예외로 인정하고 원본을 보존한다. 과거 HDFS index와의 차집합 복구에는 `prepare_dart_recovery_delta.py`를 사용한다. `needs_attention` 상태를 자동 삭제하지 않으며 업로드 검증 보고서와 원본을 대조해 상태를 정리한다.
+
+최신 공시용 `cosmos-dart-daily.timer`는 Master에서 매시간 실행하도록 설치했다. 최초 실검증에서 2026-09-15 공시 11건이 HDFS 크기·SHA-256 검증까지 통과했다. 이 날짜를 재조회해 새 목록이 반영되고 기존 11건이 중복 게시되지 않는 것도 확인했다. 원천 미제공 문서는 pending으로 남기므로 timer 활성화가 모든 공시 본문의 확보 완료를 뜻하지 않는다.
 
 ## 검증
 

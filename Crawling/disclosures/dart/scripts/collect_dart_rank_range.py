@@ -462,6 +462,11 @@ def document_one(api, row, prior_zips):
                      "error": "no_text_files" if not parsed["files"] else "attachment_parse_failed"}
             write_json(state_path, state)
             return state
+        if not any(item.get("text", "").strip() for item in parsed["files"]):
+            state = {"rcept_no": receipt, "status": "parse_error", "at": now(),
+                     "error": "empty_document_text"}
+            write_json(state_path, state)
+            return state
         detail = {**row, "files": [{"filename": item["filename"], "text": item["text"]} for item in parsed["files"]],
                   "fetched_at": now(), "raw_zip": "raw/documents/" + raw.name, "source": source}
         return {"status": "collected", "detail": detail, "source": source}

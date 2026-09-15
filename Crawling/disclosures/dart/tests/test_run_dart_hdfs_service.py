@@ -1,5 +1,6 @@
 from datetime import datetime, timezone
 import csv
+import hashlib
 import importlib.util
 import json
 from pathlib import Path
@@ -69,6 +70,24 @@ class ServiceTests(unittest.TestCase):
             status = service.assess_collection(active)
             self.assertEqual(status["actionable_pending"], 1)
             self.assertEqual(status["source_exception_receipts"], [])
+
+    def test_verified_source_error_requires_exact_preserved_bytes(self):
+        receipt = "20200305000085"
+        content = b"synthetic damaged ZIP fixture"
+        expected = hashlib.sha256(content).hexdigest()
+        with tempfile.TemporaryDirectory() as folder, patch.object(service, "SHARDS", ((51, 51),)), \
+                patch.object(service, "VERIFIED_SOURCE_ZIP_ERRORS", {receipt: expected}):
+            active = Path(folder)
+            shard = fixture(active, receipt, "error")
+            raw = shard / "raw/documents" / (receipt + ".zip")
+            self.assertEqual(service.assess_collection(active)["actionable_pending"], 1)
+            raw.write_bytes(content)
+            status = service.assess_collection(active)
+            self.assertEqual(status["actionable_pending"], 0)
+            self.assertEqual(status["collected"], 0)
+            self.assertEqual(status["source_exception_receipts"], [receipt])
+            raw.write_bytes(b"different bytes must remain actionable")
+            self.assertEqual(service.assess_collection(active)["actionable_pending"], 1)
 
     def test_child_environment_ignores_inherited_api_key(self):
         with tempfile.TemporaryDirectory() as folder, patch.dict("os.environ", {"DART_API_KEY": "placeholder"}):

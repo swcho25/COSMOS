@@ -6,13 +6,15 @@ Nasdaq의 현재 Nasdaq-100 구성증권을 SEC CIK와 연결한 뒤 기업정�
 프로그램은 아니다.
 
 기존 운영 이력은 해외 공시 **16,133개 원문 파일의 배치 수집·HDFS 스냅샷 적재 완료**다.
-현재 코드는 최신 공시를 계속 감시하는 상시 수집기나 Kafka producer를 포함하지 않는다.
-이 소스를 배포하는 것만으로 자동 수집이 시작되지는 않는다. HDFS 보조 스크립트는 로컬
-배치 결과를 직접 업로드·검증하며, 데이터·완료 manifest·접속키는 이 디렉터리에 포함하지 않는다.
+기존 배치 수집기와 함께 `run_sec_incremental.py`·systemd timer 예제를 제공한다. 증분 수집은
+기존 배치의 고정 기업 표본에서 새 공시를 주기적으로 찾아 HDFS에 직접 저장한다. 실제
+연락처 설정과 서비스 설치·검증이 끝나야 운영되며, 소스 추가만으로 실행됐다고 판단하지 않는다.
+Kafka producer는 포함하지 않는다. 데이터·완료 manifest·접속키도 이 디렉터리에 포함하지 않는다.
 
 ## 실행 환경
 
 - Python **3.11 이상**. 수집·재개·테스트는 표준 라이브러리만 사용한다.
+- 증분 runner는 파일 잠금·HDFS 스트림 제한을 위해 Linux에서 실행한다. 오프라인 테스트는 Windows도 지원한다.
 - 수집 시 Nasdaq와 SEC HTTPS 접근이 필요하다.
 - HDFS 업로드·검증은 Hadoop client가 설정된 Linux에서 Bash, GNU coreutils, Java와 함께 실행한다.
 - 아래 명령은 저장소의 `Crawling/disclosures/sec` 디렉터리에서 실행한다.
@@ -130,6 +132,82 @@ bash scripts/verify_sec_edgar_hdfs_remote.sh \
 않는다. 검증이 성공한 배치의 공개는 운영 절차에 따라 별도로 진행한다. `_SUCCESS`가 있는
 완료 스냅샷을 검증할 때도 같은 검증 스크립트를 사용할 수 있다.
 
+## 기존 표본으로 최신 공시 주기 수집
+
+`scripts/run_sec_incremental.py`는 한 번 실행한 뒤 종료하는 runner다. 기존 배치의
+`companies.json`을 `--universe`로 지정한다. 현재 Nasdaq 구성종목을 새로 조회하지 않으며,
+기존 2026-09-08 종료 배치의 **101개 CIK 표본과 핵심 공시 6종**을 그대로 사용할 수 있다.
+기본 조회 범위는 **2026-09-09부터 실행 당일 UTC 날짜까지**, 요청 간격은 기존 0.2초다.
+각 회차마다 범위 내 목록을 다시 조회하므로 같은 날짜에 나중에 접수된 공시도 발견한다.
+이전 배치 파일과 2016년부터의 완료 스냅샷은 변경하지 않는다.
+
+```bash
+python3 scripts/run_sec_incremental.py \
+  --state-dir /home/ubuntu/sec-edgar-incremental/state \
+  --universe /home/ubuntu/sec-edgar-incremental/config/companies.json \
+  --user-agent-file /etc/cosmos/sec-user-agent \
+  --hdfs-root /data-lake/raw/realtime/sec-edgar
+```
+
+`--user-agent-file`은 실제 운영자가 제공한 서비스명·연락 이메일 한 줄을 담은 비공개 파일이다.
+파일을 생략하면 `SEC_EDGAR_USER_AGENT` 환경변수를 사용한다. 실제 값이 없으면 실행하지
+않으며 코드에 예시 연락처를 대체값으로 넣지 않는다. 원천이 HTTP 403을 반환하면 해당 회차는
+`blocked_source_access`로 종료한다. 차단을 피하기 위한 다른 계정·프록시·쿠키 전환을 하지 않는다.
+
+신규 저장 경로는 기존 배치 스냅샷과 분리되어 있다.
+
+```text
+/data-lake/raw/realtime/sec-edgar/
+  filing_date=2026-09-15/cik=123/accession=0000000123-26-000001/
+    raw.txt
+    metadata.json
+    _manifest.json
+    _SUCCESS
+```
+
+위 경로는 구조 예시이며 테스트 원문을 운영 HDFS에 넣지 않는다. `raw.txt`는 SEC complete
+submission 원문이다. 다운로드는 SEC 문서/헤더 및 접수번호를 확인한 뒤에만 저장한다.
+로컬 spool은 원문·메타데이터·SHA-256 manifest를 fsync한 후 사용하고, HDFS에 작은 공시별
+임시 디렉터리를 만든 뒤 파일별 크기·SHA-256·파일 개수를 검증한다. `_SUCCESS`를 포함한
+검증 완료 디렉터리를 최종 접수번호 경로로 원자적으로 이동한 뒤 SQLite를 `published`로
+갱신한다. 정상 게시가 확인된 이번 spool 파일만 제거하며 기존 배치 원문·상태는 삭제하지 않는다.
+
+`CIK + accession number`가 영속 중복 키다. 파일 순위·티커·실행 날짜가 달라도 이미 게시한
+접수번호를 다시 쓰지 않는다. HDFS rename 후 SQLite 갱신 전에 종료되면 다음 회차에 HDFS
+완료 marker·manifest·해시를 검증하고 복구한다. 불완전한 HDFS staging은 누락 파일을 이어
+올리며, 이미 있는 파일의 해시가 다르면 덮어써서 정상으로 만들지 않고 조사가 필요한 상태로
+남긴다. 여러 서버에서 같은 HDFS 증분 경로에 동시에 쓰지 않는다.
+
+`incremental.db`에는 표본 해시·시작일·양식·HDFS 경로 계약과 접수번호별 진행 상태가 남는다.
+표본 또는 계약을 바꾸거나 상태 DB를 삭제해 새 실행처럼 만들지 않는다. 계약 변경은 기존
+입력 범위와 게시 결과를 비교한 별도 이관 작업이 필요하다. 초기 적체는 `--max-filings`
+(기본 200건)씩 처리하고, 남은 대상이 있으면 `pending_backlog`로 기록한다. 수집 오류는
+`needs_attention`, 전체 발견 대상의 처리가 끝났으면 `complete`다. 기업 목록 조회 실패도
+오류로 집계하므로 일부 기업만 확인한 실행을 전체 완료로 표시하지 않는다.
+
+### timer 설치 예제
+
+`deployment/sec.env.example`을 `/etc/cosmos/sec.env`로 복사하고 실제 프로그램·상태·표본·
+연락처 파일 경로를 맞춘다. 기본 app 경로는 `/home/ubuntu/sec-edgar-incremental/app`이다.
+같은 디렉터리의 service/timer를 `/etc/systemd/system/`에 설치하기 전에 `WorkingDirectory`,
+`ExecStart`, `ReadWritePaths`, 사용자 및 파일 권한을 실제 서버와 맞춘다. 상태 디렉터리를 미리
+만들고 service 사용자에게만 쓰기 권한을 준다. 연락처 파일 권한은 `600`으로 제한한다.
+
+```bash
+sudo systemctl daemon-reload
+# 실제 설정·고정 표본·HDFS 접근을 준비한 뒤 첫 회차 결과를 검증한다.
+sudo systemctl start cosmos-sec-incremental.service
+sudo systemctl enable --now cosmos-sec-incremental.timer
+systemctl list-timers cosmos-sec-incremental.timer
+cat /home/ubuntu/sec-edgar-incremental/state/status.json
+```
+
+timer는 부팅 후 5분, 이후 **이전 실행 종료 1시간 뒤** 다시 실행하며 최대 2분 무작위 지연이
+있다. 한 회차가 오래 걸리면 같은 서비스가 겹쳐 실행되지 않는다. 정상인 oneshot은 실행 후
+`inactive (dead)`가 될 수 있으므로 timer의 다음 실행 시각·마지막 종료 코드·`status.json`의
+조회 기업 수·게시/미처리 개수를 함께 확인한다. 서비스 시작만으로 최신 공시가 모두 들어왔다고
+표시하지 않으며, 초기 적체와 실제 원천 응답은 운영 검증 결과로 확인한다.
+
 ## 오프라인 테스트
 
 ```bash
@@ -137,10 +215,13 @@ python3 -m unittest discover -s tests -p 'test_*.py' -v
 bash -n scripts/load_sec_edgar_hdfs_remote.sh
 bash -n scripts/verify_sec_edgar_hdfs_remote.sh
 bash -n scripts/run_sec_edgar_resume_remote.sh
+bash -n deployment/run-incremental.sh
 ```
 
 테스트는 합성 메타데이터와 임시 파일을 사용한다. 인터넷·실제 공시·HDFS·운영 인증정보에
 접근하지 않는다. 테스트 통과가 SEC 접속이나 운영 HDFS 적재를 대신 검증하지는 않는다.
+증분 테스트는 같은 날짜의 신규 접수, 반복 실행 중복 방지, 부분 업로드, 게시 응답 유실 복구,
+로컬/HDFS 손상 거부, 차단 HTML·403 거부 및 변경된 상태 계약 거부를 포함한다.
 
 공식 출처: [Nasdaq Global Index Watch](https://indexes.nasdaq.com/Index/Weighting/NDX),
 [SEC EDGAR APIs](https://www.sec.gov/search-filings/edgar-application-programming-interfaces),

@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import hashlib
 from datetime import datetime, timedelta
 import json
 import os
@@ -21,6 +22,12 @@ from collect_dart_rank_range import FileLock, KST, load_key, now, read_json, wri
 
 SHARDS = ((51, 68), (69, 78), (79, 100))
 KNOWN_SOURCE_ERRORS = {"20200305000488", "20200305000062", "20190531001980"}
+# 2026-09-15: a fresh document.xml download matched the stored ZIP byte-for-byte;
+# _20200305000085.xml fails its CRC. Preserve it as a source exception, not a
+# successfully collected document. Only the verified bytes qualify.
+VERIFIED_SOURCE_ZIP_ERRORS = {
+    "20200305000085": "ffb8173a09e5410c62f63130708b26ad82689f8c2805de2e186c7cc60b8a505d",
+}
 AUTH_STOPS = {"opendart_status_" + value for value in ("010", "011", "012", "901", "800")}
 QUOTA_STOPS = {"local_daily_request_limit_reached", "opendart_status_020"}
 
@@ -28,6 +35,16 @@ QUOTA_STOPS = {"local_daily_request_limit_reached", "opendart_status_020"}
 def next_quota_retry(current):
     current = current.astimezone(KST)
     return (current + timedelta(days=1)).replace(hour=0, minute=5, second=0, microsecond=0)
+
+
+def is_source_exception(receipt, state, raw):
+    if state.get("status") not in {"error", "parse_error"}:
+        return False
+    if receipt in KNOWN_SOURCE_ERRORS:
+        return True
+    expected = VERIFIED_SOURCE_ZIP_ERRORS.get(receipt)
+    return bool(expected and raw.is_file()
+                and hashlib.sha256(raw.read_bytes()).hexdigest() == expected)
 
 
 def assess_collection(active, begin="20160101", end="20260909"):
@@ -66,7 +83,7 @@ def assess_collection(active, begin="20160101", end="20260909"):
                 state = read_json(shard / "state/documents" / (receipt + ".json"), {})
                 if state.get("status") == "unavailable":
                     unavailable.add(receipt)
-                elif receipt in KNOWN_SOURCE_ERRORS and state.get("status") in {"error", "parse_error"}:
+                elif is_source_exception(receipt, state, shard / "raw/documents" / (receipt + ".zip")):
                     expected_errors.add(receipt)
     pending = selected - collected - unavailable
     actionable = pending - expected_errors
