@@ -104,8 +104,8 @@ export default function EdgeArrows({ model, emphasis }: Props) {
   }, [targets, model, emphasis, live, nodeIndex]);
   useEffect(() => place(), [place]);
 
-  /** 드래그 추종에서 마지막으로 반영한 버전 */
-  const followed = useRef({ version: dragState.version }).current;
+  /** 드래그 추종에서 마지막으로 반영한 버전, 그리고 지금 숨어 있는지(= 다시 보일 때 한 번 다시 놓아야 하는지) */
+  const followed = useRef({ version: dragState.version, gated: true }).current;
 
   // 모프·워프 중에는 간선이 사라지므로 화살촉도 숨긴다 (프레임마다 getState 로 읽어 리렌더를 만들지 않는다)
   useFrame(() => {
@@ -118,7 +118,12 @@ export default function EdgeArrows({ model, emphasis }: Props) {
     const warping = useGalaxy.getState().phase === "warp";
     // 주가 고도 전이 중에는 빔이 꺼져 있고 끝점도 이동 끝에 한 번만 갱신된다 — 화살촉만 옛 자리에 남지 않게 함께 숨긴다
     const alt = altitudeGate();
-    m.visible = m.count > 0 && !warping && !morphState.plan && morphState.reveal >= 0.99 && alt.fade >= 0.99 && alt.reveal >= 0.99;
+    const open = !warping && !morphState.plan && morphState.reveal >= 0.99 && alt.fade >= 0.99 && alt.reveal >= 0.99;
+    // 숨어 있는 동안 live 는 중간 좌표였다 — 마운트 시점(워프 커밋)에 놓은 자리는 이전 배치의 것이므로,
+    // 다시 보이기 직전에 한 번 더 놓는다. 열려 있는 동안은 드래그 버전만 보면 된다
+    if (open && followed.gated) place();
+    followed.gated = !open;
+    m.visible = open && m.count > 0;
   });
 
   return (

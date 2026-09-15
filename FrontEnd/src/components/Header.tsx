@@ -1,6 +1,7 @@
 import { useCallback, useState } from "react";
-import { NavLink, useNavigate } from "react-router-dom";
+import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import { API_MODE } from "@/api";
+import { HELP_UI } from "@/lib/guide";
 import { useScraps, useWatchlist } from "@/lib/queries";
 import { useSession } from "@/store/session";
 import { useUi } from "@/store/ui";
@@ -19,7 +20,9 @@ export default function Header() {
   const logout = useSession((s) => s.logout);
   const openAuth = useUi((s) => s.openAuth);
   const toast = useUi((s) => s.toast);
+  const toggleHelp = useUi((s) => s.toggleHelp);
   const navigate = useNavigate();
+  const { pathname } = useLocation();
   const [open, setOpen] = useState(false);
   const close = useCallback(() => setOpen(false), []);
   const menuRef = useClickOutside<HTMLDivElement>(close, open);
@@ -45,6 +48,12 @@ export default function Header() {
         ))}
       </nav>
       <div className="account" ref={menuRef} style={{ position: "relative" }}>
+        {/* 사용 안내(`?`) — 은하 화면의 읽는 법·조작법 허브. 허브 자체는 GalaxyPage 가 그리므로 그 화면에서만 보인다 */}
+        {pathname === "/" && (
+          <button type="button" className="help-btn" onClick={toggleHelp} aria-label={HELP_UI.button} title={HELP_UI.buttonTitle}>
+            <Icon.Help />
+          </button>
+        )}
         {/* 세션이 정해지기 전에는 비워 둔다 — 로그인 사용자에게 로그인·회원가입 버튼이 한 번 번쩍이지 않게 */}
         {status === "booting" ? null : status === "authed" && user ? (
           <>

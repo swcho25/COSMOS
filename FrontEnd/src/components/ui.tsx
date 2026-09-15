@@ -244,4 +244,37 @@ export const Icon = {
       <path d="M3 3l18 18" />
     </svg>
   ),
+  Help: () => (
+    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+      <circle cx="12" cy="12" r="9" />
+      <path d="M9.5 9.3a2.6 2.6 0 0 1 5 .9c0 1.7-2.5 2.1-2.5 3.8" />
+      <path d="M12 17.2h.01" strokeWidth="2.6" strokeLinecap="round" />
+    </svg>
+  ),
+  /* 카메라 프리셋 — 궤도(비스듬히 도는 궤도), 위에서(원반을 정확히 위에서), 정면에서(원반을 옆에서 본 선) */
+  CamOrbit: () => (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+      <ellipse cx="12" cy="12" rx="9" ry="4.2" transform="rotate(-20 12 12)" />
+      <circle cx="12" cy="12" r="2.2" fill="currentColor" stroke="none" />
+    </svg>
+  ),
+  CamTop: () => (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+      <circle cx="12" cy="12" r="8.5" />
+      <circle cx="12" cy="12" r="4" />
+      <circle cx="12" cy="12" r="1" fill="currentColor" stroke="none" />
+    </svg>
+  ),
+  CamFront: () => (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+      <path d="M3 13.5h18" />
+      <ellipse cx="12" cy="13.5" rx="8" ry="1.6" />
+      <path d="M8 13.5V8.5M12 13.5V6M16 13.5v-4" strokeLinecap="round" />
+    </svg>
+  ),
+  Cursor: () => (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor" stroke="#0b1020" strokeWidth="1.4" strokeLinejoin="round" aria-hidden="true">
+      <path d="M6 3l12 9.2-5.4.9 3.1 5.9-2.6 1.3-3.1-6-3.8 3.9z" />
+    </svg>
+  ),
 };

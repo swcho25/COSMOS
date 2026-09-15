@@ -52,6 +52,30 @@ export function useRelationship(relationshipId: string | null, window: T.MetricW
     placeholderData: keepPreviousData,
   });
 }
+/**
+ * 씬 툴팁 3단(B-2)의 대표 근거 1건 — size:1 로 가장 가벼운 요청만 보낸다.
+ * 세션 상한(60회): 훅이 실제로 서버에 쏘는 총 횟수를 모듈 변수로 세고, 닿으면 새 요청을 막고 capped 를 알린다.
+ * 스침(hover) 필터링은 호출 측(SceneTip)의 300ms 디바운스가 담당 — 여기서 또 디바운스하면 지연이 겹친다.
+ */
+const TOP_EVIDENCE_SESSION_CAP = 60;
+let topEvidenceCallCount = 0;
+
+export function useTopEvidence(relationshipId: string | null) {
+  const capped = topEvidenceCallCount >= TOP_EVIDENCE_SESSION_CAP;
+  const query = useQuery({
+    queryKey: ["relationship", "evidence", "top", relationshipId],
+    queryFn: () => {
+      topEvidenceCallCount += 1;
+      // api.graphs.evidence 는 signal 을 받지 않는다(RequestOptions·contract 어디에도 없음) — react-query 가
+      // 키 변경 시 이전 관찰을 알아서 버려 주므로 취소 전달은 생략한다.
+      return api.graphs.evidence(relationshipId!, { size: 1 });
+    },
+    enabled: Boolean(relationshipId) && !capped,
+    staleTime: 5 * 60_000,
+  });
+  return { ...query, capped };
+}
+
 export function useRelationshipEvidence(relationshipId: string | null) {
   return useInfiniteQuery({
     queryKey: ["relationship", "evidence", relationshipId],

@@ -28,8 +28,8 @@ interface Props {
   onClick: (id: string) => void;
   /** 이름표 칩에 기업명을 펼칠지 (끄면 로고 원만 남는다). 강조로 고정된 노드는 항상 펼친다 */
   showLabels?: boolean;
-  /** Shift+클릭 — 경로 기준 고정. 없으면 Shift 여부와 무관하게 onClick */
-  onPin?: (id: string) => void;
+  /** 더블클릭(두 번째 click, nativeEvent.detail ≥ 2) — 그 기업의 관계망으로. 첫 클릭은 onClick(미리보기)으로 이미 처리돼 있다 */
+  onDoubleClick?: (id: string) => void;
   /** 호버 노드의 이웃 → 역할. 그 이웃 칩의 로고 원과 이름 사이에 유형색 역할 태그(공급사·고객…)가 붙는다 */
   roleTags?: Map<string, RoleKey> | null;
 }
@@ -180,7 +180,7 @@ function filteredRaycast(accept: (instanceId: number, uv: THREE.Vector2) => bool
  * - 멀리서도 위치가 보이도록 아주 약한 헤일로 점광을 함께 둔다
  * - 행성·칩·배지를 끌면 그 행성을 옮길 수 있다. 옮긴 자리는 live 버퍼에만 남으므로 새로고침하면 레이아웃 좌표로 돌아간다
  */
-export default function CompanyNodes({ model, emphasis, hoveredId, onHover, onClick, showLabels = true, onPin, roleTags = null }: Props) {
+export default function CompanyNodes({ model, emphasis, hoveredId, onHover, onClick, showLabels = true, onDoubleClick, roleTags = null }: Props) {
   const tags = useRef<THREE.InstancedMesh>(null);
   const chips = useRef<THREE.InstancedMesh>(null);
   const ring = useRef<THREE.Sprite>(null);
@@ -644,9 +644,10 @@ export default function CompanyNodes({ model, emphasis, hoveredId, onHover, onCl
     if (id && id === hoveredId) onHover(null);
   };
   const activate = (e: ThreeEvent<MouseEvent>, id: string) => {
-    // 끌어서 옮긴 직후의 클릭은 워프·핀이 아니다
+    // 끌어서 옮긴 직후의 클릭은 선택·워프가 아니다
     if (dragState.blockClick) return;
-    if (e.nativeEvent.shiftKey && onPin) onPin(id);
+    // 더블클릭은 click 두 번 + dblclick 으로 온다. 두 번째 click(detail 2)에서 먼저 워프하고, dblclick 핸들러는 detail 을 안 주는 입력 장치를 위한 보조다 (warpTo 는 워프 중 재호출을 무시한다)
+    if (e.nativeEvent.detail >= 2 && onDoubleClick) onDoubleClick(id);
     else onClick(id);
   };
 
@@ -773,6 +774,11 @@ export default function CompanyNodes({ model, emphasis, hoveredId, onHover, onCl
               e.stopPropagation();
               activate(e, p.node.id);
             }}
+            onDoubleClick={(e) => {
+              if (!pickable(p.node.id) || dragState.blockClick) return;
+              e.stopPropagation();
+              onDoubleClick?.(p.node.id);
+            }}
           >
             <meshToonMaterial vertexColors gradientMap={grad} />
           </mesh>
@@ -821,6 +827,12 @@ export default function CompanyNodes({ model, emphasis, hoveredId, onHover, onCl
           e.stopPropagation();
           activate(e, id);
         }}
+        onDoubleClick={(e) => {
+          const id = idOf(e);
+          if (!id || !pickable(id) || dragState.blockClick) return;
+          e.stopPropagation();
+          onDoubleClick?.(id);
+        }}
       >
         <shaderMaterial vertexShader={discVertex} fragmentShader={discFragment} uniforms={discUniforms} transparent depthWrite={false} toneMapped={false} />
       </instancedMesh>
@@ -849,6 +861,12 @@ export default function CompanyNodes({ model, emphasis, hoveredId, onHover, onCl
           if (!id || !pickable(id)) return;
           e.stopPropagation();
           activate(e, id);
+        }}
+        onDoubleClick={(e) => {
+          const id = idOf(e);
+          if (!id || !pickable(id) || dragState.blockClick) return;
+          e.stopPropagation();
+          onDoubleClick?.(id);
         }}
       >
         <shaderMaterial vertexShader={chipVertex} fragmentShader={chipFragment} uniforms={chipUniforms} transparent depthWrite={false} depthTest toneMapped={false} />
