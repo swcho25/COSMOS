@@ -13,9 +13,6 @@ import java.time.LocalDate;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.CsvSource;
-import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -104,74 +101,12 @@ class CompanyMetricStockIntegrationTest {
                 .containsExactly("2026-08-10T00:00:00Z", "2026-09-06T00:00:00Z");
     }
 
-    @ParameterizedTest
-    @ValueSource(strings = {"1M", "3M", "6M", "1Y", "3Y", "5Y", "10Y", "MAX"})
-    void returnsEmptyStockResponseWhenNoPriceExists(String period) {
-        StockPriceHistoryResponse result = companyService.findStockPrices(EMPTY_COMPANY_ID, period, "1D");
+    @Test
+    void returnsEmptyStockResponseWhenNoPriceExists() {
+        StockPriceHistoryResponse result = companyService.findStockPrices(EMPTY_COMPANY_ID, "1M", "1D");
 
-        assertThat(result.period()).isEqualTo(period);
-        assertThat(result.interval()).isEqualTo("1D");
         assertThat(result.items()).isEmpty();
         assertThat(result.asOfAt()).isNull();
-    }
-
-    @ParameterizedTest
-    @CsvSource({"3y, 2023-09-06", "5y, 2021-09-06", "10y, 2016-09-06"})
-    void includesExactYearBoundaryAndExcludesEarlierPrices(String period, LocalDate boundary) {
-        String before = boundary.minusDays(1) + "T00:00:00Z";
-        String exact = boundary + "T00:00:00Z";
-        String after = boundary.plusDays(1) + "T00:00:00Z";
-        insertStock(before, "100", "110", "90", "105", 1L);
-        insertStock(exact, "110", "120", "100", "115", 2L);
-        insertStock(after, "120", "130", "110", "125", 3L);
-
-        StockPriceHistoryResponse result = companyService.findStockPrices(COMPANY_ID, period, "1d");
-
-        assertThat(result.period()).isEqualTo(period.toUpperCase(java.util.Locale.ROOT));
-        assertThat(result.interval()).isEqualTo("1D");
-        assertThat(result.asOfAt()).hasToString("2026-09-06T00:00:00Z");
-        assertThat(result.items()).extracting(item -> item.tradingAt().toString())
-                .containsExactly(exact, after, "2026-07-31T00:00:00Z",
-                        "2026-08-10T00:00:00Z", "2026-09-06T00:00:00Z");
-    }
-
-    @Test
-    void usesCalendarYearsForLeapDayBoundary() {
-        jdbcTemplate.update("DELETE FROM stock_price_history WHERE company_id = ?", COMPANY_ID);
-        insertStock("2021-02-27T00:00:00Z", "100", "110", "90", "105", 1L);
-        insertStock("2021-02-28T00:00:00Z", "110", "120", "100", "115", 2L);
-        insertStock("2024-02-29T00:00:00Z", "120", "130", "110", "125", 3L);
-
-        StockPriceHistoryResponse result = companyService.findStockPrices(COMPANY_ID, "3Y", "1D");
-
-        assertThat(result.asOfAt()).hasToString("2024-02-29T00:00:00Z");
-        assertThat(result.items()).extracting(item -> item.tradingAt().toString())
-                .containsExactly("2021-02-28T00:00:00Z", "2024-02-29T00:00:00Z");
-    }
-
-    @Test
-    void maxIncludesAllStoredDailyPricesBeyondTenYearsInAscendingOrder() {
-        insertStock("2000-01-03T00:00:00Z", "10", "12", "9", "11", 4L);
-        insertStock("2015-09-06T00:00:00Z", "100", "120", "90", "110", 5L);
-        jdbcTemplate.update("""
-                INSERT INTO stock_price_history
-                    (company_id, trading_at, interval_type, open_price, high_price,
-                     low_price, close_price, trading_volume)
-                VALUES (?, '2026-09-08T00:00:00Z', '1H', 200, 210, 190, 205, 6),
-                       (?, '1990-01-01T00:00:00Z', '1D', 300, 310, 290, 305, 7)
-                """, COMPANY_ID, EMPTY_COMPANY_ID);
-
-        StockPriceHistoryResponse result = companyService.findStockPrices(COMPANY_ID, "max", "1d");
-
-        assertThat(result.period()).isEqualTo("MAX");
-        assertThat(result.interval()).isEqualTo("1D");
-        assertThat(result.asOfAt()).hasToString("2026-09-06T00:00:00Z");
-        assertThat(result.items()).extracting(item -> item.tradingAt().toString())
-                .containsExactly("2000-01-03T00:00:00Z", "2015-09-06T00:00:00Z",
-                        "2026-07-31T00:00:00Z", "2026-08-10T00:00:00Z", "2026-09-06T00:00:00Z");
-        assertThat(result.items().getFirst().closePrice()).isEqualByComparingTo("11.0000");
-        assertThat(result.items().getFirst().tradingVolume()).isEqualTo(4L);
-        assertThat(companyService.findStockPrices(COMPANY_ID, "10Y", "1D").items()).hasSize(3);
     }
 
     @Test

@@ -174,18 +174,13 @@ public class CompanyService {
         }
 
         Instant asOfAt = latest.getTradingAt();
-        List<StockPriceHistory> prices;
-        if (period == StockPeriod.MAX) {
-            prices = stockPriceHistoryRepository
-                    .findAllByCompanyCompanyIdAndIntervalTypeAndTradingAtLessThanEqualOrderByTradingAtAsc(
-                            companyId, interval.code(), asOfAt);
-        } else {
-            Instant fromInclusive = period.subtractFrom(asOfAt.atZone(ZoneOffset.UTC)).toInstant();
-            prices = stockPriceHistoryRepository
-                    .findAllByCompanyCompanyIdAndIntervalTypeAndTradingAtGreaterThanEqualAndTradingAtLessThanEqualOrderByTradingAtAsc(
-                            companyId, interval.code(), fromInclusive, asOfAt);
-        }
-        List<StockPriceItemResponse> items = prices.stream()
+        Instant fromInclusive = period.subtractFrom(asOfAt.atZone(ZoneOffset.UTC)).toInstant();
+        List<StockPriceItemResponse> items = stockPriceHistoryRepository
+                .findAllByCompanyCompanyIdAndIntervalTypeAndTradingAtGreaterThanEqualAndTradingAtLessThanEqualOrderByTradingAtAsc(
+                        companyId,
+                        interval.code(),
+                        fromInclusive,
+                        asOfAt).stream()
                 .map(StockPriceItemResponse::from)
                 .toList();
 

@@ -17,13 +17,6 @@ public interface StockPriceHistoryRepository
     );
 
     List<StockPriceHistory>
-            findAllByCompanyCompanyIdAndIntervalTypeAndTradingAtLessThanEqualOrderByTradingAtAsc(
-                    UUID companyId,
-                    String intervalType,
-                    Instant toInclusive
-            );
-
-    List<StockPriceHistory>
             findAllByCompanyCompanyIdAndIntervalTypeAndTradingAtGreaterThanEqualAndTradingAtLessThanEqualOrderByTradingAtAsc(
                     UUID companyId,
                     String intervalType,

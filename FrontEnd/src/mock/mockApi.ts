@@ -24,7 +24,6 @@ import {
   metricsFor,
   otherEnd,
   priceChanges,
-  stockHistory,
   stockSeries,
   windowDays,
   type MockComment,
@@ -408,14 +407,10 @@ export const mockApi: CosmosApi = {
       await latency(140);
       const c = COMPANY_BY_ID.get(companyId);
       if (!c) fail(404, "COMPANY_NOT_FOUND", "기업을 찾을 수 없습니다.");
-      const periods: Record<T.PricePeriod, number | null> = {
-        "1M": 22, "3M": 65, "6M": 130, "1Y": 262,
-        "3Y": 3 * 262, "5Y": 5 * 262, "10Y": 10 * 262, MAX: null,
-      };
-      const n = periods[period];
-      const all = n === null || n > 262 ? stockHistory(c) : stockSeries(c);
-      const items = n === null ? all : all.slice(-n);
-      return { companyId, period, interval: "1D", asOfAt: items.at(-1)?.tradingAt ?? null, items };
+      const all = stockSeries(c);
+      const n = period === "1M" ? 22 : period === "3M" ? 65 : period === "6M" ? 130 : all.length;
+      const items = all.slice(-n);
+      return { companyId, period, interval: "1D", asOfAt: items.at(-1)?.tradingAt ?? new Date().toISOString(), items };
     },
     async industries() {
       await latency(90);

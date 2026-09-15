@@ -10,11 +10,7 @@ public enum StockPeriod {
     MONTH_1("1M", 1, 0),
     MONTH_3("3M", 3, 0),
     MONTH_6("6M", 6, 0),
-    YEAR_1("1Y", 0, 1),
-    YEAR_3("3Y", 0, 3),
-    YEAR_5("5Y", 0, 5),
-    YEAR_10("10Y", 0, 10),
-    MAX("MAX", 0, 0);
+    YEAR_1("1Y", 0, 1);
 
     private final String code;
     private final int months;
@@ -31,9 +27,6 @@ public enum StockPeriod {
     }
 
     public ZonedDateTime subtractFrom(ZonedDateTime value) {
-        if (this == MAX) {
-            throw new IllegalStateException("MAX has no lower date bound");
-        }
         return value.minusYears(years).minusMonths(months);
     }
 

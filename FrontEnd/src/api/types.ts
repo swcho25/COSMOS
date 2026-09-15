@@ -9,7 +9,7 @@ export type UserId = number;
 
 export type Market = "KOSPI" | "KOSDAQ" | "NASDAQ" | (string & {});
 export type MetricWindow = "7D" | "30D" | "90D";
-export type PricePeriod = "1M" | "3M" | "6M" | "1Y" | "3Y" | "5Y" | "10Y" | "MAX";
+export type PricePeriod = "1M" | "3M" | "6M" | "1Y";
 export type Sentiment = "POSITIVE" | "NEGATIVE" | "NEUTRAL";
 export type ImpactDirection = "POSITIVE" | "NEGATIVE" | "NEUTRAL";
 export type Directionality = "DIRECTED" | "UNDIRECTED";
@@ -152,7 +152,7 @@ export interface StockPrices {
   period: PricePeriod;
   /** MVP 는 1D 만 지원하지만 stock_price_history.interval_type 은 자유값이라 확장을 열어 둔다. */
   interval: "1D" | (string & {});
-  asOfAt: ISODateTime | null;
+  asOfAt: ISODateTime;
   items: Candle[];
 }
 export interface Industry {

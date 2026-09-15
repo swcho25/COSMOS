@@ -430,39 +430,6 @@ export function stockSeries(company: MockCompany): Candle[] {
   return out;
 }
 
-/** 장기 차트를 열 때만 합성 과거를 추가한다. 기존 최근 1년 가격은 모든 기간에서 동일하다. */
-const longPriceCache = new Map<string, Candle[]>();
-export function stockHistory(company: MockCompany): Candle[] {
-  const hit = longPriceCache.get(company.companyId);
-  if (hit) return hit;
-  const recent = stockSeries(company);
-  const rng = seededRandom(hashString(`price-history:${company.companyId}`));
-  const krw = company.market === "KOSPI" || company.market === "KOSDAQ";
-  const history: Candle[] = [];
-  const cursor = new Date(recent[0].tradingAt);
-  let nextOpen = recent[0].openPrice;
-  // 목업의 전체 기간은 약 15년이다. 실 API의 MAX는 DB가 제공하는 전체 기간을 반환한다.
-  while (history.length + recent.length < 15 * 262) {
-    cursor.setUTCDate(cursor.getUTCDate() - 1);
-    if (cursor.getUTCDay() === 0 || cursor.getUTCDay() === 6) continue;
-    const close = nextOpen;
-    const open = Math.max(1, close * Math.exp(gaussian(rng) * 0.018));
-    const high = Math.max(open, close) * (1 + Math.abs(gaussian(rng)) * 0.01);
-    const low = Math.min(open, close) * (1 - Math.min(0.5, Math.abs(gaussian(rng)) * 0.01));
-    const tick = krw ? (close > 100000 ? 100 : close > 10000 ? 10 : 1) : 0.01;
-    const q = (value: number) => Math.max(tick, Math.round(value / tick) * tick);
-    history.push({
-      tradingAt: cursor.toISOString(), openPrice: q(open), highPrice: Math.max(q(high), q(open), close),
-      lowPrice: Math.min(q(low), q(open), close), closePrice: close,
-      tradingVolume: Math.round((krw ? 200_000 : 2_000_000) * Math.exp(gaussian(rng) * 0.6 + 1)),
-    });
-    nextOpen = q(open);
-  }
-  const all = history.reverse().concat(recent);
-  longPriceCache.set(company.companyId, all);
-  return all;
-}
-
 /**
  * 등락률 기간 → 기준 종가를 고를 때 되짚을 캔들 수.
  * 주가 탭은 mockApi.stockPrices 가 준 items = all.slice(-n) 의 첫 캔들(= all[L-n])을 기준으로 삼는다.

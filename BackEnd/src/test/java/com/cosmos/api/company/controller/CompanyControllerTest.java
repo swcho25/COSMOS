@@ -30,8 +30,6 @@ import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
@@ -175,21 +173,5 @@ class CompanyControllerTest {
                 .andExpect(jsonPath("$.period").value("1M"))
                 .andExpect(jsonPath("$.interval").value("1D"))
                 .andExpect(jsonPath("$.items[0].closePrice").value(73000));
-    }
-
-    @ParameterizedTest
-    @ValueSource(strings = {"3Y", "5Y", "10Y", "MAX"})
-    void acceptsLongStockPeriodsAndPreservesEmptyResponse(String period) throws Exception {
-        when(companyService.findStockPrices(COMPANY_ID, period, "1D"))
-                .thenReturn(new StockPriceHistoryResponse(COMPANY_ID, period, "1D", null, List.of()));
-
-        mockMvc.perform(get("/api/companies/{companyId}/stock-prices", COMPANY_ID)
-                        .param("period", period))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.period").value(period))
-                .andExpect(jsonPath("$.interval").value("1D"))
-                .andExpect(jsonPath("$.asOfAt").value(org.hamcrest.Matchers.nullValue()))
-                .andExpect(jsonPath("$.items").isEmpty());
-        verify(companyService).findStockPrices(COMPANY_ID, period, "1D");
     }
 }
