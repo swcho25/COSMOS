@@ -15,6 +15,14 @@ release="$state/$tag"
 mkdir -p "$release"
 cp deploy/compose.yml "$release/compose.yml"
 compose=(docker compose --env-file "$secrets" -p cosmos -f "$release/compose.yml")
+# An operator-installed override keeps the Master's loopback database endpoint
+# present across later releases. Absence preserves the original internal network.
+loader_override="${COSMOS_RDB_LOADER_COMPOSE_OVERRIDE:-/etc/cosmos/rdb-loader.compose.yml}"
+if [[ -e "$loader_override" ]]; then
+    [[ -f "$loader_override" && -r "$loader_override" ]] || { echo 'RDB Loader Compose override must be a readable file' >&2; exit 1; }
+    cp "$loader_override" "$release/rdb-loader.compose.yml"
+    compose+=(-f "$release/rdb-loader.compose.yml")
+fi
 "${compose[@]}" config --quiet
 previous=''
 [[ ! -f "$state/current" ]] || previous="$(cat "$state/current")"

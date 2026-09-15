@@ -150,6 +150,15 @@ erDiagram
         TIMESTAMP published_at
     }
 
+    GRAPH_SNAPSHOT_LOAD {
+        UUID snapshot_id PK, FK
+        VARCHAR manifest_sha256
+        BIGINT record_count
+        BIGINT stored_count
+        TEXT_ARRAY windows
+        TIMESTAMP loaded_at
+    }
+
     COMPANY_RELATIONSHIP {
         UUID relationship_id PK
         UUID source_company_id FK
@@ -332,6 +341,7 @@ erDiagram
     GRAPH_SNAPSHOT ||--o{ RELATIONSHIP_SCORE_CURRENT : publishes
     COMPANY_RELATIONSHIP ||--o{ RELATIONSHIP_SCORE_HISTORY : score_history
     GRAPH_SNAPSHOT ||--o{ RELATIONSHIP_SCORE_HISTORY : groups
+    GRAPH_SNAPSHOT ||--o| GRAPH_SNAPSHOT_LOAD : load_receipt
     COMPANY_RELATIONSHIP ||--o{ RELATIONSHIP_EVIDENCE : supported_by
     SOURCE_DOCUMENT ||--o{ RELATIONSHIP_EVIDENCE : evidence_document
     DOCUMENT_EVIDENCE ||--o{ RELATIONSHIP_EVIDENCE : representative_sentence
@@ -382,6 +392,7 @@ erDiagram
 | `GRAPH_SNAPSHOT` | 특정 계산 시점의 전체 공통 관계 결과 묶음 |
 | `RELATIONSHIP_SCORE_CURRENT` | API에서 즉시 조회할 뉴스·공시 구성 점수와 기본 관계 점수 |
 | `RELATIONSHIP_SCORE_HISTORY` | 뉴스·공시 구성 점수와 기본 관계 점수의 기간별 과거 이력 |
+| `GRAPH_SNAPSHOT_LOAD` | V5에서 추가한 스냅샷별 적재 영수증. manifest 해시·원본/적재 행 수·기간으로 정확한 재시도를 판별 |
 | `RELATIONSHIP_EVIDENCE` | 기업 관계와 근거 문서·대표 문장을 연결 |
 | `COMPANY_METRIC_HISTORY` | 기업별 뉴스 언급량·감성·관계 수의 시계열 |
 | `STOCK_PRICE_HISTORY` | 서비스 차트용 기업별 OHLCV 시세 |
@@ -425,6 +436,7 @@ erDiagram
 - 경쟁·협력처럼 방향이 없는 관계는 두 기업 ID의 저장 순서를 통일해 중복을 방지한다.
 - 한 기업 쌍에 여러 관계 유형이 존재할 수 있으며 관계 유형별로 별도 행을 저장한다.
 - 서비스 API는 `GRAPH_SNAPSHOT.status = PUBLISHED`인 결과만 사용한다.
+- RDB Loader는 전체 기간 스냅샷의 현재 점수 교체, 점수 이력 추가, `GRAPH_SNAPSHOT_LOAD` 영수증 기록과 게시를 한 트랜잭션으로 수행한다. 이전 이력은 보존하며 같은 ID·같은 manifest 재실행은 중복 적재하지 않는다.
 - 사용자별 그래프 스냅샷과 가중치는 PostgreSQL·Redis에 저장하지 않는다. 프론트엔드는 사용자가 지정한 비율을 브라우저 탭의 `sessionStorage`에 보관하고 `news_score`와 `disclosure_score`를 일시 조합한다.
 - `RELATIONSHIP_SCORE_CURRENT`와 `RELATIONSHIP_SCORE_HISTORY`는 `news_score`, `disclosure_score`와 시스템 기본 비율(뉴스 50%·공시 50%)로 계산한 `score`를 함께 저장한다.
 - 특정 출처의 근거가 없으면 해당 구성 점수는 `0`이 아닌 `NULL`로 저장한다. 한쪽 점수만 존재하면 개인화 계산에서도 그 점수를 그대로 사용한다.
