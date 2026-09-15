@@ -66,7 +66,9 @@ def digest(path):
 
 
 def prepare(source, output, begin="20160101", end="20260909", bundle_bytes=256 * 1024**2,
-            secrets=(), captured=None, universe=None):
+            secrets=(), captured=None, universe=None, *, rank_from=51, rank_to=100):
+    if not 1 <= rank_from <= rank_to:
+        raise ValueError("Invalid snapshot rank range")
     source, output = Path(source).resolve(), Path(output).resolve()
     captured_at = utcnow()
     captured = capture_details(source) if captured is None else captured
@@ -109,7 +111,7 @@ def prepare(source, output, begin="20160101", end="20260909", bundle_bytes=256 *
         for line in Path(universe).read_bytes().splitlines():
             check_secret(line, secrets)
             row = json.loads(line)
-            if 51 <= int(row.get("universe_rank", 0)) <= 100:
+            if rank_from <= int(row.get("universe_rank", 0)) <= rank_to:
                 kept.append(row)
         write_json(output / "metadata/universe.json", kept, secrets)
 
@@ -226,7 +228,7 @@ def prepare(source, output, begin="20160101", end="20260909", bundle_bytes=256 *
                "source_unavailable": unavailable, "snapshot_rejections": rejected}, secrets)
     write_json(output / "metadata/pending_receipts.json", sorted(set(selected) - included), secrets)
     manifest = {"format_version": 1, "snapshot_kind": "bounded_partial_collection", "captured_at": captured_at,
-                "completed_at": utcnow(), "begin": begin, "end": end, "rank_from": 51, "rank_to": 100,
+                "completed_at": utcnow(), "begin": begin, "end": end, "rank_from": rank_from, "rank_to": rank_to,
                 "source_directory": source.as_posix(), "selected_documents": len(selected),
                 "snapshot_documents": len(included), "not_in_snapshot": len(selected) - len(included),
                 "source_unavailable_observed": len(unavailable), "source_errors_observed": len(source_errors),

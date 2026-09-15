@@ -9,4 +9,5 @@
 .env.example text eol=lf
 *.env.example text eol=lf
 *.service.example text eol=lf
+*.timer.example text eol=lf
 .gitignore text eol=lf

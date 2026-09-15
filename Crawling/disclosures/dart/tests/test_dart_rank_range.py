@@ -140,6 +140,34 @@ class RankCollectorTests(unittest.TestCase):
             self.assertEqual(resumed["api_status"], status)
             self.assertEqual(request.call_count, 1)
 
+    def test_empty_or_whitespace_xml_is_not_a_collected_document(self):
+        for index, xml in enumerate(("<DOCUMENT/>", "<DOCUMENT><P> \n\t&#160; </P></DOCUMENT>")):
+            with self.subTest(xml=xml):
+                receipt = f"2026010100000{index + 1}"
+                content = io.BytesIO()
+                with zipfile.ZipFile(content, "w", zipfile.ZIP_DEFLATED) as archive:
+                    archive.writestr("report.xml", xml)
+                original = content.getvalue()
+                api = self.api()
+                with patch.object(api, "request", return_value=original):
+                    result = collect.document_one(api, self.row(receipt), {})
+                self.assertEqual((result["status"], result["error"]), ("parse_error", "empty_document_text"))
+                self.assertNotIn("detail", result)
+                self.assertEqual((self.output / "raw/documents" / (receipt + ".zip")).read_bytes(), original)
+                stored = collect.read_json(self.output / "state/documents" / (receipt + ".json"))
+                self.assertEqual(stored["error"], "empty_document_text")
+
+    def test_empty_attachment_does_not_discard_other_valid_text(self):
+        content = io.BytesIO()
+        with zipfile.ZipFile(content, "w", zipfile.ZIP_DEFLATED) as archive:
+            archive.writestr("empty.xml", "<DOCUMENT/>")
+            archive.writestr("valid.xml", "<DOCUMENT><P>Valid body</P></DOCUMENT>")
+        api = self.api()
+        with patch.object(api, "request", return_value=content.getvalue()):
+            result = collect.document_one(api, self.row(), {})
+        self.assertEqual(result["status"], "collected")
+        self.assertEqual([item["text"] for item in result["detail"]["files"]], ["", "Valid body"])
+
     def test_original_reuse_exports_attached_text_and_resume_has_no_duplicates(self):
         source = self.root / "source"
         raw = source / "raw/documents/000051_20260101000001_2025_annual.zip"
