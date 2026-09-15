@@ -4,7 +4,7 @@
 
 | 폴더 | 포함 기능 | 실행 안내 |
 |---|---|---|
-| `news/` | 국내 뉴스·Yahoo Finance 수집, URL 중복 색인, Kafka 전달, HDFS Parquet Writer | [뉴스 README](news/README.md) |
+| `news/` | 국내 뉴스·Yahoo Finance·네이버 API 코스피 100종목 수집, URL 중복 색인, Kafka 전달, HDFS Parquet Writer | [뉴스 README](news/README.md) |
 | `disclosures/dart/` | OpenDART 수집·재개, 원본 ZIP 처리, HDFS 스냅샷 생성·검증·업로드 | [DART README](disclosures/dart/README.md) |
 | `disclosures/sec/` | Nasdaq-100 SEC EDGAR 배치·증분 수집, 5분 주기 재조회, HDFS 업로드·검증 | [SEC README](disclosures/sec/README.md) |
 
@@ -13,7 +13,7 @@
 ## 데이터 흐름
 
 ```text
-국내 뉴스 / Yahoo Finance
+국내 뉴스 / Yahoo Finance / 네이버 API
   → 로컬 영속 큐·outbox
   → Kafka news.raw
   → HDFS Parquet
@@ -31,6 +31,7 @@ OpenDART / SEC EDGAR
 2026-09-15 점검 기준:
 
 - 뉴스 수집기와 HDFS Writer는 Hadoop Master에서 동작 중이며 국내·해외 추가 적재를 확인했다.
+- 네이버 API 수집기 2개도 별도 운영 중이다. 16:03 KST에 100종목 실제 조회와 본문 147건의 Kafka 전달을 확인했고, 실제 HDFS Parquet 적재를 검증했다. 기업별 기본 10분 주기이며 [상세 검증·한계](news/docs/NAVER.md)를 참고한다.
 - 뉴스는 최신 목록과 미수집 기사·과거 기간을 순환한다. 모든 속보를 발행 즉시 수집하는 방식은 아니다. HelloT는 기존 기사 번호 범위 수집이며 일부 `article_not_found` 재시도가 있다.
 - DART는 기존 키를 사용하는 별도 일별 수집기와 매시간 timer를 Master에 설치했다. 최초 실검증에서 2026-09-15 공시 11건을 HDFS에 저장하고 전체 파일 크기·SHA-256을 검증했다. 원천 미제공·빈 본문은 pending으로 재시도한다.
 - DART 과거 배치에서 HDFS에 미반영된 13,741건을 recovery delta로 업로드하고 30개 파일 전체 크기·SHA-256을 검증했다(2026-09-15 14:00 KST). 원천 ZIP 손상과 기존 baseline의 빈 XML 1건은 보존하고 품질 예외로 기록했다.

@@ -41,7 +41,8 @@ function isPrivateIpv6(hostname: string): boolean {
   return normalized === "::" || normalized === "::1"
     || normalized.startsWith("fc") || normalized.startsWith("fd")
     || /^fe[89ab]/.test(normalized)
-    || normalized.startsWith("::ffff:127.")
-    || normalized.startsWith("::ffff:10.")
-    || normalized.startsWith("::ffff:192.168.");
+    // WHATWG URL converts dotted IPv4-mapped hosts to hexadecimal notation.
+    // Reject the mapped range instead of checking only the original spelling.
+    || normalized.startsWith("::ffff:")
+    || normalized.startsWith("ff");
 }

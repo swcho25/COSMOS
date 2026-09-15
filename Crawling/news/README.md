@@ -1,9 +1,9 @@
 # COSMOS 뉴스 수집 → Kafka → HDFS
 
-국내 고정 매체와 Yahoo Finance를 수집하고 로컬 영속 큐·outbox를 거쳐 Kafka `news.raw`에 전달한다. 별도 Writer가 국내/해외를 나눈 Parquet와 검증 manifest를 HDFS에 게시한다. 이 폴더만으로 빌드·테스트·패키징할 수 있으며 기존 AWS RDS나 MySQL 웹 스택은 필요하지 않다.
+국내 고정 매체, Yahoo Finance, 네이버 뉴스 API를 수집하고 로컬 영속 큐·outbox를 거쳐 Kafka `news.raw`에 전달한다. 별도 Writer가 국내/해외를 나눈 Parquet와 검증 manifest를 HDFS에 게시한다. 이 폴더만으로 빌드·테스트·패키징할 수 있으며 기존 AWS RDS나 MySQL 웹 스택은 필요하지 않다.
 
 ```text
-국내 매체 / Yahoo Finance
+국내 매체 / Yahoo Finance / 네이버 API 기업명 검색
   → SQLite 후보 큐·URL 색인·outbox
   → Kafka news.raw (3 partitions)
   → HDFS Writer
@@ -25,19 +25,20 @@ npm test
 python scripts/package-news.py
 ```
 
-PowerShell에서는 venv 생성 후 `.\.venv\Scripts\python.exe`를 `python` 대신 사용할 수 있다. `npm.cmd`로 npm을 실행한다. 테스트는 임시 로컬 SQLite·가짜 HTTP/Kafka/HDFS를 사용하며 실제 크롤링·DB 접속·Kafka 전송을 하지 않는다. PyArrow를 설치하면 실제 Parquet 직렬화 왕복 테스트도 수행한다. 검증 결과는 Python 39개·Node 22개 성공이며, 독립 venv Python 3.12.13/Node 24.18.0에서 확인했다.
+PowerShell에서는 venv 생성 후 `.\.venv\Scripts\python.exe`를 `python` 대신 사용할 수 있다. `npm.cmd`로 npm을 실행한다. 테스트는 임시 로컬 SQLite·가짜 HTTP/Kafka/HDFS를 사용하며 실제 크롤링·DB 접속·Kafka 전송을 하지 않는다. PyArrow를 설치하면 실제 Parquet 직렬화 왕복 테스트도 수행한다. 네이버 추가 이후 검증 결과는 [NAVER.md](docs/NAVER.md)에 기록한다.
 
-`npm run build`가 생성하는 `services/news_pipeline/domestic.bundle.mjs`와 `dist/news-kafka.tar.gz`는 Git에서 제외된다. `package-news.py`는 명시한 허용 파일만 묶고 env·상태 DB를 수집하지 않는다. 배포 tar는 실행할 국내 번들을 포함한다. 소스만 checkout한 환경에서는 반드시 먼저 빌드한다.
+`npm run build`가 생성하는 `services/news_pipeline/domestic.bundle.mjs`, `naver-fetch.bundle.mjs`와 `dist/news-kafka.tar.gz`는 Git에서 제외된다. `package-news.py`는 명시한 허용 파일만 묶고 env·상태 DB를 수집하지 않는다. 배포 tar는 실행할 국내·네이버 번들을 포함한다. 소스만 checkout한 환경에서는 반드시 먼저 빌드한다.
 
 ## 현재 수집 범위와 한계
 
+- 네이버 뉴스 API: 프로젝트 코스피 100종목의 기업명 검색, 최신순 주기 조회와 본문 수집을 별도 worker로 지원한다. [설정·주기·검증·운영 안내](docs/NAVER.md).
 - 국내 운영 원천 5개: 한국정경신문, 메디컬투데이, 서울경제, 뉴스핌, 뉴스토마토의 공개 사이트맵·목록.
 - Yahoo Finance: 최근 3일 반복 탐색, 2026-09-09 이후 초기 공백 탐색, 2016–2026 연도별 과거 목록 순환을 별도 큐로 처리한다. 연도 범위를 설정했다고 수집이 완료된 것은 아니다.
 - HelloT 어댑터도 포함하지만 **기존 기사 번호 10000–114676을 탐색하는 과거 범위**다. 최신 목록 탐색기가 아니며 2026-09-15 확인 당시 일부 오래된 번호는 `article_not_found`로 재시도 중이었다. 국내 최신 원천 5개와 동일한 완료·신선도를 가정하지 않는다.
 - 이전 AWS에만 있던 동적 매체 목록·EFS 커서·미반영 RDS 데이터까지 복구한 것은 아니다. 이미 HDFS에 보존된 URL은 색인 후 건너뛴다.
 - 최신 뉴스도 주기적으로 수집·배치 게시한다. 수집 시각·기사 발행 시각·HDFS 게시 시각은 다르며 모든 매체의 모든 속보를 즉시 반영한다는 보장은 없다.
 
-2026-09-15 운영 확인에서는 신규 HDFS 경로의 국내·해외 저장량이 142초 동안 각각 8행씩 실제 증가했다. 이는 당시 동작 검증이며, 이 Git 브랜치를 올리는 작업이 현재 서버를 새로 배포하거나 재시작하는 것은 아니다.
+네이버 추가 전 2026-09-15 운영 확인에서는 HDFS 경로의 국내·해외 저장량이 142초 동안 각각 8행씩 실제 증가했다. 네이버 전용 서비스의 배포와 검증은 [NAVER.md](docs/NAVER.md)를 참고한다.
 
 ## 운영 설정과 시작 순서
 
