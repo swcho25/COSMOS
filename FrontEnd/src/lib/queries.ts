@@ -1,7 +1,10 @@
+import { useCallback } from "react";
 import { keepPreviousData, useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/api";
 import type * as T from "@/api/types";
+import { weightedEdges, weightedRelationship } from "@/lib/score";
 import { useSession } from "@/store/session";
+import { useNewsWeight } from "@/store/weight";
 
 const useKey = () => useSession((s) => s.sessionKey);
 const useAuthed = () => useSession((s) => s.status === "authed");
@@ -20,15 +23,27 @@ export function useIndustries() {
 }
 
 /* ------------------------------ 그래프 ------------------------------ */
+/**
+ * 뉴스·공시 비율은 서버에 보내지 않는다 — 받은 구성 점수를 화면에서만 섞는다(lib/score).
+ * select 에서 한 번 섞어 두면 씬·목록·경로 등 score 를 읽는 화면이 모두 같은 값을 본다.
+ * 캐시(queryKey)는 비율과 무관하므로 슬라이더를 움직여도 다시 요청하지 않는다.
+ */
+function useWeightedEdges<G extends { edges: T.GraphEdge[] }>() {
+  const w = useNewsWeight();
+  return useCallback((g: G): G => ({ ...g, edges: weightedEdges(g.edges, w) }), [w]);
+}
+
 export function useLatestGraph(industryId: string | null) {
   const k = useKey();
   const booted = useBooted();
+  const select = useWeightedEdges<T.LatestGraph>();
   return useQuery({
     queryKey: ["graph", "latest", k, industryId],
     queryFn: () => api.graphs.latest({ industryId: industryId ?? undefined }),
     enabled: booted,
     staleTime: 5 * 60_000,
     placeholderData: keepPreviousData,
+    select,
   });
 }
 /** 기업 그래프 쿼리 옵션 — 훅과 prefetch(호버 선로딩)가 같은 키·함수를 공유하도록 팩토리로 둔다 */
@@ -40,16 +55,20 @@ export const companyGraphQuery = (k: string, companyId: string) => ({
 export function useCompanyGraph(companyId: string | null) {
   const k = useKey();
   const booted = useBooted();
-  return useQuery({ ...companyGraphQuery(k, companyId ?? ""), enabled: booted && Boolean(companyId) });
+  const select = useWeightedEdges<T.CompanyGraph>();
+  return useQuery({ ...companyGraphQuery(k, companyId ?? ""), enabled: booted && Boolean(companyId), select });
 }
 export function useRelationship(relationshipId: string | null, window: T.MetricWindow) {
   const k = useKey();
   const booted = useBooted();
+  const w = useNewsWeight();
+  const select = useCallback((r: T.RelationshipDetail) => weightedRelationship(r, w), [w]);
   return useQuery({
     queryKey: ["relationship", k, relationshipId, window],
     queryFn: () => api.graphs.relationship(relationshipId!, window),
     enabled: booted && Boolean(relationshipId),
     placeholderData: keepPreviousData,
+    select,
   });
 }
 /**
@@ -184,12 +203,6 @@ export function useScraps() {
   const authed = useAuthed();
   return useQuery({ queryKey: ["me", "scraps", k], queryFn: () => api.users.scraps({ size: 100 }), enabled: authed });
 }
-export function useWeightSetting() {
-  const k = useKey();
-  const authed = useAuthed();
-  return useQuery({ queryKey: ["me", "weight", k], queryFn: () => api.users.weightSetting(), enabled: authed });
-}
-
 /* ------------------------------ 변경 ------------------------------ */
 export function useToggleWatch() {
   const qc = useQueryClient();
@@ -252,16 +265,5 @@ export function useUpdateNickname() {
   return useMutation({
     mutationFn: (nickname: string) => api.users.updateNickname(nickname),
     onSuccess: (me) => setUser(me),
-  });
-}
-export function useUpdateWeight() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (newsWeight: number) => api.users.updateWeightSetting(newsWeight),
-    onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ["me", "weight"] });
-      void qc.invalidateQueries({ queryKey: ["graph"] });
-      void qc.invalidateQueries({ queryKey: ["relationship"] });
-    },
   });
 }

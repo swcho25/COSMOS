@@ -5,9 +5,11 @@ import type { SceneModel } from "@/lib/graph";
 import { EVIDENCE_UI, SURPRISE_UI } from "@/lib/guide";
 import { relationshipMeta, scoreBand } from "@/lib/meta";
 import { useRelationship, useRelationshipEvidence } from "@/lib/queries";
+import { scoreBasisLabel } from "@/lib/score";
 import { SURPRISE_MIN, surpriseFor } from "@/lib/surprise";
 import { useGalaxy } from "@/store/galaxy";
 import { useUi } from "@/store/ui";
+import { useNewsWeight } from "@/store/weight";
 import "./evidence.css";
 
 const WINDOWS: MetricWindow[] = ["7D", "30D", "90D"];
@@ -58,7 +60,10 @@ export default function RelationshipPanel({ relationshipId, onClose, onPickCompa
   const setWindow = useGalaxy((s) => s.setWindow);
   const rel = useRelationship(relationshipId, window);
   const evidence = useRelationshipEvidence(relationshipId);
+  const newsWeight = useNewsWeight();
   const r = rel.data;
+  // 점수를 무엇으로 만들었는지 — 비율을 움직였거나 한쪽 근거만 있을 때만 한 줄 붙는다
+  const basis = r ? scoreBasisLabel(r, newsWeight) : null;
   const meta = r ? relationshipMeta(r.relationshipType) : null;
   const items = evidence.data?.pages.flatMap((p) => p.items) ?? [];
   const sortedItems = [...items].sort((a, b) => new Date(b.publishedAt ?? 0).getTime() - new Date(a.publishedAt ?? 0).getTime());
@@ -171,7 +176,7 @@ export default function RelationshipPanel({ relationshipId, onClose, onPickCompa
             </div>
             <div className="meta mt-12 num">
               기준 시각 {fmtDateTime(r.asOfAt)}
-              {r.personalized && " · 내 가중치 적용"}
+              {basis && ` · ${basis}`}
             </div>
 
             <div className="row between mt-20">

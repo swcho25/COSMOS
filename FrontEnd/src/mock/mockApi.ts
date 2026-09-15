@@ -1,6 +1,7 @@
 /**
  * 브라우저 안에서 동작하는 API 목업. 응답 형태는 docs/api-specification.md 와 동일하다.
- * 로그인·관심 기업·스크랩·가중치·댓글은 localStorage 에 저장되어 새로고침 후에도 유지된다.
+ * 로그인·관심 기업·스크랩·댓글은 localStorage 에 저장되어 새로고침 후에도 유지된다.
+ * 뉴스·공시 비율은 서버 설정이 아니라 화면 설정이라 여기서 다루지 않는다 (store/weight).
  */
 import type { CosmosApi } from "@/api/contract";
 import { ApiError, tokenStore } from "@/api/client";
@@ -70,8 +71,6 @@ interface StoredUser {
 interface UserState {
   watch: Record<string, string>;
   scraps: Record<string, string>;
-  newsWeight: number | null;
-  weightUpdatedAt: string | null;
 }
 interface StoredComment extends MockComment {
   deleted?: boolean;
@@ -111,7 +110,7 @@ function users(): StoredUser[] {
   return list;
 }
 function userState(userId: number): UserState {
-  return read<UserState>(LS.user(userId), { watch: {}, scraps: {}, newsWeight: null, weightUpdatedAt: null });
+  return read<UserState>(LS.user(userId), { watch: {}, scraps: {} });
 }
 function saveUserState(userId: number, s: UserState) {
   write(LS.user(userId), s);
@@ -159,19 +158,19 @@ function upsertComment(c: StoredComment) {
 /* ------------------------------------------------------------------ */
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-function personalizedScore(score: number, weight: number | null) {
-  if (weight === null || weight === 50) return score;
-  // 뉴스 가중치가 높을수록 뉴스 기반 점수를 소폭 증폭 (프로토타입 근사)
-  const k = 0.85 + (weight / 100) * 0.3;
-  return Math.round(Math.min(100, score * k) * 10) / 10;
-}
-function toEdge(e: MockEdge, weight: number | null): T.GraphEdge {
+/**
+ * 관계 점수는 서버에서 개인화하지 않는다 — 공통 점수와 구성 점수를 그대로 내려주고,
+ * 뉴스·공시 비율은 프론트가 화면에서만 섞는다 (명세 graph '관계 점수 표시 규칙').
+ */
+function toEdge(e: MockEdge): T.GraphEdge {
   return {
     relationshipId: e.relationshipId,
     sourceCompanyId: e.sourceCompanyId,
     targetCompanyId: e.targetCompanyId,
     relationshipType: e.relationshipType,
-    score: personalizedScore(e.score, weight),
+    score: e.score,
+    newsScore: e.newsScore,
+    disclosureScore: e.disclosureScore,
     impactDirection: e.impactDirection,
   };
 }
@@ -198,9 +197,6 @@ function toNewsItem(n: MockNews, scraps: Record<string, string>): T.NewsItem {
     relatedCompanies: n.related.map((r) => ({ companyId: r.companyId, name: COMPANY_BY_ID.get(r.companyId)?.name ?? "" })),
     scrapped: Boolean(scraps[n.newsId]),
   };
-}
-function weightOf(user: StoredUser | null) {
-  return user ? userState(user.userId).newsWeight : null;
 }
 
 /* ------------------------------------------------------------------ */
@@ -330,23 +326,6 @@ export const mockApi: CosmosApi = {
       const s = userState(u.userId);
       delete s.watch[companyId];
       saveUserState(u.userId, s);
-    },
-    async weightSetting() {
-      await latency(70);
-      const u = requireUser();
-      const s = userState(u.userId);
-      const nw = s.newsWeight ?? 50;
-      return { newsWeight: nw, disclosureWeight: 100 - nw, updatedAt: s.weightUpdatedAt };
-    },
-    async updateWeightSetting(newsWeight) {
-      await latency(160);
-      const u = requireUser();
-      if (!Number.isInteger(newsWeight) || newsWeight < 0 || newsWeight > 100) fail(400, "VALIDATION_FAILED", "newsWeight 는 0~100 정수여야 합니다.", [{ field: "newsWeight", message: "범위 오류" }]);
-      const s = userState(u.userId);
-      s.newsWeight = newsWeight;
-      s.weightUpdatedAt = new Date().toISOString();
-      saveUserState(u.userId, s);
-      return { newsWeight, disclosureWeight: 100 - newsWeight, updatedAt: s.weightUpdatedAt };
     },
   },
 
@@ -485,8 +464,6 @@ export const mockApi: CosmosApi = {
   graphs: {
     async latest(p) {
       await latency(260);
-      const u = currentUser();
-      const weight = weightOf(u);
       const perCompany = Math.min(5, Math.max(1, p?.edgesPerCompany ?? 5));
       if (p?.industryId && !INDUSTRIES.some((i) => i.industryId === p.industryId)) fail(400, "VALIDATION_FAILED", "지원하지 않는 산업입니다.");
       const nodes = p?.industryId ? COMPANIES.filter((c) => c.industryId === p.industryId) : COMPANIES;
@@ -499,11 +476,11 @@ export const mockApi: CosmosApi = {
           .slice(0, perCompany)
           .forEach((e) => keep.add(e.relationshipId));
       });
-      const edges = EDGES.filter((e) => keep.has(e.relationshipId)).map((e) => toEdge(e, weight));
+      const edges = EDGES.filter((e) => keep.has(e.relationshipId)).map((e) => toEdge(e));
       const snap = currentSnapshot();
       return {
         ...snap,
-        personalized: weight !== null && weight !== 50,
+        personalized: false,
         // priceChange 는 은하 뷰의 행성 높이(주가 고도)가 읽는다 — 목업은 같은 시계열에서 뽑아 화면과 주가 탭이 어긋나지 않는다
         nodes: nodes.map((c) => ({ companyId: c.companyId, name: c.name, stockCode: c.stockCode, market: c.market, industryName: c.industry, priceChange: priceChanges(c), marketCapKrw: marketCapKrwOf(c) })),
         edges,
@@ -516,8 +493,6 @@ export const mockApi: CosmosApi = {
       const maxDepth = Math.min(3, Math.max(1, p?.maxDepth ?? 3));
       const perNode = Math.min(5, Math.max(1, p?.neighborsPerNode ?? 3));
       const maxNodes = Math.min(100, Math.max(2, p?.maxNodes ?? 100));
-      const u = currentUser();
-      const weight = weightOf(u);
 
       const depth = new Map<string, number>([[companyId, 0]]);
       const order: string[] = [companyId];
@@ -556,13 +531,13 @@ export const mockApi: CosmosApi = {
         }
         queue = next;
       }
-      const edges = kept.map((e) => toEdge(e, weight));
+      const edges = kept.map((e) => toEdge(e));
       const snap = currentSnapshot();
       return {
         snapshotId: snap.snapshotId,
         asOfAt: snap.asOfAt,
         centerCompanyId: companyId,
-        personalized: weight !== null && weight !== 50,
+        personalized: false,
         nodes: order.map((id) => ({ companyId: id, name: COMPANY_BY_ID.get(id)!.name, depth: Math.min(depth.get(id)!, hop.get(id) ?? depth.get(id)!) })),
         edges,
       };
@@ -571,8 +546,6 @@ export const mockApi: CosmosApi = {
       await latency(130);
       const e = EDGE_BY_ID.get(relationshipId);
       if (!e) fail(404, "RELATIONSHIP_NOT_FOUND", "기업 관계를 찾을 수 없습니다.");
-      const u = currentUser();
-      const weight = weightOf(u);
       // 윈도우별 점수: 해당 기간 근거 뉴스 비중으로 살짝 변동
       const days = windowDays(window);
       const from = Date.now() - days * DAY;
@@ -580,7 +553,9 @@ export const mockApi: CosmosApi = {
       const inWindow = evidences.filter((n) => n.publishedMs >= from).length;
       const ratio = evidences.length ? inWindow / evidences.length : 1;
       const adj = window === "90D" ? 1 : window === "30D" ? 0.85 + ratio * 0.25 : 0.7 + ratio * 0.5;
-      const score = Math.round(Math.min(100, personalizedScore(e.score, weight) * adj) * 10) / 10;
+      // 공통 점수와 구성 점수에 같은 보정을 건다 — 프론트가 어떤 비율로 섞어도 기간 감각이 어긋나지 않는다
+      const adjust = (v: number | null) => (v === null ? null : Math.round(Math.min(100, v * adj) * 10) / 10);
+      const score = adjust(e.score)!;
       const s = COMPANY_BY_ID.get(e.sourceCompanyId)!;
       const t = COMPANY_BY_ID.get(e.targetCompanyId)!;
       return {
@@ -591,11 +566,13 @@ export const mockApi: CosmosApi = {
         directionality: isDirected(e.relationshipType) ? "DIRECTED" : "UNDIRECTED",
         window,
         score,
+        newsScore: adjust(e.newsScore),
+        disclosureScore: adjust(e.disclosureScore),
         impactDirection: e.impactDirection,
         confidence: e.confidence,
         evidenceCount: Math.max(inWindow, Math.round(e.evidenceCount * (window === "90D" ? 1 : window === "30D" ? 0.6 : 0.25))),
         asOfAt: currentSnapshot().asOfAt,
-        personalized: weight !== null && weight !== 50,
+        personalized: false,
       };
     },
     async evidence(relationshipId, p) {

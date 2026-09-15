@@ -85,9 +85,6 @@ export default function Header() {
                     <span>스크랩한 뉴스</span>
                     <span className="num">{scraps.data?.items.length ?? "-"}</span>
                   </button>
-                  <button type="button" className="item" role="menuitem" onClick={() => (close(), navigate("/me#weight"))}>
-                    <span>분석 가중치</span>
-                  </button>
                 </div>
                 <div className="divider" style={{ padding: "6px 0 0" }}>
                   <button
