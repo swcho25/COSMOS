@@ -12,6 +12,8 @@ public record RelationshipDetailResponse(
         String directionality,
         String window,
         BigDecimal score,
+        BigDecimal newsScore,
+        BigDecimal disclosureScore,
         String impactDirection,
         BigDecimal confidence,
         int evidenceCount,

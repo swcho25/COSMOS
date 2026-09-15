@@ -63,7 +63,9 @@ class GraphControllerTest {
                 .andExpect(jsonPath("$.nextRefreshAt").value("2026-09-07T07:00:00Z"))
                 .andExpect(jsonPath("$.personalized").value(false))
                 .andExpect(jsonPath("$.nodes[0].industryName").value("반도체"))
-                .andExpect(jsonPath("$.edges[0].relationshipType").value("SUPPLY"));
+                .andExpect(jsonPath("$.edges[0].relationshipType").value("SUPPLY"))
+                .andExpect(jsonPath("$.edges[0].newsScore").value(75.0))
+                .andExpect(jsonPath("$.edges[0].disclosureScore").value(90.0));
 
         verify(graphService).findLatestGraph(null, null);
     }
@@ -82,7 +84,9 @@ class GraphControllerTest {
         mockMvc.perform(get("/api/graphs/companies/{companyId}", COMPANY_A))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.centerCompanyId").value(COMPANY_A.toString()))
-                .andExpect(jsonPath("$.nodes[0].depth").value(0));
+                .andExpect(jsonPath("$.nodes[0].depth").value(0))
+                .andExpect(jsonPath("$.edges[0].newsScore").value(75.0))
+                .andExpect(jsonPath("$.edges[0].disclosureScore").value(90.0));
 
         verify(graphService).findCompanyGraph(COMPANY_A, 3);
     }
@@ -98,6 +102,8 @@ class GraphControllerTest {
                         "DIRECTED",
                         "30D",
                         new BigDecimal("82.4"),
+                        new BigDecimal("75.0"),
+                        new BigDecimal("90.0"),
                         "POSITIVE",
                         new BigDecimal("0.88"),
                         16,
@@ -109,6 +115,8 @@ class GraphControllerTest {
                 .andExpect(jsonPath("$.sourceCompany.companyId").value(COMPANY_A.toString()))
                 .andExpect(jsonPath("$.targetCompany.companyId").value(COMPANY_B.toString()))
                 .andExpect(jsonPath("$.window").value("30D"))
+                .andExpect(jsonPath("$.newsScore").value(75.0))
+                .andExpect(jsonPath("$.disclosureScore").value(90.0))
                 .andExpect(jsonPath("$.evidenceCount").value(16));
     }
 
@@ -140,6 +148,8 @@ class GraphControllerTest {
                 COMPANY_B,
                 "SUPPLY",
                 new BigDecimal("82.4"),
+                new BigDecimal("75.0"),
+                new BigDecimal("90.0"),
                 "POSITIVE");
     }
 }

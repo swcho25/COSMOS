@@ -92,6 +92,8 @@ class GraphServiceIntegrationTest {
         assertThat(result.nodes()).extracting(node -> node.companyId())
                 .containsExactly(COMPANY_A, COMPANY_B, COMPANY_C);
         assertThat(result.edges()).hasSize(2);
+        assertThat(result.edges().getFirst().newsScore()).isEqualByComparingTo("75.000000");
+        assertThat(result.edges().getFirst().disclosureScore()).isEqualByComparingTo("90.000000");
     }
 
     @Test
@@ -125,7 +127,23 @@ class GraphServiceIntegrationTest {
         assertThat(result.directionality()).isEqualTo("DIRECTED");
         assertThat(result.window()).isEqualTo("30D");
         assertThat(result.score()).isEqualByComparingTo("82.400000");
+        assertThat(result.newsScore()).isEqualByComparingTo("75.000000");
+        assertThat(result.disclosureScore()).isEqualByComparingTo("90.000000");
         assertThat(result.evidenceCount()).isEqualTo(16);
+    }
+
+    @Test
+    void preservesMissingSourceScoreAsNull() {
+        jdbcTemplate.update("""
+                UPDATE relationship_score_current
+                SET disclosure_score = NULL
+                WHERE relationship_id = ? AND window_type = '30D'
+                """, RELATIONSHIP_AB);
+
+        RelationshipDetailResponse result = graphService.findRelationship(RELATIONSHIP_AB, "30D");
+
+        assertThat(result.newsScore()).isEqualByComparingTo("75.000000");
+        assertThat(result.disclosureScore()).isNull();
     }
 
     @Test
@@ -211,9 +229,10 @@ class GraphServiceIntegrationTest {
                 """, relationshipId, sourceCompanyId, targetCompanyId);
         jdbcTemplate.update("""
                 INSERT INTO relationship_score_current
-                    (relationship_id, window_type, snapshot_id, score, impact_direction,
+                    (relationship_id, window_type, snapshot_id, score, news_score,
+                     disclosure_score, impact_direction,
                      confidence, evidence_count, formula_version, as_of_at)
-                VALUES (?, '30D', ?, CAST(? AS NUMERIC), 'POSITIVE', 0.88, ?,
+                VALUES (?, '30D', ?, CAST(? AS NUMERIC), 75.0, 90.0, 'POSITIVE', 0.88, ?,
                         'formula-v1', '2026-09-07T06:00:00Z')
                 """, relationshipId, SNAPSHOT_ID, score, evidenceCount);
     }
