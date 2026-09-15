@@ -1,6 +1,6 @@
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import type { Candle } from "@/api/types";
-import { fmtShortDate } from "@/lib/format";
+import { fmtDate, fmtShortDate } from "@/lib/format";
 
 export function useElementWidth<T extends HTMLElement>() {
   const ref = useRef<T>(null);
@@ -51,6 +51,7 @@ export default function PriceChart({ data, height = 150, color = "#829CFF", show
   const up = data.length > 1 && data[data.length - 1].closePrice >= data[0].closePrice;
   const stroke = color === "auto" ? (up ? "#4FE8C0" : "#FF8FA3") : color;
   const gid = useId();
+  const showYear = data.length > 1 && data[0].tradingAt.slice(0, 4) !== data[data.length - 1].tradingAt.slice(0, 4);
 
   return (
     <div ref={ref} style={{ width: "100%", height }}>
@@ -76,7 +77,7 @@ export default function PriceChart({ data, height = 150, color = "#829CFF", show
             geo.ticks.map((i, k) => (
               <text key={i} x={geo.x(i)} y={height - 6} fontSize="11" fill="#8B95A1" textAnchor={k === 0 ? "start" : k === 2 ? "end" : "middle"}>
                 {/* 거래일은 브라우저 시간대로 옮기면 하루가 밀린다 — UTC 로 날짜 성분을 그대로 읽는다 */}
-                {fmtShortDate(data[i].tradingAt, "UTC")}
+                {showYear ? fmtDate(data[i].tradingAt, "UTC") : fmtShortDate(data[i].tradingAt, "UTC")}
               </text>
             ))}
         </svg>

@@ -200,8 +200,13 @@ function NewsTab({ companyId, onPickCompany }: { companyId: string; onPickCompan
 /* ------------------------------------------------------------------ */
 /* 주가 탭                                                              */
 /* ------------------------------------------------------------------ */
-const PERIODS: PricePeriod[] = ["1M", "3M", "6M", "1Y"];
+const PERIODS: PricePeriod[] = ["1M", "3M", "6M", "1Y", "3Y", "5Y", "10Y", "MAX"];
+const PERIOD_LABELS: Record<PricePeriod, string> = {
+  "1M": "1개월", "3M": "3개월", "6M": "6개월", "1Y": "1년",
+  "3Y": "3년", "5Y": "5년", "10Y": "10년", MAX: "전체",
+};
 const WINDOWS: MetricWindow[] = ["7D", "30D", "90D"];
+const finiteOrNull = (value: number) => Number.isFinite(value) ? value : null;
 
 function PriceTab({ companyId, market, marketCap, listedShares }: { companyId: string; market: string; marketCap: number | null; listedShares: number | null }) {
   const period = useGalaxy((s) => s.pricePeriod);
@@ -213,31 +218,40 @@ function PriceTab({ companyId, market, marketCap, listedShares }: { companyId: s
   const metrics = useCompanyMetrics(companyId, window);
   const history = useMetricsHistory(companyId, { window });
   const currency = marketCurrency(market);
-  const items = prices.data?.items ?? [];
+  const priceData = prices.data?.companyId === companyId && prices.data.period === period ? prices.data : undefined;
+  const rawItems = priceData?.items ?? [];
+  const items = rawItems.filter((c) => Number.isFinite(c.closePrice) && c.closePrice >= 0 && Number.isFinite(Date.parse(c.tradingAt)));
+  const loading = prices.isLoading || (!priceData && prices.isFetching);
   const last = items.at(-1);
   const first = items[0];
-  const change = last && first ? ((last.closePrice - first.closePrice) / first.closePrice) * 100 : null;
-  const hi52 = year.data ? Math.max(...year.data.items.map((c) => c.highPrice)) : null;
-  const lo52 = year.data ? Math.min(...year.data.items.map((c) => c.lowPrice)) : null;
-  const avgVol = items.length ? items.reduce((s, c) => s + c.tradingVolume, 0) / items.length : null;
+  const change = first && last && items.length > 1 && items.length === rawItems.length && first.closePrice > 0 && last.closePrice > 0
+    ? finiteOrNull(((last.closePrice - first.closePrice) / first.closePrice) * 100) : null;
+  const yearItems = year.data?.companyId === companyId && year.data.period === "1Y" ? year.data.items : [];
+  const highs = yearItems.map((c) => c.highPrice).filter((value) => Number.isFinite(value) && value > 0);
+  const lows = yearItems.map((c) => c.lowPrice).filter((value) => Number.isFinite(value) && value > 0);
+  const hi52 = highs.length ? Math.max(...highs) : null;
+  const lo52 = lows.length ? Math.min(...lows) : null;
+  const validVolumes = items.length > 0 && items.every((c) => Number.isFinite(c.tradingVolume) && c.tradingVolume >= 0);
+  const avgVol = validVolumes ? finiteOrNull(items.reduce((s, c) => s + c.tradingVolume, 0) / items.length) : null;
   // 시가총액이 없는 동안 기간의 체감 규모를 보여 주는 파생값 (종가 × 거래량 평균)
-  const avgTurnover = items.length ? items.reduce((s, c) => s + c.closePrice * c.tradingVolume, 0) / items.length : null;
+  const avgTurnover = validVolumes ? finiteOrNull(items.reduce((s, c) => s + c.closePrice * c.tradingVolume, 0) / items.length) : null;
   const mentionSeries = useMemo(() => history.data?.items.map((p) => p.newsMentionCount) ?? [], [history.data]);
-  const periodLabel = { "1M": "최근 1개월", "3M": "최근 3개월", "6M": "최근 6개월", "1Y": "최근 1년" }[period];
+  const periodLabel = period === "MAX" ? "전체 기간" : `최근 ${PERIOD_LABELS[period]}`;
 
   return (
     <>
-      <div className="seg" role="tablist" aria-label="기간">
+      <div className="seg" role="tablist" aria-label="기간" style={{ flexWrap: "wrap" }}>
         {PERIODS.map((p) => (
-          <button key={p} type="button" className={period === p ? "on" : ""} onClick={() => setPeriod(p)}>
-            {p}
+          <button key={p} type="button" role="tab" aria-selected={period === p} className={period === p ? "on" : ""}
+            style={{ flex: "1 0 calc(25% - 4px)" }} onClick={() => setPeriod(p)}>
+            {PERIOD_LABELS[p]}
           </button>
         ))}
       </div>
       <div className="price-head">
         <div>
           <div className="lab">{periodLabel}</div>
-          <div className="v num">{last ? fmtPrice(last.closePrice, currency) : <Skeleton h={30} w={140} />}</div>
+          <div className="v num">{last ? fmtPrice(last.closePrice, currency) : loading ? <Skeleton h={30} w={140} /> : "—"}</div>
         </div>
         {change !== null && (
           <div className="num" style={{ fontSize: 15, fontWeight: 700, color: change >= 0 ? "#4FE8C0" : "#FF8FA3" }}>
@@ -245,7 +259,20 @@ function PriceTab({ companyId, market, marketCap, listedShares }: { companyId: s
           </div>
         )}
       </div>
-      <div className="mt-12">{items.length ? <PriceChart data={items} color="auto" /> : <Skeleton h={150} />}</div>
+      {prices.isError && (
+        <div className="notice mt-12" role="alert">
+          주가 데이터를 불러오지 못했습니다.
+          <button type="button" className="btn btn-g btn-xs" onClick={() => void prices.refetch()} disabled={prices.isFetching}>
+            다시 시도
+          </button>
+        </div>
+      )}
+      <div className="mt-12">
+        {items.length > 1 ? <PriceChart data={items} color="auto" />
+          : loading ? <Skeleton h={150} />
+          : items.length === 1 ? <Empty>주가 추이를 표시하려면 두 거래일 이상의 데이터가 필요합니다.</Empty>
+          : !prices.isError && <Empty>주가 데이터가 아직 없습니다.</Empty>}
+      </div>
       <div className="stat-grid mt-16">
         {/* 시가총액·상장주식수는 백엔드가 값을 줄 때만 나타난다 (company 테이블에 아직 없는 컬럼) */}
         {marketCap != null && (
@@ -269,11 +296,11 @@ function PriceTab({ companyId, market, marketCap, listedShares }: { companyId: s
         </div>
         <div className="stat">
           <div className="lab">52주 최고</div>
-          <div className="v num">{fmtPrice(hi52, currency)}</div>
+          <div className="v num">{hi52 === null ? "—" : fmtPrice(hi52, currency)}</div>
         </div>
         <div className="stat">
           <div className="lab">52주 최저</div>
-          <div className="v num">{fmtPrice(lo52, currency)}</div>
+          <div className="v num">{lo52 === null ? "—" : fmtPrice(lo52, currency)}</div>
         </div>
       </div>
 

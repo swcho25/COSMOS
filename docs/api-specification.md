@@ -988,7 +988,7 @@ GET /api/companies?keyword=삼성&market=KOSPI&industryId={uuid}&size=20&cursor=
 </tr>
 <tr>
 <td>period</td>
-<td>1M·3M·6M·1Y, 기본 1M</td>
+<td>1M·3M·6M·1Y·3Y·5Y·10Y·MAX, 기본 1M (대소문자 구분 없음)</td>
 </tr>
 <tr>
 <td>interval</td>
@@ -1016,7 +1016,11 @@ GET /api/companies?keyword=삼성&market=KOSPI&industryId={uuid}&size=20&cursor=
 ```
 #### Notes
 - 주가 API 원본은 공개하지 않고 정규화된 OHLCV만 반환한다.
-- 데이터가 없으면 `items: []`와 확인 가능한 `asOfAt`을 반환한다.
+- `asOfAt`은 해당 기업에 저장된 최신 `1D` 거래 시각이다. 현재 날짜가 아닌 이 시각을 기준으로 조회한다.
+- `1M`부터 `10Y`까지는 UTC 기준 달력 월·년을 뺀 시각부터 `asOfAt`까지 양쪽 경계를 포함한다. 예를 들어 `asOfAt`이 2024-02-29이면 `3Y`의 시작일은 2021-02-28이다.
+- `MAX`는 해당 기업의 DB에 저장된 모든 `1D` 이력을 반환하며 10년으로 제한하지 않는다. 실제 조회 범위는 수집되어 저장된 이력에 따라 다르다.
+- `items`는 거래 시각 오름차순이며 장기 기간도 일봉(`1D`)을 유지한다. 응답의 `period`와 `interval`은 대문자로 정규화한다.
+- 데이터가 없으면 모든 기간에서 `items: []`, `asOfAt: null`을 반환한다.
 #### Errors
 <table header-row="true">
 <tr>
