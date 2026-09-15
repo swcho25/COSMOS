@@ -179,7 +179,7 @@ function LoginForm() {
       await login(normalized, password);
       writeRemembered(remember ? normalized : null);
       closeAuth();
-      toast("로그인했습니다. 관심 기업과 가중치가 반영됩니다.", "success");
+      toast("로그인했습니다. 관심 기업과 스크랩이 반영됩니다.", "success");
     } catch (x) {
       if (x instanceof ApiError) {
         const fields = pickFieldErrors(x, ["email", "password"]);
@@ -203,7 +203,7 @@ function LoginForm() {
   return (
     <form onSubmit={submit} noValidate>
       <h2 id="auth-title">다시 만나서 반가워요</h2>
-      <p className="hint">로그인하면 관심 기업, 뉴스 스크랩, 개인화 가중치를 사용할 수 있습니다.</p>
+      <p className="hint">로그인하면 관심 기업, 뉴스 스크랩, 내 은하를 사용할 수 있습니다.</p>
       <div className="form">
         {prefill?.notice && <div className="form-note">{prefill.notice}</div>}
         <label className="field">

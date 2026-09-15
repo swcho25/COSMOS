@@ -4,6 +4,7 @@ import { EdgeGlyph, Icon } from "@/components/ui";
 import { LEGEND_UI, READBAR } from "@/lib/guide";
 import { RELATIONSHIP_ORDER, relationshipMeta } from "@/lib/meta";
 import { useGalaxy } from "@/store/galaxy";
+import { DEFAULT_NEWS_WEIGHT, pct, useWeight } from "@/store/weight";
 import { LAB } from "@/three/toon";
 import "./hud-guide.css";
 
@@ -35,6 +36,10 @@ export default function LegendCard() {
   const setAltitude = useGalaxy((s) => s.setAltitude);
   const altitudeWindow = useGalaxy((s) => s.altitudeWindow);
   const setAltitudeWindow = useGalaxy((s) => s.setAltitudeWindow);
+  const newsWeight = useWeight((s) => s.newsWeight);
+  const setNewsWeight = useWeight((s) => s.setNewsWeight);
+  const resetWeight = useWeight((s) => s.reset);
+  const newsPct = pct(newsWeight);
 
   // 접힘 상태는 아무것도 그리지 않는다 — 펼치는 진입점은 하단 중앙 '읽는 법' 바(ReadBar) 하나다. 꼬리표까지 두면 같은 스위치가 둘이 된다
   if (!legendOpen) return null;
@@ -83,6 +88,28 @@ export default function LegendCard() {
             ))}
           </div>
           <div className="meta legend-hint">{LEGEND_UI.widthHint}</div>
+        </div>
+
+        {/* 뉴스·공시 비율 — 서버에 저장하지 않고 이 탭에서만 유지되는 표시 설정 (store/weight) */}
+        <div className="legend-sec">
+          <div className="row between">
+            <span className="legend-sub">{LEGEND_UI.mixTitle}</span>
+            {newsWeight !== DEFAULT_NEWS_WEIGHT && (
+              <button type="button" className="toggle" onClick={resetWeight} title={LEGEND_UI.mixScope}>
+                {LEGEND_UI.mixReset}
+              </button>
+            )}
+          </div>
+          <div className="row-ctl">
+            <span className="lab">
+              뉴스 <b className="num">{newsPct}</b>
+            </span>
+            <input type="range" min={0} max={100} step={5} value={newsPct} onChange={(e) => setNewsWeight(Number(e.target.value) / 100)} aria-label={LEGEND_UI.mixTitle} />
+            <span className="lab">
+              공시 <b className="num">{100 - newsPct}</b>
+            </span>
+          </div>
+          <div className="meta legend-hint">{LEGEND_UI.mixHint}</div>
         </div>
 
         <div className="row-ctl">

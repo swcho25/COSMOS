@@ -35,8 +35,6 @@ export const liveApi: CosmosApi = {
     watchCompanies: (p) => request(`/users/me/watch-companies${qs(p)}`),
     addWatch: (companyId) => request(`/users/me/watch-companies/${companyId}`, { method: "POST" }),
     removeWatch: (companyId) => request(`/users/me/watch-companies/${companyId}`, { method: "DELETE" }),
-    weightSetting: () => request("/users/me/weight-setting"),
-    updateWeightSetting: (newsWeight) => request("/users/me/weight-setting", { method: "PATCH", body: { newsWeight } }),
   },
   companies: {
     list: (p) => request(`/companies${qs(p)}`),

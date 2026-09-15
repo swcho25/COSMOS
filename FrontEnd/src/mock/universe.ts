@@ -34,7 +34,11 @@ export interface MockEdge {
   sourceCompanyId: string;
   targetCompanyId: string;
   relationshipType: RelationshipType;
+  /** 시스템 기본 비율(뉴스 50 · 공시 50)로 계산한 공통 점수 */
   score: number;
+  /** 구성 점수 — 근거가 없는 쪽은 null 이다 (둘 다 null 인 관계는 화면에서 빠진다) */
+  newsScore: number | null;
+  disclosureScore: number | null;
   impactDirection: ImpactDirection;
   confidence: number;
   evidenceCount: number;
@@ -123,6 +127,23 @@ const COMPANY_BY_NAME = new Map(COMPANIES.map((c) => [c.name, c]));
 const UNDIRECTED: Set<string> = new Set(["COMPETE", "PARTNER"]);
 export const isDirected = (type: RelationshipType) => !UNDIRECTED.has(type);
 
+/**
+ * 뉴스·공시 구성 점수 — 평균이 공통 점수와 같도록 위아래로 벌린다.
+ * 기본 50:50 이면 표시 점수가 score 와 같고, 슬라이더를 움직이면 한쪽으로 기운다.
+ * 실제 데이터처럼 한쪽 근거만 있는 관계(≈14%)와 아직 근거가 없는 관계(≈2%)도 섞는다.
+ */
+function components(score: number, rng: () => number) {
+  const r = rng();
+  if (r < 0.02) return { newsScore: null, disclosureScore: null };
+  const round1 = (v: number) => Math.round(Math.min(100, Math.max(0, v)) * 10) / 10;
+  if (r < 0.1) return { newsScore: round1(score), disclosureScore: null };
+  if (r < 0.16) return { newsScore: null, disclosureScore: round1(score) };
+  // 0~100 밖으로 나가면 평균이 공통 점수와 어긋난다 — 양끝 여유만큼만 벌린다
+  const room = Math.min(22, score, 100 - score);
+  const spread = (rng() * 2 - 1) * room;
+  return { newsScore: round1(score + spread), disclosureScore: round1(score - spread) };
+}
+
 function buildEdges(): MockEdge[] {
   const rng = seededRandom(20260908);
   const seen = new Set<string>();
@@ -146,6 +167,7 @@ function buildEdges(): MockEdge[] {
       targetCompanyId: t.companyId,
       relationshipType: type,
       score: Math.round(score * 10) / 10,
+      ...components(score, rng),
       impactDirection: finalImpact,
       confidence: Math.round(confidence * 100) / 100,
       evidenceCount,

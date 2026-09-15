@@ -81,12 +81,6 @@ export interface WatchCompanyItem {
   primaryIndustry: IndustryRef;
   watchedAt: ISODateTime;
 }
-export interface WeightSetting {
-  newsWeight: number;
-  disclosureWeight: number;
-  updatedAt: ISODateTime | null;
-}
-
 /* ---------------------------- companies ---------------------------- */
 export interface CompanySummary {
   companyId: UUID;
@@ -230,8 +224,14 @@ export interface GraphEdge {
   sourceCompanyId: UUID;
   targetCompanyId: UUID;
   relationshipType: RelationshipType;
-  /** 0 ~ 100 */
+  /** 0 ~ 100. 시스템 기본 비율(뉴스 50 · 공시 50)로 계산한 공통 점수 */
   score: number;
+  /**
+   * 사용자가 화면에서 비율을 조절할 때 쓰는 구성 점수 (lib/score 의 blendScore).
+   * 근거가 없으면 null 이고, 서버가 아직 필드를 내려주지 않을 수 있어 선택 필드로 둔다 — 그때는 score 만 쓴다.
+   */
+  newsScore?: number | null;
+  disclosureScore?: number | null;
   impactDirection: ImpactDirection | null;
 }
 /** 은하 뷰가 행성 높이로 쓰는 등락률 기간 */
@@ -265,7 +265,6 @@ export interface LatestGraph {
 export interface LatestGraphParams {
   universe?: string;
   industryId?: UUID;
-  edgesPerCompany?: number;
 }
 export interface CompanyGraphNode {
   companyId: UUID;
@@ -282,9 +281,8 @@ export interface CompanyGraph {
   edges: GraphEdge[];
 }
 export interface CompanyGraphParams {
+  /** 1~3, 기본 3 (명세 Query Params) */
   maxDepth?: number;
-  neighborsPerNode?: number;
-  maxNodes?: number;
 }
 export interface RelationshipDetail {
   relationshipId: UUID;
@@ -293,7 +291,10 @@ export interface RelationshipDetail {
   relationshipType: RelationshipType;
   directionality: Directionality;
   window: MetricWindow;
+  /** 공통 점수 — 구성 점수는 GraphEdge 와 같은 규칙으로 화면에서만 섞는다 */
   score: number;
+  newsScore?: number | null;
+  disclosureScore?: number | null;
   impactDirection: ImpactDirection | null;
   confidence: number | null;
   evidenceCount: number;

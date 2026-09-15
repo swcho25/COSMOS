@@ -22,8 +22,6 @@ export interface CosmosApi {
     watchCompanies(params?: { cursor?: string; size?: number }): Promise<T.Page<T.WatchCompanyItem>>;
     addWatch(companyId: string): Promise<{ companyId: string; watchedAt: string }>;
     removeWatch(companyId: string): Promise<void>;
-    weightSetting(): Promise<T.WeightSetting>;
-    updateWeightSetting(newsWeight: number): Promise<T.WeightSetting>;
   };
   companies: {
     list(params?: T.CompanyListParams): Promise<T.Page<T.CompanySummary>>;
