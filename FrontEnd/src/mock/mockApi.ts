@@ -464,7 +464,8 @@ export const mockApi: CosmosApi = {
   graphs: {
     async latest(p) {
       await latency(260);
-      const perCompany = Math.min(5, Math.max(1, p?.edgesPerCompany ?? 5));
+      // 목업이 그래프를 만드는 방식일 뿐 요청 파라미터가 아니다 — 명세의 전체 그래프는 노드·간선 수 상한이 없다
+      const perCompany = 5;
       if (p?.industryId && !INDUSTRIES.some((i) => i.industryId === p.industryId)) fail(400, "VALIDATION_FAILED", "지원하지 않는 산업입니다.");
       const nodes = p?.industryId ? COMPANIES.filter((c) => c.industryId === p.industryId) : COMPANIES;
       const nodeIds = new Set(nodes.map((c) => c.companyId));
@@ -491,8 +492,9 @@ export const mockApi: CosmosApi = {
       const center = COMPANY_BY_ID.get(companyId);
       if (!center) fail(404, "COMPANY_NOT_FOUND", "기업을 찾을 수 없습니다.");
       const maxDepth = Math.min(3, Math.max(1, p?.maxDepth ?? 3));
-      const perNode = Math.min(5, Math.max(1, p?.neighborsPerNode ?? 3));
-      const maxNodes = Math.min(100, Math.max(2, p?.maxNodes ?? 100));
+      // 명세가 받는 파라미터는 maxDepth 뿐이다 — 아래 둘은 목업이 표본을 추리는 내부 기준
+      const perNode = 3;
+      const maxNodes = 100;
 
       const depth = new Map<string, number>([[companyId, 0]]);
       const order: string[] = [companyId];

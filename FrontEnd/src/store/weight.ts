@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { DEFAULT_NEWS_WEIGHT } from "@/lib/score";
 
 /**
  * 뉴스·공시 표시 비율 — 관계 점수를 화면에서 어떤 비율로 섞어 볼지 정한다.
@@ -8,8 +9,8 @@ import { create } from "zustand";
  * 로그인과 무관한 화면 설정이라 세션 스토어(store/session)와 섞지 않고 따로 둔다.
  */
 const KEY = "cosmos.weight.news";
-/** 뉴스 가중치 기본값 (0~1) — 공시 가중치는 언제나 1 - newsWeight 다 */
-export const DEFAULT_NEWS_WEIGHT = 0.5;
+// 기본값(0~1)은 점수 규칙과 같은 곳에서 온다 — 공시 가중치는 언제나 1 - newsWeight 다
+export { DEFAULT_NEWS_WEIGHT };
 
 const clamp = (v: number) => Math.min(1, Math.max(0, v));
 

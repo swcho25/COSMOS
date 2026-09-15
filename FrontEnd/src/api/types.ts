@@ -265,7 +265,6 @@ export interface LatestGraph {
 export interface LatestGraphParams {
   universe?: string;
   industryId?: UUID;
-  edgesPerCompany?: number;
 }
 export interface CompanyGraphNode {
   companyId: UUID;
@@ -282,9 +281,8 @@ export interface CompanyGraph {
   edges: GraphEdge[];
 }
 export interface CompanyGraphParams {
+  /** 1~3, 기본 3 (명세 Query Params) */
   maxDepth?: number;
-  neighborsPerNode?: number;
-  maxNodes?: number;
 }
 export interface RelationshipDetail {
   relationshipId: UUID;
