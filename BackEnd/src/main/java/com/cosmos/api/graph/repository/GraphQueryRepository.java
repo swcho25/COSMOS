@@ -96,7 +96,8 @@ public class GraphQueryRepository {
     public List<EdgeRow> findEdges(UUID snapshotId, String window) {
         return jdbcTemplate.query("""
                         SELECT cr.relationship_id, cr.source_company_id, cr.target_company_id,
-                               rt.code AS relationship_type, rsc.score, rsc.impact_direction
+                               rt.code AS relationship_type, rsc.score,
+                               rsc.news_score, rsc.disclosure_score, rsc.impact_direction
                         FROM relationship_score_current rsc
                         JOIN company_relationship cr ON cr.relationship_id = rsc.relationship_id
                         JOIN relationship_type rt
@@ -117,6 +118,8 @@ public class GraphQueryRepository {
                         rs.getObject("target_company_id", UUID.class),
                         rs.getString("relationship_type"),
                         rs.getBigDecimal("score"),
+                        rs.getBigDecimal("news_score"),
+                        rs.getBigDecimal("disclosure_score"),
                         rs.getString("impact_direction")));
     }
 
@@ -128,7 +131,8 @@ public class GraphQueryRepository {
                                target_company.company_id AS target_company_id,
                                target_company.name AS target_company_name,
                                rt.code AS relationship_type, rt.directionality,
-                               rsc.window_type, rsc.score, rsc.impact_direction,
+                               rsc.window_type, rsc.score, rsc.news_score,
+                               rsc.disclosure_score, rsc.impact_direction,
                                rsc.confidence, rsc.evidence_count, rsc.as_of_at
                         FROM company_relationship cr
                         JOIN company source_company ON source_company.company_id = cr.source_company_id
@@ -156,6 +160,8 @@ public class GraphQueryRepository {
                         rs.getString("directionality"),
                         rs.getString("window_type"),
                         rs.getBigDecimal("score"),
+                        rs.getBigDecimal("news_score"),
+                        rs.getBigDecimal("disclosure_score"),
                         rs.getString("impact_direction"),
                         rs.getBigDecimal("confidence"),
                         rs.getInt("evidence_count"),
@@ -235,6 +241,8 @@ public class GraphQueryRepository {
             UUID targetCompanyId,
             String relationshipType,
             BigDecimal score,
+            BigDecimal newsScore,
+            BigDecimal disclosureScore,
             String impactDirection
     ) {
     }
@@ -249,6 +257,8 @@ public class GraphQueryRepository {
             String directionality,
             String window,
             BigDecimal score,
+            BigDecimal newsScore,
+            BigDecimal disclosureScore,
             String impactDirection,
             BigDecimal confidence,
             int evidenceCount,

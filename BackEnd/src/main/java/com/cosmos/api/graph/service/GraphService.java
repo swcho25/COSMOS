@@ -120,6 +120,8 @@ public class GraphService {
                 row.directionality(),
                 row.window(),
                 row.score(),
+                row.newsScore(),
+                row.disclosureScore(),
                 row.impactDirection(),
                 row.confidence(),
                 row.evidenceCount(),
@@ -232,6 +234,7 @@ public class GraphService {
     private GraphEdgeResponse toEdge(EdgeRow row) {
         return new GraphEdgeResponse(
                 row.relationshipId(), row.sourceCompanyId(), row.targetCompanyId(),
-                row.relationshipType(), row.score(), row.impactDirection());
+                row.relationshipType(), row.score(), row.newsScore(), row.disclosureScore(),
+                row.impactDirection());
     }
 }
