@@ -1,4 +1,4 @@
-package com.cosmos.api.community.service;
+package com.cosmos.api.global.cursor;
 
 import com.cosmos.api.global.error.BusinessException;
 import com.cosmos.api.global.error.CommonErrorCode;
@@ -10,20 +10,21 @@ import org.springframework.stereotype.Component;
 
 /** 커서를 짧은 문자열로 바꾸고 되돌린다. 형식이 깨졌으면 400 INVALID_CURSOR. */
 @Component
-public class CommentCursorCodec {
+public class TimeIdCursorCodec {
 
     private static final int CURSOR_BYTES = Long.BYTES * 4;
 
-    public String encode(CommentCursor cursor) {
+    public String encode(TimeIdCursor cursor) {
         ByteBuffer buffer = ByteBuffer.allocate(CURSOR_BYTES);
-        buffer.putLong(cursor.createdAt().getEpochSecond());
-        buffer.putLong(cursor.createdAt().getNano());
-        buffer.putLong(cursor.commentId().getMostSignificantBits());
-        buffer.putLong(cursor.commentId().getLeastSignificantBits());
+        buffer.putLong(cursor.at().getEpochSecond());
+        buffer.putLong(cursor.at().getNano());
+        buffer.putLong(cursor.id().getMostSignificantBits());
+        buffer.putLong(cursor.id().getLeastSignificantBits());
         return Base64.getUrlEncoder().withoutPadding().encodeToString(buffer.array());
     }
 
-    public CommentCursor decode(String encodedCursor) {
+    /** 커서가 없으면(첫 페이지) null을 돌려준다. */
+    public TimeIdCursor decode(String encodedCursor) {
         if (encodedCursor == null || encodedCursor.isBlank()) {
             return null;
         }
@@ -38,7 +39,7 @@ public class CommentCursorCodec {
             if (nano < 0 || nano > 999_999_999) {
                 throw invalidCursor();
             }
-            return new CommentCursor(
+            return new TimeIdCursor(
                     Instant.ofEpochSecond(epochSecond, nano),
                     new UUID(buffer.getLong(), buffer.getLong()));
         } catch (IllegalArgumentException exception) {
