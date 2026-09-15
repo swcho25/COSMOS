@@ -6,7 +6,7 @@
 |---|---|---|
 | `news/` | 국내 뉴스·Yahoo Finance 수집, URL 중복 색인, Kafka 전달, HDFS Parquet Writer | [뉴스 README](news/README.md) |
 | `disclosures/dart/` | OpenDART 수집·재개, 원본 ZIP 처리, HDFS 스냅샷 생성·검증·업로드 | [DART README](disclosures/dart/README.md) |
-| `disclosures/sec/` | Nasdaq-100 SEC EDGAR 배치 수집·재개, HDFS 업로드·검증 | [SEC README](disclosures/sec/README.md) |
+| `disclosures/sec/` | Nasdaq-100 SEC EDGAR 배치·증분 수집, 5분 주기 재조회, HDFS 업로드·검증 | [SEC README](disclosures/sec/README.md) |
 
 각 모듈의 README를 기준으로 해당 폴더에서 의존성을 설치하고 실행한다. 웹 FrontEnd/BackEnd의 패키지 설치나 이전 AWS RDS 연결을 공통 실행 조건으로 삼지 않는다. HDFS 기능은 별도로 Hadoop 클라이언트·Java와 클러스터 접근 설정이 필요하다.
 
@@ -34,7 +34,7 @@ OpenDART / SEC EDGAR
 - 뉴스는 최신 목록과 미수집 기사·과거 기간을 순환한다. 모든 속보를 발행 즉시 수집하는 방식은 아니다. HelloT는 기존 기사 번호 범위 수집이며 일부 `article_not_found` 재시도가 있다.
 - DART는 기존 키를 사용하는 별도 일별 수집기와 매시간 timer를 Master에 설치했다. 최초 실검증에서 2026-09-15 공시 11건을 HDFS에 저장하고 전체 파일 크기·SHA-256을 검증했다. 원천 미제공·빈 본문은 pending으로 재시도한다.
 - DART 과거 배치에서 HDFS에 미반영된 13,741건을 recovery delta로 업로드하고 30개 파일 전체 크기·SHA-256을 검증했다(2026-09-15 14:00 KST). 원천 ZIP 손상과 기존 baseline의 빈 XML 1건은 보존하고 품질 예외로 기록했다.
-- SEC는 기존 배치 수집본과 새 주기 수집 코드·service/timer가 준비되어 있다. 운영자의 실제 연락처 설정을 받기 전에는 서비스를 활성화하지 않는다.
+- SEC는 운영자 연락처를 비공개 설정에 적용한 뒤 2026-09-15 14:35 KST에 증분 수집과 timer를 활성화했다. 기존 101개 CIK의 주요 공시를 조회하며, 이전 실행 종료 5분 뒤 다시 실행한다. 최초 실검증(14:37 KST)에서 신규 26건 중 1건의 HDFS 게시·SHA-256 검증을 확인했고 나머지 25건은 당시 수집 중이었다. 초기 적체와 실행 시간이 있어 발행 즉시 반영을 보장하지 않는다.
 
 뉴스의 기존 운영 서비스를 유지하면서 공시 주기 수집을 별도 service/timer로 관리한다. 코드 release와 큐·상태·키를 다른 경로에 두며 실제 적용 시 각 모듈의 재개·중복 처리 절차를 따른다. 최신 공시 실행·복구 절차는 [DART 운영 문서](disclosures/dart/docs/daily-polling.md)와 [SEC 운영 문서](disclosures/sec/README.md)를 참고한다.
 
