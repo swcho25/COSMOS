@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import type { Market } from "@/api/types";
 import { fmtDateTime } from "@/lib/format";
-import { useCompanyDirectory, useIndustries, useLatestGraph, useToggleWatch, useWatchlist } from "@/lib/queries";
+import { useCompanyDirectory, useIndustries, useLatestGraph, useToggleWatch, useWatchedSet, useWatchlist } from "@/lib/queries";
 import { useSession } from "@/store/session";
 import { useUi } from "@/store/ui";
 import { CompanyAvatar, Empty, Icon, IndustryBadge, MarketTag, ScoreBar, Skeleton } from "@/components/ui";
@@ -43,6 +43,7 @@ export default function CompaniesPage() {
   const universe = useLatestGraph(null);
   const watchlist = useWatchlist();
   const toggleWatch = useToggleWatch();
+  const watchedSet = useWatchedSet();
   const dir = useCompanyDirectory({ keyword: keyword || undefined, market: market || undefined, industryId: industryId || undefined, size: 40 });
   const rows = useMemo(() => dir.data?.pages.flatMap((p) => p.items) ?? [], [dir.data]);
 
@@ -86,11 +87,11 @@ export default function CompaniesPage() {
         <div>
           <span className="pill">기업 데이터</span>
           <h1>연결 기업 데이터</h1>
-          <p>최신 스냅샷의 관계 그래프에 포함된 {universe.data?.nodes.length ?? "…"}개 기업의 연결 관계와 관계 점수를 조회합니다.</p>
+          <p>최신 스냅샷의 관계 그래프에 포함된 {universe.data?.nodes.length ?? (universe.isError ? 0 : "…")}개 기업의 연결 관계와 관계 점수를 조회합니다.</p>
         </div>
         <span className="status-line">
           <i className="dot" />
-          {universe.data ? `스냅샷 ${fmtDateTime(universe.data.asOfAt)} 기준` : "스냅샷 확인 중"}
+          {universe.data ? `스냅샷 ${fmtDateTime(universe.data.asOfAt)} 기준` : universe.isError ? "공개된 관계 스냅샷 없음 — 분석 결과 게시 전" : "스냅샷 확인 중"}
         </span>
       </div>
 
@@ -112,11 +113,11 @@ export default function CompaniesPage() {
                 const s = stats.get(w.companyId);
                 return (
                   <button key={w.companyId} type="button" className="watch-item" onClick={() => openPreview(w.companyId)}>
-                    <CompanyAvatar name={w.name} stockCode={w.stockCode} industry={w.primaryIndustry.name} size={40} />
+                    <CompanyAvatar name={w.name} stockCode={w.stockCode} industry={w.primaryIndustry?.name} size={40} />
                     <span className="grow">
                       <b>{w.name}</b>
                       <span className="meta num">
-                        {w.primaryIndustry.name} · 관계 {s?.count ?? 0}개
+                        {[w.primaryIndustry?.name, `관계 ${s?.count ?? 0}개`].filter(Boolean).join(" · ")}
                       </span>
                     </span>
                   </button>
@@ -218,11 +219,12 @@ export default function CompaniesPage() {
                   )}
                   {sortedRows.map((c) => {
                     const s = stats.get(c.companyId);
+                    const watched = c.watched || watchedSet.has(c.companyId);
                     return (
                       <tr key={c.companyId} className="row-btn" onClick={() => openPreview(c.companyId)} tabIndex={0} onKeyDown={(e) => e.key === "Enter" && openPreview(c.companyId)}>
                         <td>
                           <div className="co">
-                            <CompanyAvatar name={c.name} stockCode={c.stockCode} industry={c.primaryIndustry.name} size={36} />
+                            <CompanyAvatar name={c.name} stockCode={c.stockCode} industry={c.primaryIndustry?.name} size={36} />
                             <div>
                               <b>{c.name}</b>
                               {/* 종목코드·영문명은 선택 필드라 없는 값은 구분점째로 접는다 */}
@@ -231,7 +233,7 @@ export default function CompaniesPage() {
                           </div>
                         </td>
                         <td>
-                          <IndustryBadge name={c.primaryIndustry.name} />
+                          <IndustryBadge name={c.primaryIndustry?.name} />
                         </td>
                         <td>
                           <MarketTag market={c.market} />
@@ -251,15 +253,15 @@ export default function CompaniesPage() {
                         <td className="right">
                           <button
                             type="button"
-                            className={`star-btn ${c.watched ? "on" : ""}`}
-                            aria-label={c.watched ? "관심 해제" : "관심 등록"}
+                            className={`star-btn ${watched ? "on" : ""}`}
+                            aria-label={watched ? "관심 해제" : "관심 등록"}
                             onClick={(e) => {
                               e.stopPropagation();
                               if (!authed) return openAuth("login");
-                              toggleWatch.mutate({ companyId: c.companyId, watched: c.watched });
+                              toggleWatch.mutate({ companyId: c.companyId, watched });
                             }}
                           >
-                            <Icon.Star filled={c.watched} />
+                            <Icon.Star filled={watched} />
                           </button>
                         </td>
                       </tr>

@@ -63,10 +63,11 @@ export interface Me {
 export interface ScrapItem {
   newsId: UUID;
   title: string;
-  summary: string;
-  publisher: string;
+  /** 뉴스 목록(NewsItem)과 같은 원본 컬럼 — 요약·매체·발행 시각은 NULL 허용 */
+  summary: string | null;
+  publisher: string | null;
   originalUrl: string;
-  publishedAt: ISODateTime;
+  publishedAt: ISODateTime | null;
   scrappedAt: ISODateTime;
 }
 export interface IndustryRef {
@@ -78,7 +79,8 @@ export interface WatchCompanyItem {
   name: string;
   stockCode: string | null;
   market: Market;
-  primaryIndustry: IndustryRef;
+  /** 대표 산업이 지정되지 않은 기업은 null (WatchCompanyItemResponse 주석) */
+  primaryIndustry: IndustryRef | null;
   watchedAt: ISODateTime;
 }
 /* ---------------------------- companies ---------------------------- */
@@ -88,7 +90,8 @@ export interface CompanySummary {
   nameEn: string | null;
   stockCode: string | null;
   market: Market;
-  primaryIndustry: IndustryRef;
+  /** 대표 산업이 지정되지 않은 기업은 null (백엔드 company_industry.is_primary 미지정) */
+  primaryIndustry: IndustryRef | null;
   watched: boolean;
 }
 export interface CompanyIndustry extends IndustryRef {
@@ -105,7 +108,7 @@ export interface CompanyDetail {
   watched: boolean;
   /**
    * 시가총액·상장주식수는 V1 DDL 의 company 테이블에도 명세 응답에도 없다.
-   * 백엔드가 열어 줄 때 화면이 그대로 받을 수 있도록 선택 필드로만 자리를 둔다(목업은 채운다).
+   * 백엔드가 열어 줄 때 화면이 그대로 받을 수 있도록 선택 필드로만 자리를 둔다 — 지금은 항상 undefined 이고 화면은 그 칸을 접는다.
    */
   marketCap?: number | null;
   listedShares?: number | null;
@@ -152,7 +155,8 @@ export interface StockPrices {
   period: PricePeriod;
   /** MVP 는 1D 만 지원하지만 stock_price_history.interval_type 은 자유값이라 확장을 열어 둔다. */
   interval: "1D" | (string & {});
-  asOfAt: ISODateTime;
+  /** 명세는 항상 값이 있다고 하지만 백엔드는 시계열이 없는 기업에 null 을 내려준다 (items: []) */
+  asOfAt: ISODateTime | null;
   items: Candle[];
 }
 export interface Industry {
@@ -182,12 +186,14 @@ export interface NewsItem {
   publisher: string | null;
   originalUrl: string;
   publishedAt: ISODateTime | null;
-  sentiment: Sentiment;
+  /** AI 감성 분석이 아직 돌지 않은 기사는 null 로 온다 (document_analysis 미적재) */
+  sentiment: Sentiment | null;
   relatedCompanies: CompanyRef[];
   scrapped: boolean;
 }
 export interface NewsRelatedCompany extends CompanyRef {
-  sentiment: Sentiment;
+  /** 기업별 감성도 분석 전에는 null */
+  sentiment: Sentiment | null;
   relevanceScore: number | null;
   impactScore: number | null;
 }
@@ -241,7 +247,8 @@ export interface LatestGraphNode {
   name: string;
   stockCode: string | null;
   market: Market;
-  industryName: string;
+  /** 대표 산업이 없는 기업은 null — 은하 배치(lib/graph)는 '미분류' 성단으로 모은다 */
+  industryName: string | null;
   /**
    * 기간별 주가 등락률(퍼센트, 예 -3.2). 은하 뷰의 행성 높이가 이 값을 쓴다.
    * 서버가 아직 내려주지 않을 수 있어 선택 필드이고, 시계열이 없는 기업은 null 이다 (README '백엔드에 확인이 필요한 항목').

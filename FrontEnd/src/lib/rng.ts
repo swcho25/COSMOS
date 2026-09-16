@@ -26,7 +26,7 @@ export function gaussian(rng: () => number) {
   return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
 }
 
-/** 문자열 시드에서 UUID v4 형태의 안정적인 식별자를 만든다 (목업용). */
+/** 문자열 시드에서 UUID v4 형태의 안정적인 식별자를 만든다 — 클라이언트에서 파생한 스냅샷(내 은하) 의 id 에 쓴다. */
 export function stableUuid(seed: string) {
   const r = seededRandom(hashString(seed));
   const hex = () => Math.floor(r() * 16).toString(16);

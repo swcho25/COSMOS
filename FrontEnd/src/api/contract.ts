@@ -1,8 +1,8 @@
 import type * as T from "./types";
 
 /**
- * 프론트가 백엔드에 기대하는 호출 계약. live(실 API)와 mock(브라우저 내 생성) 두 구현이 있다.
- * 화면 코드는 이 인터페이스만 의존하므로 백엔드 연동 시 api/index.ts 의 선택만 바뀐다.
+ * 프론트가 백엔드에 기대하는 호출 계약 (docs/api-specification.md). 구현은 api/live.ts 하나다.
+ * 화면 코드는 이 인터페이스만 의존하므로 경로·응답 보정은 live.ts 한 곳에서만 다룬다.
  */
 export interface CosmosApi {
   auth: {

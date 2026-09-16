@@ -4,7 +4,7 @@
  */
 import type { CompanyGraph, GraphEdge, LatestGraph, LatestGraphNode, Market, RelationshipType } from "@/api/types";
 import { ARMS, ARM_SPREAD, CORE_Y, DISC_Y, R_CORE, R_MAX, armTheta, nearestArm } from "./galaxyShape";
-import { INDUSTRY_COLORS, industryColor, relationshipMeta } from "./meta";
+import { INDUSTRY_COLORS, UNCLASSIFIED_INDUSTRY, industryColor, relationshipMeta } from "./meta";
 import { gaussian, hashString, seededRandom } from "./rng";
 
 export type Vec3 = [number, number, number];
@@ -73,6 +73,8 @@ export interface SceneModel {
 }
 
 const INDUSTRY_ORDER = Object.keys(INDUSTRY_COLORS);
+/** 대표 산업이 없는 노드(industryName: null)는 '미분류' 성단 하나로 모은다 — 성단 키가 null 이면 팔 배정·색이 깨진다 */
+const industryNameOf = (n: { industryName: string | null }) => n.industryName ?? UNCLASSIFIED_INDUSTRY;
 
 function weightedDegree(edges: GraphEdge[]) {
   const deg = new Map<string, number>();
@@ -308,9 +310,9 @@ export function layoutGalaxy(graph: LatestGraph, capT: CapScale = capScale(graph
   const maxMass = Math.max(1e-6, massOf(ranked[0].companyId));
 
   /* 2) 산업 → 팔 (그리디). 산업 간 간선 가중치 합이 큰 산업끼리 같은 팔에서 출발한다 */
-  const industryOf = new Map(graph.nodes.map((c) => [c.companyId, c.industryName]));
+  const industryOf = new Map(graph.nodes.map((c) => [c.companyId, industryNameOf(c)]));
   const groups = new Map<string, number>();
-  graph.nodes.forEach((c) => groups.set(c.industryName, (groups.get(c.industryName) ?? 0) + 1));
+  graph.nodes.forEach((c) => groups.set(industryNameOf(c), (groups.get(industryNameOf(c)) ?? 0) + 1));
   const industries = [...groups.keys()].sort((a, b) => {
     const ia = INDUSTRY_ORDER.indexOf(a);
     const ib = INDUSTRY_ORDER.indexOf(b);
@@ -402,7 +404,7 @@ export function layoutGalaxy(graph: LatestGraph, capT: CapScale = capScale(graph
       r = rStart + (rOuter - rStart) * Math.sqrt((i - coreCount) / Math.max(1, n - coreCount));
       r = Math.max(rStart, Math.min(rOuter, r * (1 + (rng() * 2 - 1) * RADIUS_JITTER)));
       interArm[i] = rng() < INTER_ARM_SHARE ? 1 : 0;
-      const arm = armOf.get(c.industryName) ?? 0;
+      const arm = armOf.get(industryNameOf(c)) ?? 0;
       // 각도 산포는 반지름에 비례(ARM_SPREAD)해 팔이 바깥으로 갈수록 넓어진다
       th = (single ? phase + (i / n) * Math.PI * 2 : armTheta(arm, r)) + gaussian(rng) * ARM_SPREAD(r);
     }
@@ -553,7 +555,7 @@ export function layoutGalaxy(graph: LatestGraph, capT: CapScale = capScale(graph
     nodes.push({
       id: c.companyId,
       name: c.name,
-      industry: c.industryName,
+      industry: industryNameOf(c),
       market: c.market,
       stockCode: c.stockCode,
       color: industryColor(c.industryName),
@@ -613,7 +615,7 @@ const RING_GAP = 24;
  * 기업 중심 배치가 산업·시장·종목코드·시가총액 순위를 채우는 데 쓰는 조회 함수 (전체 우주 스냅샷에서 만든다).
  * capT 는 capScale 로 만든 0~1 척도 — 은하 뷰와 같은 척도라야 워프 전후로 행성 크기가 튀지 않는다
  */
-export type CompanyLookup = (id: string) => { name?: string; industryName: string; market: Market; stockCode: string | null; capT?: number } | undefined;
+export type CompanyLookup = (id: string) => { name?: string; industryName: string | null; market: Market; stockCode: string | null; capT?: number } | undefined;
 
 export function layoutSystem(graph: CompanyGraph, lookup: CompanyLookup): SceneModel {
   const rng = seededRandom(hashString(graph.snapshotId + graph.centerCompanyId));
@@ -705,7 +707,7 @@ export function layoutSystem(graph: CompanyGraph, lookup: CompanyLookup): SceneM
     nodes.push({
       id: n.companyId,
       name: n.name,
-      industry: info?.industryName ?? "",
+      industry: info?.industryName ?? UNCLASSIFIED_INDUSTRY,
       market: info?.market ?? "",
       stockCode: info?.stockCode ?? null,
       color: industryColor(info?.industryName),

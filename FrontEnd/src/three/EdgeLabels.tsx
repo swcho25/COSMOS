@@ -12,6 +12,7 @@ import { bezier, CHORD_CLEAR, controlPoint, radiusOf } from "./edgeCurve";
 import type { Emphasis } from "./emphasis";
 import { liveFor, morphState } from "./morph";
 import { ensureNameCell, nameAtlasTexture, type NameCell } from "./nameAtlas";
+import { spreadDim, spreadGate } from "./spread";
 
 interface Props {
   model: SceneModel;
@@ -69,13 +70,14 @@ interface Selected {
   aspect: number;
 }
 
-/** 워프·모프·주가 고도 전이 중에는 간선 자체가 숨어 있다 — 그 위의 라벨도 같은 규칙으로 숨긴다 (EdgeArrows 와 동일 기준) */
+/** 워프·모프·주가 고도·펼치기 전이 중에는 간선 자체가 숨어 있다 — 그 위의 라벨도 같은 규칙으로 숨긴다 (EdgeArrows 와 동일 기준) */
 function labelsOpen() {
   const s = useGalaxy.getState();
   if (!s.showEdgeLabels || s.phase === "warp" || morphState.plan) return false;
   if (morphState.reveal < 0.99) return false;
   const alt = altitudeGate();
-  return alt.fade >= 0.99 && alt.reveal >= 0.99;
+  const sp = spreadGate();
+  return alt.fade >= 0.99 && alt.reveal >= 0.99 && sp.fade >= 0.99 && sp.reveal >= 0.99 && spreadDim() >= 0.99;
 }
 
 /**

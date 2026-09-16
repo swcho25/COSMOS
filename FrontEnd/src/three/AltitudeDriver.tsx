@@ -4,6 +4,7 @@ import type { SceneModel } from "@/lib/graph";
 import { useGalaxy } from "@/store/galaxy";
 import { ALT_FADE, ALT_MOVE, ALT_TOTAL, altitudeState, targetY } from "./altitude";
 import { dragState, liveFor, morphState } from "./morph";
+import { spreadState } from "./spread";
 
 interface Props {
   model: SceneModel;
@@ -82,6 +83,12 @@ export default function AltitudeDriver({ model }: Props) {
     // 워프 낙하 중에는 sampleMorph 가 live 의 주인이다 — 여기서 y 를 쓰면 서로 덮어쓰고, 착지 뒤 목표가 반영되지 않는다.
     // applied 를 비운 채로 빠져나가므로 착지한 다음 프레임에 즉시 적용된다 (은하로 돌아온 경우)
     if (morphState.plan) {
+      rig.lastVersion = dragState.version;
+      return;
+    }
+    // 펼치기가 켜져 있으면(전이 중이거나 이미 0 이 아닌 값을 반영했으면) 고도는 손을 뗀다 —
+    // SpreadDriver 의 base 가 지금 고도를 이미 포함하고 있어서, 펼치기가 0 으로 돌아오면 그 base 로 정확히 복귀한다(팝 없음)
+    if (spreadState.animating || s.spread > 0 || spreadState.applied > 0) {
       rig.lastVersion = dragState.version;
       return;
     }

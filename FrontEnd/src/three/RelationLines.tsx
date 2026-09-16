@@ -7,6 +7,7 @@ import { touch } from "./bufferUtil";
 import { bezier, CHORD_CLEAR, controlPoint, radiusOf } from "./edgeCurve";
 import type { Emphasis } from "./emphasis";
 import { dragState, liveFor, morphState, type LiveTransform } from "./morph";
+import { spreadDim, spreadGate, spreadState } from "./spread";
 import { beamColorFor } from "./toon";
 
 /** 튜브 길이 방향 분할, 둘레 분할, 간선당 빛 구슬 수 */
@@ -363,15 +364,17 @@ export default function RelationLines({ edges, emphasis, model, onHover, onSelec
         follow.catchUp = false;
         follow.version = dragState.version;
         followEdges(built, edges, adjacency, nodeIndex, live, clear, dragState.dirty);
-      } else if (follow.catchUp && !altitudeState.animating) {
-        // 따라잡기는 live 가 가만히 있을 때만 — 고도 전이 중의 중간 높이를 굽지 않는다
+      } else if (follow.catchUp && !altitudeState.animating && !spreadState.animating) {
+        // 따라잡기는 live 가 가만히 있을 때만 — 고도·펼치기 전이 중의 중간 좌표를 굽지 않는다
         follow.catchUp = false;
         followEdges(built, edges, adjacency, nodeIndex, live, clear, movedNodes(model, live));
       }
     }
-    tubeUniforms.uDim.value = intensity;
-    haloUniforms.uDim.value = intensity;
-    pulseUniforms.uDim.value = intensity;
+    // 펼치기 정렬 단계에서는 격자 위의 선이 관계가 아니라 잡음이라 슬라이더를 따라 즉시 흐려진다 (미니 씬은 warpFx=false 라 그대로 1)
+    const spreadIntensity = warpFx ? spreadDim() : 1;
+    tubeUniforms.uDim.value = intensity * spreadIntensity;
+    haloUniforms.uDim.value = intensity * spreadIntensity;
+    pulseUniforms.uDim.value = intensity * spreadIntensity;
     // 포인트 크기를 화면 높이에 맞춘다 (fov 고정 가정)
     pulseUniforms.uScale.value = state.size.height * 0.62;
 
@@ -382,15 +385,16 @@ export default function RelationLines({ edges, emphasis, model, onHover, onSelec
       gate = { born: state.clock.elapsedTime, reveal: warpFx ? 0 : 1 };
       GATES.set(built, gate);
     }
-    // 주가 고도 전이도 같은 게이트를 쓴다 — 행성이 높이를 바꾸는 동안 빔을 끄고(fade·reveal 0), 다 옮긴 뒤 한 번 다시 구워 리빌한다.
-    // 워프 연출과 같은 축이라 둘 중 더 감춘 쪽을 따른다. 미니 씬(warpFx=false)은 어느 쪽에도 반응하지 않는다
+    // 주가 고도·펼치기 전이도 같은 게이트를 쓴다 — 행성이 움직이는 동안 빔을 끄고(fade·reveal 0), 다 옮긴 뒤 한 번 다시 구워 리빌한다.
+    // 워프 연출과 같은 축이라 셋 중 가장 감춘 쪽을 따른다. 미니 씬(warpFx=false)은 어느 쪽에도 반응하지 않는다
     const alt = warpFx ? altitudeGate() : { fade: 1, reveal: 1 };
+    const sp = warpFx ? spreadGate() : { fade: 1, reveal: 1 };
     const reveal = (gate.reveal = !warpFx
       ? 1
       : morphState.plan
         ? 0
-        : Math.min(morphState.reveal, alt.reveal, smoothstep(AGE_IN[0], AGE_IN[1], state.clock.elapsedTime - gate.born)));
-    const fade = warpFx ? Math.min(morphState.fade, alt.fade) : 1;
+        : Math.min(morphState.reveal, alt.reveal, sp.reveal, smoothstep(AGE_IN[0], AGE_IN[1], state.clock.elapsedTime - gate.born)));
+    const fade = warpFx ? Math.min(morphState.fade, alt.fade, sp.fade) : 1;
     tubeUniforms.uFade.value = fade;
     haloUniforms.uFade.value = fade;
     tubeUniforms.uReveal.value = reveal;

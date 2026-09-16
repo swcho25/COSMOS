@@ -1,4 +1,4 @@
-import { useCallback } from "react";
+import { useCallback, useMemo } from "react";
 import { keepPreviousData, useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/api";
 import type * as T from "@/api/types";
@@ -197,6 +197,16 @@ export function useWatchlist() {
   const k = useKey();
   const authed = useAuthed();
   return useQuery({ queryKey: ["me", "watchlist", k], queryFn: () => api.users.watchCompanies({ size: 100 }), enabled: authed });
+}
+/**
+ * 관심 여부의 기준. 명세는 기업 목록·상세의 `watched` 를 "유효한 토큰이 오면 채운다" 로 두지만, 백엔드 CompanyController 가
+ * 아직 인증 주체를 받지 않아 로그인해도 항상 false 를 내려준다(README '실 응답과 명세의 차이'). 내 관심 목록
+ * (/users/me/watch-companies)은 정확하므로 둘을 합쳐 판단한다 — 서버가 고쳐지면 목록 없이도 같은 결과가 나온다.
+ * 게스트는 관심 목록 쿼리가 꺼져 있어 빈 집합이다.
+ */
+export function useWatchedSet() {
+  const watchlist = useWatchlist();
+  return useMemo(() => new Set(watchlist.data?.items.map((w) => w.companyId) ?? []), [watchlist.data]);
 }
 export function useScraps() {
   const k = useKey();

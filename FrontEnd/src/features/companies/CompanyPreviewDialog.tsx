@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import { fmtCompactPrice, fmtDateTime, fmtNumber } from "@/lib/format";
 import { marketCurrency } from "@/lib/meta";
-import { useCompany, useCompanyMetrics, useToggleWatch } from "@/lib/queries";
+import { useCompany, useCompanyMetrics, useToggleWatch, useWatchedSet } from "@/lib/queries";
 import { useSession } from "@/store/session";
 import { useUi } from "@/store/ui";
 import { CompanyAvatar, Icon, IndustryBadge, Kpi, MarketTag, Skeleton } from "@/components/ui";
@@ -25,6 +25,7 @@ export default function CompanyPreviewDialog({ companyId, onClose, onOpenGalaxy 
   const company = useCompany(companyId);
   const metrics = useCompanyMetrics(companyId, "30D");
   const toggleWatch = useToggleWatch();
+  const watchedSet = useWatchedSet();
 
   useEffect(() => {
     if (!companyId) return;
@@ -35,6 +36,8 @@ export default function CompanyPreviewDialog({ companyId, onClose, onOpenGalaxy 
 
   if (!companyId) return null;
   const c = company.data;
+  // 백엔드 기업 상세의 watched 가 아직 항상 false 라 내 관심 목록과 합쳐 판단한다 (queries.useWatchedSet)
+  const watched = Boolean(c?.watched) || watchedSet.has(companyId);
 
   return (
     <div className="scrim" onMouseDown={(e) => e.target === e.currentTarget && onClose()} role="presentation">
@@ -61,7 +64,10 @@ export default function CompanyPreviewDialog({ companyId, onClose, onOpenGalaxy 
                   {c.name}
                 </div>
                 <div className="meta num mt-8">
-                  {c.nameEn} · {c.stockCode} · <MarketTag market={c.market} />
+                  {/* 영문명·종목코드는 선택 필드 — 없는 값은 구분점째 접는다 */}
+                  {[c.nameEn, c.stockCode].filter(Boolean).join(" · ")}
+                  {c.market && (c.nameEn || c.stockCode) ? " · " : ""}
+                  <MarketTag market={c.market} />
                 </div>
                 <div className="row wrap mt-8" style={{ gap: 6 }}>
                   {c.industries.map((i) => (
@@ -71,18 +77,18 @@ export default function CompanyPreviewDialog({ companyId, onClose, onOpenGalaxy 
               </div>
               <button
                 type="button"
-                className={`btn btn-g btn-sm ${c.watched ? "on" : ""}`}
-                style={{ color: c.watched ? "var(--primary-2)" : undefined, flex: "none" }}
+                className={`btn btn-g btn-sm ${watched ? "on" : ""}`}
+                style={{ color: watched ? "var(--primary-2)" : undefined, flex: "none" }}
                 onClick={() =>
                   authed
                     ? toggleWatch.mutate(
-                        { companyId: c.companyId, watched: c.watched },
+                        { companyId: c.companyId, watched: watched },
                         { onSuccess: (now) => toast(now ? "관심 기업으로 등록했습니다." : "관심 기업에서 해제했습니다.", "success") },
                       )
                     : openAuth("login")
                 }
               >
-                <Icon.Star filled={c.watched} /> {c.watched ? "관심" : "관심 +"}
+                <Icon.Star filled={watched} /> {watched ? "관심" : "관심 +"}
               </button>
             </div>
 
