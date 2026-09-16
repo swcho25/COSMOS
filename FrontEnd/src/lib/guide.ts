@@ -143,7 +143,6 @@ export const DOCK_UI = {
   advancedTitle: "뉴스·공시 비율 · 최소 점수 · 주가 고도",
   mix: "뉴스 · 공시",
   mixTitle: "이 비율로 관계 점수를 다시 섞습니다 (이 탭에서만 유지)",
-  mixReset: "50 : 50",
   minScore: "최소 점수",
   altitude: "주가 고도",
   altitudeTitle: "기간 등락률만큼 행성을 원반 위·아래로 띄웁니다",

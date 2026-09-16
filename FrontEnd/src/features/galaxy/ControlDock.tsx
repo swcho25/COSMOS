@@ -5,7 +5,7 @@ import { DOCK_UI } from "@/lib/guide";
 import { RELATIONSHIP_ORDER, relationshipMeta } from "@/lib/meta";
 import { spreadStage } from "@/lib/spread";
 import { useGalaxy } from "@/store/galaxy";
-import { DEFAULT_NEWS_WEIGHT, pct, useWeight } from "@/store/weight";
+import { pct, useWeight } from "@/store/weight";
 import "./dock.css";
 
 /**
@@ -61,7 +61,6 @@ export default function ControlDock() {
   const stage = spreadStage(spread);
   const inGalaxyView = focusId === null;
   const newsWeightPct = pct(newsWeight);
-  const isMixDefault = newsWeight === DEFAULT_NEWS_WEIGHT;
 
   function commitSpread(v: number) {
     setSpread(v / 100);
@@ -143,11 +142,6 @@ export default function ControlDock() {
                   뉴스 <b>{newsWeightPct}</b> · 공시 <b>{100 - newsWeightPct}</b>
                 </span>
                 <input type="range" min={0} max={100} step={1} value={newsWeightPct} onChange={(e) => setNewsWeight(Number(e.target.value) / 100)} title={DOCK_UI.mixTitle} aria-label={DOCK_UI.mix} />
-                {!isMixDefault && (
-                  <button type="button" className="btn btn-xs dock-mix-reset" onClick={() => useWeight.getState().reset()}>
-                    {DOCK_UI.mixReset}
-                  </button>
-                )}
               </div>
 
               <div className="dock-row dock-minscore">
