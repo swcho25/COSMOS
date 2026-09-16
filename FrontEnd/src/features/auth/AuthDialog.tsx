@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent as ReactKeyboardEvent } from "react";
-import { API_MODE, ApiError, api } from "@/api";
+import { ApiError, api } from "@/api";
 import { useSession } from "@/store/session";
 import { useUi } from "@/store/ui";
 import { Icon } from "@/components/ui";
@@ -268,11 +268,6 @@ function LoginForm() {
             회원가입
           </button>
         </div>
-        {API_MODE === "mock" && (
-          <div className="hint" style={{ borderTop: "1px solid var(--border)", paddingTop: 12 }}>
-            체험 계정 · <code>demo@cosmos.dev</code> / <code>cosmos123</code>
-          </div>
-        )}
       </div>
     </form>
   );

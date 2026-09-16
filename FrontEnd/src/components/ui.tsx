@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { ImpactDirection, Market, RelationshipType, Sentiment } from "@/api/types";
-import { IMPACT_META, RELATIONSHIP_ORDER, SENTIMENT_META, industryColor, relationshipMeta } from "@/lib/meta";
+import { IMPACT_META, RELATIONSHIP_ORDER, SENTIMENT_META, SENTIMENT_PENDING, UNCLASSIFIED_INDUSTRY, industryColor, relationshipMeta } from "@/lib/meta";
 import { initials } from "@/lib/format";
 import { logoUrl } from "@/lib/logos";
 import { ROLE_META, roleColor, type RoleKey } from "@/lib/roles";
@@ -25,8 +25,9 @@ export function CompanyAvatar({ name, stockCode, industry, size = 44, radius }: 
 }
 
 /* ------------------------------ 배지 ------------------------------ */
-export function SentimentBadge({ value, compact = false }: { value: Sentiment; compact?: boolean }) {
-  const m = SENTIMENT_META[value] ?? SENTIMENT_META.NEUTRAL;
+/** sentiment 는 분석 전이면 null 이다 — 그때는 중립이 아니라 '분석 전' 톤으로 그린다 */
+export function SentimentBadge({ value, compact = false }: { value: Sentiment | null | undefined; compact?: boolean }) {
+  const m = (value && SENTIMENT_META[value]) ?? SENTIMENT_PENDING;
   return (
     <span className="badge" style={{ background: m.bg, color: m.fg }}>
       <i className="dot" style={{ background: m.color }} />
@@ -54,11 +55,13 @@ export function TypeBadge({ type, directed }: { type: RelationshipType; directed
     </span>
   );
 }
-export function IndustryBadge({ name }: { name: string }) {
-  const c = industryColor(name);
+/** 대표 산업이 없는 기업(primaryIndustry: null)은 '미분류' 로 표시한다 */
+export function IndustryBadge({ name }: { name: string | null | undefined }) {
+  const label = name || UNCLASSIFIED_INDUSTRY;
+  const c = industryColor(label);
   return (
     <span className="badge" style={{ background: `${c}22`, color: c }}>
-      {name}
+      {label}
     </span>
   );
 }
@@ -76,7 +79,9 @@ export function RoleBadge({ role, count, on = false, dimmed = false, title, onCl
     </button>
   );
 }
-export function MarketTag({ market }: { market: Market }) {
+/** 시장 코드가 비어 있으면(백엔드가 "" 로 내려주는 기업) 빈 칸 대신 아무것도 그리지 않는다 */
+export function MarketTag({ market }: { market: Market | null | undefined }) {
+  if (!market) return null;
   return (
     <span className="meta num" style={{ fontFamily: "var(--mono)", fontSize: 11, letterSpacing: "0.04em" }}>
       {market}

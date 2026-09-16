@@ -3,8 +3,8 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import type { GraphEdge, LatestGraph, LatestGraphNode, NewsDetail, NewsRelatedCompany, RelationshipType, Sentiment } from "@/api/types";
 import { fmtDateTime, fmtRelative, josa } from "@/lib/format";
-import { SENTIMENTS, SENTIMENT_META, marketLabel, relationshipMeta } from "@/lib/meta";
-import { useCompany, useIndustries, useLatestGraph, useNewsDetail, useNewsFeed, useToggleScrap, useToggleWatch } from "@/lib/queries";
+import { SENTIMENTS, SENTIMENT_META, UNCLASSIFIED_INDUSTRY, marketLabel, relationshipMeta } from "@/lib/meta";
+import { useCompany, useIndustries, useLatestGraph, useNewsDetail, useNewsFeed, useToggleScrap, useToggleWatch, useWatchedSet } from "@/lib/queries";
 import { useSession } from "@/store/session";
 import { useUi } from "@/store/ui";
 import { CompanyAvatar, Empty, Icon, Kpi, ScoreBar, SentimentBadge, Skeleton } from "@/components/ui";
@@ -53,6 +53,9 @@ export default function NewsPage() {
   const detail = useNewsDetail(activeId);
   const toggleScrap = useToggleScrap();
   const toggleWatch = useToggleWatch();
+  const watchedSet = useWatchedSet();
+  // 백엔드 기업 상세의 watched 가 아직 항상 false 라 내 관심 목록과 합쳐 판단한다 (queries.useWatchedSet)
+  const companyWatched = Boolean(company.data?.watched) || (companyId ? watchedSet.has(companyId) : false);
 
   const setCompany = (id: string | null) => {
     const next = new URLSearchParams(params);
@@ -103,7 +106,10 @@ export default function NewsPage() {
    */
   const industryDist = useMemo(() => {
     const m = new Map<string, number>();
-    mapNodes.forEach((n) => m.set(n.industryName, (m.get(n.industryName) ?? 0) + 1));
+    mapNodes.forEach((n) => {
+      const key = n.industryName ?? UNCLASSIFIED_INDUSTRY;
+      m.set(key, (m.get(key) ?? 0) + 1);
+    });
     return [...m.entries()].sort((a, b) => b[1] - a[1]).map(([name, count]) => ({ name, count }));
   }, [mapNodes]);
   const relDist = useMemo(() => {
@@ -117,7 +123,7 @@ export default function NewsPage() {
       <div className="row between wrap" style={{ marginBottom: 14 }}>
         <span className="status-line">
           <i className="dot" />
-          {universe.data ? `스냅샷 ${fmtDateTime(universe.data.asOfAt)} 기준 · 1시간 단위 갱신` : "스냅샷 확인 중"}
+          {universe.data ? `스냅샷 ${fmtDateTime(universe.data.asOfAt)} 기준 · 1시간 단위 갱신` : universe.isError ? "공개된 관계 스냅샷 없음 — 관계 지도는 분석 결과 게시 후 나타납니다" : "스냅샷 확인 중"}
         </span>
         <button
           type="button"
@@ -266,18 +272,18 @@ export default function NewsPage() {
                   <>
                     <button
                       type="button"
-                      className={`btn btn-g btn-sm ${company.data.watched ? "on" : ""}`}
+                      className={`btn btn-g btn-sm ${companyWatched ? "on" : ""}`}
                       onClick={() =>
                         authed
                           ? toggleWatch.mutate(
-                              { companyId: company.data!.companyId, watched: company.data!.watched },
+                              { companyId: company.data!.companyId, watched: companyWatched },
                               { onSuccess: (now) => toast(now ? "관심 기업으로 등록했습니다." : "관심 기업에서 해제했습니다.", "success") },
                             )
                           : openAuth("login")
                       }
-                      style={{ color: company.data.watched ? "var(--primary-2)" : undefined }}
+                      style={{ color: companyWatched ? "var(--primary-2)" : undefined }}
                     >
-                      <Icon.Star filled={company.data.watched} /> {company.data.watched ? "관심 기업" : "관심 기업 +"}
+                      <Icon.Star filled={companyWatched} /> {companyWatched ? "관심 기업" : "관심 기업 +"}
                     </button>
                     <button type="button" className="btn btn-p btn-sm" onClick={() => navigate(`/?company=${companyId}`)}>
                       기업 상세 ↗

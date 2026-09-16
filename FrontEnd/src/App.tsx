@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { ApiError } from "@/api";
 import Header from "@/components/Header";
 import Toasts from "@/components/Toasts";
 import AuthDialog from "@/features/auth/AuthDialog";
@@ -13,7 +14,12 @@ import { useSession } from "@/store/session";
 
 const queryClient = new QueryClient({
   defaultOptions: {
-    queries: { staleTime: 60_000, retry: 1, refetchOnWindowFocus: false },
+    queries: {
+      staleTime: 60_000,
+      // 4xx 는 다시 보내도 같은 답이다(404 GRAPH_SNAPSHOT_NOT_FOUND·401 등) — 네트워크·5xx 만 1회 재시도한다
+      retry: (count, err) => count < 1 && !(err instanceof ApiError && err.status < 500),
+      refetchOnWindowFocus: false,
+    },
   },
 });
 
