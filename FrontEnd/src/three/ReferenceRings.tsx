@@ -6,6 +6,7 @@ import type { SceneModel } from "@/lib/graph";
 import { RINGS_UI } from "@/lib/guide";
 import { useGalaxy } from "@/store/galaxy";
 import { morphState } from "./morph";
+import { spreadDim } from "./spread";
 import "./rings.css";
 
 interface Props {
@@ -106,13 +107,15 @@ export default function ReferenceRings({ model }: Props) {
 
     const revealTarget = morphState.plan ? 0 : morphState.reveal;
     reveal.current += (revealTarget - reveal.current) * (1 - Math.exp(-dt / REVEAL_TAU));
+    // 펼치기 정렬 단계에서는 랭크 링·0선이 격자 위에서 의미가 없어져, 슬라이더를 따라 즉시 흐려진다(spreadDim)
+    const dim = spreadDim();
     Object.values(mats.current).forEach(({ mat, base }) => {
-      mat.opacity = base * reveal.current;
+      mat.opacity = base * reveal.current * dim;
     });
 
     const fadeTarget = state.camera.position.length() >= HUB_LABEL_FAR ? 1 : 0;
     fade.current += (fadeTarget - fade.current) * (1 - Math.exp(-dt / FADE_TAU));
-    const hubAlpha = fade.current * reveal.current;
+    const hubAlpha = fade.current * reveal.current * dim;
     const alwaysAlpha = reveal.current;
     Object.entries(labels.current).forEach(([key, el]) => {
       el.style.opacity = String(key.startsWith("hub") ? hubAlpha : alwaysAlpha);

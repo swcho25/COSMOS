@@ -10,7 +10,7 @@ import "./profile.css";
 
 /**
  * 내 페이지 — 프로필 메뉴 진입점. 내 정보 · 관심 기업 · 스크랩.
- * 뉴스·공시 비율은 서버에 저장하지 않는 화면 설정이라 여기가 아니라 은하의 관계 필터 카드(LegendCard)에 있다.
+ * 뉴스·공시 비율은 서버에 저장하지 않는 화면 설정이라 여기가 아니라 은하 하단 조절 도크(ControlDock)의 고급 영역에 있다.
  */
 export default function MePage() {
   const status = useSession((s) => s.status);

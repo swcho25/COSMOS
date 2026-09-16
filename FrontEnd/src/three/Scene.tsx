@@ -6,6 +6,7 @@ import * as THREE from "three";
 import type { SceneEdge, SceneModel, Vec3 } from "@/lib/graph";
 import type { CameraPresetId } from "@/lib/guide";
 import { hoverPath } from "@/lib/path";
+import { spreadRadiusScale } from "@/lib/spread";
 import { surpriseSet } from "@/lib/surprise";
 import { hashString } from "@/lib/rng";
 import { neighborRoles } from "@/lib/roles";
@@ -21,6 +22,7 @@ import OrbitKeys from "./OrbitKeys";
 import ReferenceRings from "./ReferenceRings";
 import RelationLines from "./RelationLines";
 import RoleRings from "./RoleRings";
+import SpreadDriver from "./SpreadDriver";
 import TourAnchor from "./TourAnchor";
 import Warp from "./Warp";
 import { targetY } from "./altitude";
@@ -66,6 +68,8 @@ function poseFor(model: SceneModel | null, kind: "galaxy" | "system", aspect = 1
     const h = (Math.abs(useAltitude ? targetY(n, alt.altitudeWindow) : n.pos[1]) + n.size * 2) * 2;
     r = Math.max(r, useAltitude ? Math.hypot(planar, h) : planar);
   });
+  // 펼치기의 평면 단계는 반지름을 살짝 벌린다(lib/spread FLAT_SCALE) — 그만큼 물러나야 바깥 행성이 잘리지 않는다. 격자는 2R 안에 맞춰져 있다
+  if (kind === "galaxy") r *= spreadRadiusScale(alt.spread);
   // 세로로 긴 화면은 가로가 먼저 잘리므로 종횡비만큼 물러난다
   const fit = Math.tan((52 * Math.PI) / 360) * Math.min(1, aspect);
   const dist = (r / fit) * distScale(kind, preset, aspect);
@@ -115,6 +119,9 @@ function Director({ warpRef, galaxy, system, next }: { warpRef: MutableRefObject
     speed: 0,
     /** 마지막으로 반영한 카메라 프리셋 선택 횟수 — 마운트 시점 값으로 시작해 첫 프레임에 연출이 튀지 않게 */
     presetNonce: useGalaxy.getState().cameraPresetNonce,
+    /** 펼치기 슬라이더가 평면(0.5)을 넘어 있는지 — 넘는 순간 위에서 보는 시점으로, 돌아오는 순간 이전 시점으로 */
+    spreadAbove: false,
+    presetBeforeSpread: null as CameraPresetId | null,
   }).current;
 
   // 항상 "지금 카메라가 있는 곳"에서 시작한다 — 워프 커밋도 순간이동 없이 이어 붙인다
@@ -236,6 +243,19 @@ function Director({ warpRef, galaxy, system, next }: { warpRef: MutableRefObject
       if (rig.lastPhase !== s.phase) rig.lastPhase = s.phase;
       const model = s.phase === "system" ? system : galaxy;
       const kind: "galaxy" | "system" = s.phase === "system" ? "system" : "galaxy";
+      // 펼치기가 평면을 넘으면 격자는 위에서 봐야 읽힌다 — 프리셋을 '위에서' 로 바꾸고, 다시 내려오면 그때의 프리셋으로 돌려놓는다 (은하 뷰만).
+      // 사용자가 그 사이 다른 프리셋을 골랐으면(top 이 아니면) 그 선택을 존중해 되돌리지 않는다
+      const above = kind === "galaxy" && s.spread >= 0.5;
+      if (above !== rig.spreadAbove) {
+        rig.spreadAbove = above;
+        if (above) {
+          rig.presetBeforeSpread = s.cameraPreset;
+          if (s.cameraPreset !== "top") s.setCameraPreset("top");
+        } else if (rig.presetBeforeSpread && rig.presetBeforeSpread !== "top" && s.cameraPreset === "top") {
+          s.setCameraPreset(rig.presetBeforeSpread);
+          rig.presetBeforeSpread = null;
+        }
+      }
       // 카메라 프리셋을 골랐다 (같은 것을 다시 눌러도 횟수가 오른다) — 진행 중 연출이 있어도 그 자리에서 새 자세로 이어 간다
       if (s.cameraPresetNonce !== rig.presetNonce) {
         rig.presetNonce = s.cameraPresetNonce;
@@ -370,6 +390,8 @@ function Content({ galaxy, system, next = null, warpRef }: ContentProps) {
             {dust && <GalaxyDust seed={dust.seed} radius={dust.radius} spiral={dust.spiral} warpRef={warpRef} />}
             {/* 주가 고도는 은하 뷰에만 — 기업 중심 뷰의 궤도는 depth 가 정하므로 높이에 다른 의미를 얹지 않는다 */}
             {model.kind === "galaxy" && <AltitudeDriver model={model} />}
+            {/* 펼치기(도크 슬라이더) — 은하 → 평면 → 크기순 격자. 고도와 같은 live 버퍼를 쓰되, 펼치는 동안은 고도 구동기가 물러난다 */}
+            {model.kind === "galaxy" && <SpreadDriver model={model} />}
             {/* 첫 방문 투어의 스포트라이트 앵커 — 대상이 없으면 아무 일도 하지 않는다 */}
             {model.kind === "galaxy" && <TourAnchor model={model} />}
             <RelationLines
