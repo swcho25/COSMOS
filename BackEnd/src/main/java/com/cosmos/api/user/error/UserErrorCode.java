@@ -9,7 +9,8 @@ public enum UserErrorCode implements ErrorCode {
     NICKNAME_DUPLICATED(HttpStatus.CONFLICT, "이미 사용 중인 닉네임입니다."),
     /** 이메일이 없는 경우와 비밀번호가 틀린 경우를 일부러 구분하지 않는다 (가입 여부 노출 방지). */
     INVALID_CREDENTIALS(HttpStatus.UNAUTHORIZED, "이메일 또는 비밀번호가 올바르지 않습니다."),
-    WATCH_COMPANY_DUPLICATED(HttpStatus.CONFLICT, "이미 등록한 관심 기업입니다.");
+    WATCH_COMPANY_DUPLICATED(HttpStatus.CONFLICT, "이미 등록한 관심 기업입니다."),
+    NEWS_SCRAP_DUPLICATED(HttpStatus.CONFLICT, "이미 스크랩한 뉴스입니다.");
 
     private final HttpStatus status;
     private final String message;
