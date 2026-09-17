@@ -116,6 +116,14 @@ export function fbm(x: number, y: number, z: number) {
  * 저폴리 행성 지오메트리 — 면 단위로 바다/대륙 색을 칠하고, 정점을 살짝 흔들어 손으로 깎은 느낌을 낸다.
  * 인덱스를 풀어 면마다 다른 색을 줄 수 있게 하고, 흔들림은 위치 기반이라 이음새가 생기지 않는다.
  */
+/**
+ * 행성 반지름 = node.size × 이 계수 (월드 단위). 1.3 이던 것을 "행성이 모래알만 하다" 는 지적에 따라 키웠다.
+ * 레이아웃이 지키는 최소 간격은 (a.size + b.size) × 4.6 + 7 이므로, 가장 큰 두 행성이 붙어 서도 반지름 합이
+ * 간격의 40% 안쪽이다(계수 4.6 을 넘기면 그때부터 닿는다).
+ * 간선 화살표·역할 링·투어 앵커·모프 고스트가 모두 행성 표면을 기준으로 놓이므로 이 값 하나만 보고 계산한다.
+ */
+export const PLANET_RADIUS_K = 2.2;
+
 export function planetGeometry(radius: number, palette: PlanetPalette, seed: number, detail = 2, landRatio = 0.45) {
   // IcosahedronGeometry 는 이미 인덱스가 없다 — toNonIndexed 를 다시 부르면 three 가 경고를 찍는다
   const base = new THREE.IcosahedronGeometry(radius, detail);

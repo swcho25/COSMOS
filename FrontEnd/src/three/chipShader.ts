@@ -113,13 +113,15 @@ export const chipFragment = /* glsl */ `
       }
     }
 
-    // (e) 기업명 — 남은 폭에 이름 셀을 맞춰 넣고, 접힐 때는 폭과 함께 옅어진다
+    // (e) 기업명 — 언제나 눌리지 않은 제 비율(nameFull)로 그린다. 남은 폭(nameW)에 맞춰 넣으면 캡슐 폭이
+    // 이름 폭과 어긋난 프레임에서 글자가 가로로 찌그러진다. 폭이 모자라면 눌러 넣는 대신 그만큼만 드러낸다
     float nameX = 1.0 + roleW + (roleW > 0.0 ? 0.15 : 0.0);
     float nameW = vAspect - 0.3 - nameX;
-    if (vName.w > 0.0 && vNameOn > 0.01 && nameW > 0.02 && vQ.x >= nameX && vQ.x <= nameX + nameW) {
-      float nu = (vQ.x - nameX) / nameW;
+    float nameFull = (vName.z / max(vName.w, 1e-6)) * 0.8;
+    if (vName.w > 0.0 && vNameOn > 0.01 && nameW > 0.02 && nameFull > 0.0 && vQ.x >= nameX && vQ.x <= nameX + nameW) {
+      float nu = (vQ.x - nameX) / nameFull;
       float ny = (vQ.y - 0.1) / 0.8;
-      if (ny >= 0.0 && ny <= 1.0) {
+      if (nu <= 1.0 && ny >= 0.0 && ny <= 1.0) {
         vec4 tx = texture2D(uNames, vec2(vName.x + nu * vName.z, vName.y + (1.0 - ny) * vName.w));
         col = mix(col, tx.rgb, tx.a * vNameOn);
       }

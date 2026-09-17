@@ -10,8 +10,9 @@ import "./dock.css";
 
 /**
  * 하단 중앙 조절 도크 — Human Atlas 의 "Explode anatomy" 카드와 같은 자리.
- * 접힌 상태는 '^' 알약 버튼 하나만, 펼치면 펼치기·관계 종류·(고급) 뉴스·공시 비율·최소 점수·주가 고도·초기화가
- * 한 카드에 가로로 이어진다. 열림·고급 여부는 로컬 상태 없이 store/galaxy 의 dockOpen·dockAdvanced 를 그대로 쓴다.
+ * 기본은 펼친 상태(고급까지)이고, 접으면 '^' 알약 버튼 하나만 남는다. 펼치기·관계 종류·(고급) 뉴스·공시 비율·
+ * 최소 점수·주가 고도가 한 카드에 가로로 이어지고, 맨 오른쪽 끝에 초기화·고급 토글을 세로로 둔다.
+ * 열림·고급 여부는 로컬 상태 없이 store/galaxy 의 dockOpen·dockAdvanced 를 그대로 쓴다.
  */
 
 const ALTITUDE_WINDOWS: AltitudeWindow[] = ["1D", "1M", "3M"];
@@ -120,18 +121,6 @@ export default function ControlDock() {
           })}
         </div>
 
-        <span className="dock-div" aria-hidden="true" />
-
-        {/* 초기화(위) · 고급 '>'(아래) — 글자 없이 아이콘만, 설명은 title */}
-        <div className="dock-side">
-          <button type="button" className="dock-icon dock-reset" onClick={handleReset} title={DOCK_UI.resetTitle} aria-label={DOCK_UI.reset}>
-            <Icon.Refresh />
-          </button>
-          <button type="button" className={`dock-icon dock-adv-toggle ${dockAdvanced ? "on" : ""}`} onClick={() => setDockAdvanced(!dockAdvanced)} title={DOCK_UI.advancedTitle} aria-expanded={dockAdvanced} aria-label={DOCK_UI.advanced}>
-            <Icon.Chevron />
-          </button>
-        </div>
-
         {dockAdvanced && (
           <>
             <span className="dock-div" aria-hidden="true" />
@@ -173,6 +162,18 @@ export default function ControlDock() {
             </div>
           </>
         )}
+
+        {/* 초기화(위) · 고급 '<'(아래) — 카드 맨 오른쪽 끝. 글자 없이 아이콘만, 설명은 title.
+            고급 그룹은 이 열의 왼쪽에서 열리고 닫히므로 두 버튼의 자리는 그대로다 */}
+        <span className="dock-div" aria-hidden="true" />
+        <div className="dock-side dock-tail">
+          <button type="button" className="dock-icon dock-reset" onClick={handleReset} title={DOCK_UI.resetTitle} aria-label={DOCK_UI.reset}>
+            <Icon.Refresh />
+          </button>
+          <button type="button" className={`dock-icon dock-adv-toggle ${dockAdvanced ? "on" : ""}`} onClick={() => setDockAdvanced(!dockAdvanced)} title={DOCK_UI.advancedTitle} aria-expanded={dockAdvanced} aria-label={DOCK_UI.advanced}>
+            <Icon.Chevron />
+          </button>
+        </div>
 
         {/* 접기 — 카드 위 가장자리 가운데로 볼록 튀어나온 손잡이 */}
         <button type="button" className="dock-close" onClick={() => setDockOpen(false)} title={DOCK_UI.close} aria-label={DOCK_UI.close}>

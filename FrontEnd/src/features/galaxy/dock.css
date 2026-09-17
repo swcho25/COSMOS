@@ -137,18 +137,18 @@
 .dock-icon svg {
   display: block;
 }
-/* 고급 토글 '>' — Chevron(아래 기본)을 오른쪽으로, 열리면 왼쪽으로 */
+/* 고급 토글 — 카드 맨 오른쪽에 있고 고급 그룹은 그 왼쪽에서 열린다: 닫힘 '<'(왼쪽으로 펼침), 열림 '>'(오른쪽으로 접음) */
 .dock-adv-toggle.on {
   color: var(--text);
   border-color: rgba(109, 140, 255, 0.45);
   background: rgba(109, 140, 255, 0.16);
 }
 .dock-adv-toggle svg {
-  transform: rotate(-90deg);
+  transform: rotate(90deg);
   transition: transform 0.15s;
 }
 .dock-adv-toggle.on svg {
-  transform: rotate(90deg);
+  transform: rotate(-90deg);
 }
 
 /* 고급 그룹 — 뉴스·공시 비율 · 최소 점수 · 주가 고도, 세 줄을 세로로 */
