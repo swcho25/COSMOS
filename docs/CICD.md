@@ -57,6 +57,7 @@ Webhook을 사용할 수 없다면 `cosmos-web` Configure → Poll SCM을 `H/5 *
 - 마지막 정상 릴리스: `/opt/cosmos/releases/current`
 - 직전 정상 릴리스: `/opt/cosmos/releases/.previous`
 - 운영 환경변수: `/etc/cosmos/app.env` (`root:cosmos-ci`, 0640)
+- 기본 운영 환경 파일이 유실됐지만 기존 `cosmos` 백엔드가 실행 중이면 배포 스크립트가 컨테이너의 현재 DB·Redis·JWT·CORS 값을 `/opt/cosmos/releases/app.env`에 `0600`으로 복구해 재사용한다. 임의 비밀값은 생성하지 않으며, 최초 배포 또는 `COSMOS_ENV_FILE`로 명시한 파일이 없을 때는 중단한다.
 - PostgreSQL 볼륨: `cosmos_postgres_data`
 - Redis 볼륨: `cosmos_redis_data`
 - Jenkins 볼륨: `cosmos_jenkins_home`
