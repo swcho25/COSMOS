@@ -8,7 +8,7 @@ import { bezier, CHORD_CLEAR, controlPoint, radiusOf } from "./edgeCurve";
 import type { Emphasis } from "./emphasis";
 import { dragState, liveFor, morphState } from "./morph";
 import { spreadDim, spreadGate } from "./spread";
-import { beamColorFor } from "./toon";
+import { beamColorFor, PLANET_RADIUS_K } from "./toon";
 
 interface Props {
   model: SceneModel;
@@ -78,7 +78,7 @@ export default function EdgeArrows({ model, emphasis }: Props) {
       // 빔(RelationLines)과 같은 clear 를 줘야 화살촉이 빔 위에 놓인다
       const dist = controlPoint(live.pos, live.pos, CTRL, si * 3, ti * 3, CHORD_CLEAR[model.kind]);
       // target 행성 반지름(size×1.3)의 바깥 + 콘 반 높이만큼 끝에서 물러난다 (곡선 끝부분은 거의 직선이라 거리 비로 근사)
-      const rT = (model.nodeById.get(e.target)?.size ?? 1) * 1.3;
+      const rT = (model.nodeById.get(e.target)?.size ?? 1) * PLANET_RADIUS_K;
       const back = rT * 1.15 + (scale * CONE_H) / 2;
       const t = THREE.MathUtils.clamp(1 - back / Math.max(1e-3, dist), 0.5, 0.93);
       bezier(live.pos, live.pos, CTRL, t, P, si * 3, ti * 3);

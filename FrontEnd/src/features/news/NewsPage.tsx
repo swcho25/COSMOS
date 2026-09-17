@@ -154,7 +154,7 @@ export default function NewsPage() {
                 </button>
               </div>
               <div className="company-ctx">
-                {company.data && <CompanyAvatar name={company.data.name} stockCode={company.data.stockCode} industry={company.data.industries[0]?.name} size={40} />}
+                {company.data && <CompanyAvatar name={company.data.name} stockCode={company.data.stockCode} market={company.data.market} industry={company.data.industries[0]?.name} size={40} />}
                 <div className="grow">
                   <div className="nm">{company.data?.name ?? <Skeleton h={18} w={120} />} 뉴스</div>
                   <div className="meta num">
@@ -249,7 +249,7 @@ export default function NewsPage() {
             <div className="map-head">
               {companyId && company.data ? (
                 <div className="row" style={{ gap: 12, alignItems: "flex-start" }}>
-                  <CompanyAvatar name={company.data.name} stockCode={company.data.stockCode} industry={company.data.industries[0]?.name} size={44} />
+                  <CompanyAvatar name={company.data.name} stockCode={company.data.stockCode} market={company.data.market} industry={company.data.industries[0]?.name} size={44} />
                   <div>
                     <div className="kick" style={{ color: "var(--primary-2)" }}>
                       focused company
@@ -378,7 +378,7 @@ export default function NewsPage() {
                     <button key={r.id} type="button" className="rank" onClick={() => setCompany(r.id)} title={whyPlain ?? "이 기업 뉴스 보기"}>
                       <span className="rank-row">
                         <span className="kick num idx">{String(i + 1).padStart(2, "0")}</span>
-                        <CompanyAvatar name={r.name} stockCode={r.stockCode} industry={r.industry} size={32} radius={16} />
+                        <CompanyAvatar name={r.name} companyId={r.id} stockCode={r.stockCode} market={r.market} industry={r.industry} size={32} radius={16} />
                         <span className="nm">
                           <b>{r.name}</b>
                           <span className="meta num">

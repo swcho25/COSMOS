@@ -74,7 +74,7 @@ export default function CompanyPanel({ companyId, model = null, onWarp, onClose,
       </div>
       {model && model.nodeById.has(companyId) && <ConnectionSteps model={model} companyId={companyId} onPick={onPickCompany} />}
       <div className="panel-id">
-        {c ? <CompanyAvatar name={c.name} stockCode={c.stockCode} industry={c.industries.find((i) => i.primary)?.name} size={56} /> : <Skeleton h={56} w={56} style={{ borderRadius: 14 }} />}
+        {c ? <CompanyAvatar name={c.name} stockCode={c.stockCode} market={c.market} industry={c.industries.find((i) => i.primary)?.name} size={56} /> : <Skeleton h={56} w={56} style={{ borderRadius: 14 }} />}
         <div className="grow">
           {c ? (
             <>

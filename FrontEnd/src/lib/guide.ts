@@ -124,6 +124,9 @@ export const CAMERA_PRESETS: { id: CameraPresetId; label: string; hint: string }
   { id: "top", label: "위에서", hint: "어느 기업이 가까운지 비교" },
   { id: "front", label: "정면에서", hint: "주가 등락 높이를 비교" },
 ];
+/** 카메라 프리셋 아래 한 줄로 늘 보여 주는 조작 힌트 — 조작법 표(CONTROL_HINTS)의 휠·W A S D·방향키 항목과 같은 내용 */
+export const NAV_HINT = "휠 확대·축소 · W A S D 이동 · ← → ↑ ↓ 회전";
+export const NAV_HINT_TITLE = "마우스 휠로 확대·축소, W A S D 로 시선을 옮기고, 방향키로 돌려 봅니다 (Shift 로 빠르게). 슬라이더를 만진 뒤에도 바로 먹습니다";
 export const CAMERA_UI = {
   groupLabel: "카메라 시점",
   /** 버튼 title 뒤에 붙는 설명 — 같은 프리셋을 다시 누르면 드래그로 흐트러진 시점이 되돌아온다 */
@@ -167,8 +170,8 @@ export const PREVIEW_UI = {
 
 /* ---- 공간 참조 구조 (P0-6) ---- */
 export const RINGS_UI = {
-  /** 허브 랭크 링 라벨 — 반지름 랭크 상위 비율 */
-  hub: (pct: number) => `허브 상위 ${pct}%`,
+  /** 허브 랭크 링 라벨 — 이 원 안쪽에 연결(가중 연결도) 상위 몇 %가 들어오는지. '허브' 라는 말 대신 기준을 그대로 쓴다 */
+  hub: (pct: number) => `연결 상위 ${pct}%`,
   hubPercents: [10, 30, 60],
   zeroPlane: "등락률 0%",
   /** 기업 중심 뷰 depth 1·2·3 궤도 */

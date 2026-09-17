@@ -25,7 +25,9 @@ export default function CommunityPage() {
 
   const industryOf = useMemo(() => {
     const m = new Map<string, string>();
-    universe.data?.nodes.forEach((n) => m.set(n.companyId, n.industryName));
+    universe.data?.nodes.forEach((n) => {
+      if (n.industryName) m.set(n.companyId, n.industryName);
+    });
     return m;
   }, [universe.data]);
 

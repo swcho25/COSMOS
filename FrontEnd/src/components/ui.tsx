@@ -2,16 +2,40 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { ImpactDirection, Market, RelationshipType, Sentiment } from "@/api/types";
 import { IMPACT_META, RELATIONSHIP_ORDER, SENTIMENT_META, SENTIMENT_PENDING, UNCLASSIFIED_INDUSTRY, industryColor, relationshipMeta } from "@/lib/meta";
 import { initials } from "@/lib/format";
-import { logoUrl } from "@/lib/logos";
+import { logoUrl, useCompanyLogoRef } from "@/lib/logos";
 import { ROLE_META, roleColor, type RoleKey } from "@/lib/roles";
 import { LAB } from "@/three/toon";
 
 /* ------------------------------ 로고 아바타 ------------------------------ */
 
-export function CompanyAvatar({ name, stockCode, industry, size = 44, radius }: { name: string; stockCode?: string | null; industry?: string | null; size?: number; radius?: number }) {
-  const [broken, setBroken] = useState(false);
-  const url = logoUrl(stockCode);
-  const hasLogo = Boolean(url) && !broken;
+/**
+ * 기업 로고 — 로고 키는 `시장 + 종목코드`다. 두 값을 아는 화면은 그대로 넘기고,
+ * `companyId`·`name` 만 가진 화면(뉴스의 관련 기업 등)은 companyId 를 넘기면 api 경계에서 적어 둔 참조로 찾는다.
+ * 파일이 없거나 이미지 로딩이 실패하면 깨진 이미지 대신 기업명 이니셜을 그린다.
+ */
+export function CompanyAvatar({
+  name,
+  companyId,
+  stockCode,
+  market,
+  industry,
+  size = 44,
+  radius,
+}: {
+  name: string;
+  companyId?: string | null;
+  stockCode?: string | null;
+  market?: Market | null;
+  industry?: string | null;
+  size?: number;
+  radius?: number;
+}) {
+  // 이미 코드를 아는 화면은 조회를 건너뛴다 — 훅 자체는 항상 호출해야 하므로 인자만 비운다
+  const ref = useCompanyLogoRef(stockCode ? null : companyId);
+  const url = logoUrl(stockCode ?? ref?.stockCode, market ?? ref?.market);
+  // 목록이 재사용되며 다른 기업으로 바뀔 수 있으므로 '깨짐'은 그 URL 에만 붙인다
+  const [brokenUrl, setBrokenUrl] = useState<string | null>(null);
+  const hasLogo = Boolean(url) && url !== brokenUrl;
   const color = industryColor(industry);
   return (
     <span
@@ -19,7 +43,7 @@ export function CompanyAvatar({ name, stockCode, industry, size = 44, radius }: 
       style={{ width: size, height: size, borderRadius: radius ?? Math.round(size * 0.28), fontSize: Math.max(11, Math.round(size * 0.3)), background: hasLogo ? "#fff" : `linear-gradient(140deg, ${color}66, ${color}22)`, color: "#fff", border: `1px solid ${color}55` }}
       aria-hidden="true"
     >
-      {hasLogo ? <img src={url!} alt="" onError={() => setBroken(true)} /> : initials(name)}
+      {hasLogo ? <img src={url!} alt="" loading="lazy" decoding="async" onError={() => setBrokenUrl(url)} /> : initials(name)}
     </span>
   );
 }

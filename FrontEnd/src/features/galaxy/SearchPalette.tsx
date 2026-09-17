@@ -79,7 +79,7 @@ function SearchPaletteDialog({ onPick, onClose }: Props & { onClose: () => void 
               {items.map((c, i) => (
                 <li key={c.companyId} className={i === cursor ? "on" : ""}>
                   <button type="button" onMouseEnter={() => setCursor(i)} onClick={() => pick(c.companyId)}>
-                    <CompanyAvatar name={c.name} stockCode={c.stockCode} industry={c.primaryIndustry?.name} size={36} />
+                    <CompanyAvatar name={c.name} stockCode={c.stockCode} market={c.market} industry={c.primaryIndustry?.name} size={36} />
                     <span className="grow">
                       <span className="nm">{c.name}</span>
                       <span className="meta" style={{ marginLeft: 8 }}>

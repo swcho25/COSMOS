@@ -136,9 +136,9 @@ export const useGalaxy = create<GalaxyState>((set, get) => ({
   pricePeriod: "1M",
   searchOpen: false,
   panelOpen: true,
-  // 도크는 접힌 채로 시작한다 — 하단 중앙 '^' 버튼이 유일한 진입점이다
-  dockOpen: false,
-  dockAdvanced: false,
+  // 도크는 펼친 채로 시작한다 — 조절 수단이 첫 화면에 보여야 한다. 접으면 하단 중앙 '^' 버튼만 남는다
+  dockOpen: true,
+  dockAdvanced: true,
   industryOpen: false,
   cameraPreset: "orbit",
   cameraPresetNonce: 0,

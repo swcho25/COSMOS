@@ -45,7 +45,6 @@ function HoverPrefetch({ focusId }: { focusId: string | null }) {
  */
 export default function GalaxyPage() {
   const [params, setParams] = useSearchParams();
-  const qc = useQueryClient();
 
   const scope = useGalaxy((s) => s.scope);
   const includeNeighbors = useGalaxy((s) => s.includeNeighbors);
@@ -396,9 +395,6 @@ export default function GalaxyPage() {
                   : "불러오는 중"}
             </div>
           </div>
-          <button type="button" onClick={() => qc.invalidateQueries({ queryKey: ["graph"] })} aria-label="그래프 새로고침" title="최신 스냅샷 확인">
-            <Icon.Refresh />
-          </button>
         </div>
       </div>
 

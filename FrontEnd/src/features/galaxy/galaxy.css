@@ -500,16 +500,6 @@
 .status-card .t .dot.warn {
   background: var(--warn);
 }
-.status-card button {
-  color: var(--text-3);
-  display: inline-flex;
-  padding: 6px;
-  border-radius: 8px;
-}
-.status-card button:hover {
-  background: rgba(255, 255, 255, 0.07);
-  color: var(--text);
-}
 
 /* 접힌 HUD 요소의 꼬리표 */
 .hud-tag {
@@ -1285,12 +1275,19 @@
   pointer-events: none;
 }
 /* 기업 중심 뷰 브레드크럼 줄에서는 한 줄 설명을 접는다 */
+.cam-keys {
+  color: var(--text-4);
+}
 .hud-crumb .cam-presets .cam-hint {
   display: none;
 }
 /* 상단 한 줄이 좁아지면 라벨을 접고 아이콘만 남긴다 (title 로 읽힌다) — 검색·범위·산업이 한 줄에 남도록 */
 @media (max-width: 1180px) {
   .cam-seg button span {
+    display: none;
+  }
+  /* 한 줄이 좁아지면 키 힌트부터 접는다 (title 로 남는다) */
+  .cam-keys {
     display: none;
   }
   .cam-seg button {

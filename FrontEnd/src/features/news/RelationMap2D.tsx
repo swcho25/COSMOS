@@ -53,7 +53,7 @@ export default function RelationMap2D({ nodes, edges, related, highlightId, onPi
             const r = relatedById.get(n.companyId);
             return (
               <button key={n.companyId} type="button" className={`rank ${n.companyId === highlightId ? "on" : ""}`} onClick={() => onPickCompany(n.companyId)}>
-                <CompanyAvatar name={n.name} stockCode={n.stockCode} industry={n.industryName} size={32} radius={16} />
+                <CompanyAvatar name={n.name} stockCode={n.stockCode} market={n.market} industry={n.industryName} size={32} radius={16} />
                 <span className="nm">
                   <b>{n.name}</b>
                   <span className="meta num">{[n.industryName, n.stockCode].filter(Boolean).join(" · ")}</span>
