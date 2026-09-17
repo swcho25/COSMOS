@@ -5,6 +5,8 @@ import com.cosmos.api.global.security.RefreshTokenCookie;
 import com.cosmos.api.user.dto.AvailabilityResponse;
 import com.cosmos.api.user.dto.EmailSendCodeRequest;
 import com.cosmos.api.user.dto.EmailSendCodeResponse;
+import com.cosmos.api.user.dto.EmailVerifyCodeRequest;
+import com.cosmos.api.user.dto.EmailVerifyCodeResponse;
 import com.cosmos.api.user.dto.LoginRequest;
 import com.cosmos.api.user.dto.SignupRequest;
 import com.cosmos.api.user.dto.TokenResponse;
@@ -77,6 +79,15 @@ public class AuthController {
     @PostMapping("/email/send-code")
     public EmailSendCodeResponse sendEmailCode(@Valid @RequestBody EmailSendCodeRequest request) {
         return emailVerificationService.sendCode(request.email());
+    }
+
+    /**
+     * 인증 코드 확인. 맞으면 30분간 "인증 완료" 상태가 되어 그 안에 가입할 수 있다.
+     * 코드 없음·만료 400 EMAIL_CODE_EXPIRED, 불일치 400 EMAIL_CODE_INVALID (5회 틀리면 코드 폐기).
+     */
+    @PostMapping("/email/verify-code")
+    public EmailVerifyCodeResponse verifyEmailCode(@Valid @RequestBody EmailVerifyCodeRequest request) {
+        return emailVerificationService.verifyCode(request.email(), request.code());
     }
 
     /** 회원가입. 성공하면 201과 만들어진 회원 정보(userId, email, nickname)를 돌려준다. */
