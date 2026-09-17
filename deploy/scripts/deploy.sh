@@ -26,6 +26,30 @@ fi
 "${compose[@]}" config --quiet
 previous=''
 [[ ! -f "$state/current" ]] || previous="$(cat "$state/current")"
+previous_previous=''
+[[ ! -f "$state/.previous" ]] || previous_previous="$(cat "$state/.previous")"
+prune_deployment_images() {
+    local keep_current="$1" keep_previous="${2:-}" repository image_tag ref
+    while read -r repository image_tag; do
+        case "$repository" in
+            cosmos-backend|cosmos-frontend)
+                [[ "$image_tag" == "$keep_current" || (-n "$keep_previous" && "$image_tag" == "$keep_previous") ]] && continue
+                ;;
+            cosmos-backend-build|cosmos-frontend-build)
+                ;;
+            *)
+                continue
+                ;;
+        esac
+        [[ "$image_tag" != '<none>' ]] || continue
+        ref="$repository:$image_tag"
+        if docker image rm "$ref" >/dev/null; then
+            printf 'Removed superseded deployment image: %s\n' "$ref"
+        else
+            printf 'Warning: could not remove superseded deployment image: %s\n' "$ref" >&2
+        fi
+    done < <(docker image ls --format '{{.Repository}} {{.Tag}}')
+}
 check_health() {
     local attempt
     for ((attempt=0; attempt<60; attempt++)); do
@@ -47,6 +71,7 @@ rollback() {
             printf '%s\n' "$previous" > "$state/current.next"
             mv "$state/current.next" "$state/current"
             echo "Restored application release $previous" >&2
+            prune_deployment_images "$previous" "$previous_previous"
         else
             echo 'ROLLBACK FAILED: manual intervention required' >&2
         fi
@@ -69,4 +94,13 @@ if [[ -n "${COSMOS_SMOKE_URL:-}" ]]; then
 fi
 printf '%s\n' "$tag" > "$state/current.next"
 mv "$state/current.next" "$state/current"
+if [[ -n "$previous" && "$previous" != "$tag" ]]; then
+    printf '%s\n' "$previous" > "$state/.previous.next"
+    mv "$state/.previous.next" "$state/.previous"
+elif [[ -z "$previous" ]]; then
+    rm -f -- "$state/.previous" "$state/.previous.next"
+fi
+retained_previous=''
+[[ ! -f "$state/.previous" ]] || retained_previous="$(cat "$state/.previous")"
+prune_deployment_images "$tag" "$retained_previous"
 printf 'Deployment healthy: %s\n' "$tag"
