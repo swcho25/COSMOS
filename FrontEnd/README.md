@@ -78,7 +78,20 @@ src/
 
 ## 기업 로고
 
-`public/company-logos/` 의 로고는 `npm run logos:fetch` 로 수집합니다 (`scripts/fetch-logos.mjs`). 종목코드·티커별 대표 도메인(국내 계열사는 그룹 도메인 병행)을 Clearbit → 사이트 apple-touch-icon → Google favicon → DuckDuckGo 아이콘 → 사이트 favicon → logo.dev 순으로 시도해 저장하고, 결과 목록을 `src/lib/logo-codes.json` 에 씁니다. 파일이 없는 기업은 3D 노드와 아바타에 모노그램이 표시됩니다. 수집된 로고는 각 기업의 상표이며, logo.dev 폴백은 공개 문서용 키를 쓰므로 실제 서비스에서는 자체 키와 출처 표기가 필요합니다.
+로고 식별자는 기업 UUID 가 아니라 **시장 + 종목코드** 입니다 (`src/lib/logos.ts`). 종목코드는 끝까지 문자열로 다룹니다 — 숫자로 바꾸면 국내 코드의 앞 0(`005930` → `5930`)이 날아가고 영문이 섞인 코드(`0126Z0`)는 값 자체가 깨집니다.
+
+- 파일 위치: `public/company-logos/{종목코드}.{png|ico}` — 시장별로 다른 로고가 필요한 코드는 `KOSPI-005930.png` 처럼 시장을 붙인 파일을 두면 그 시장에서 먼저 쓰입니다.
+- 화면은 모두 공통 `CompanyAvatar`(`src/components/ui.tsx`)를 씁니다. `stockCode`·`market` 을 아는 화면은 그대로 넘기고, `companyId`·`name` 만 있는 응답(기업 중심 그래프, 뉴스의 관련 기업)은 `companyId` 를 넘깁니다 — 시장·종목코드를 함께 주는 응답이 지나갈 때 api 경계(`src/api/live.ts`)에서 적어 둔 참조로 찾습니다.
+- 파일이 없거나 이미지 로딩이 실패하면 깨진 이미지 대신 기업명 이니셜을 그립니다. 목록 이미지는 `loading="lazy"`, 비율은 `object-fit: contain` 입니다. 3D 노드도 같은 로컬 파일을 로고 아틀라스에 굽습니다(`src/three/logoAtlas.ts`) — 캔버스가 오염되지 않도록 외부 CDN 을 섞지 않습니다.
+
+수집은 `npm run logos:fetch` 입니다 (`scripts/fetch-logos.mjs`). 종목코드·티커별 대표 도메인(국내 계열사는 그룹 도메인 병행)을 Clearbit → 사이트 apple-touch-icon → Google favicon → logo.dev → DuckDuckGo 아이콘 → 사이트 favicon 순으로 훑되, **긴 변 128px 이상**이 나오면 그 자리에서 멈추고 하나도 못 미치면 그중 가장 큰 것을 씁니다. 결과 목록은 `src/lib/logo-codes.json` 에 다시 씁니다. 특정 기업만 다시 받으려면 그 파일을 지우고 실행하고, 전부 덮어쓰려면 `--force` 를 줍니다.
+
+### 출처와 사용 조건
+
+- 현재 파일은 각 기업 공식 도메인의 아이콘과 위 공개 아이콘 서비스에서 받은 것입니다. **모두 각 기업의 상표**이며, URL 이 공개돼 있다는 것이 복제·재배포 권한을 주지는 않습니다. 운영 배포 전에는 기업 브랜드·미디어킷 또는 사용 허가를 받은 공급자의 파일로 교체해야 합니다.
+- logo.dev 폴백은 공개 문서용 publishable key 를 쓰는 프로토타입 한정입니다. 계속 쓰려면 자체 키와 출처 표기(attribution)가 필요합니다.
+- `static.toss.im` 의 종목 이미지는 쓰지 않습니다. 공개 라이선스가 확인되지 않았고, URL 규칙이 API 계약이 아니어서 예고 없이 바뀔 수 있습니다 (로고 가이드 5장).
+- 2026-09-17 기준 267개 코드의 로고가 있고, 로고 가이드가 누락으로 집계한 KOSPI 34 · NASDAQ 43 종목을 모두 채웠습니다. 파일이 없는 기업은 3D 노드와 아바타에 모노그램이 표시됩니다.
 
 ## 백엔드에 확인이 필요한 항목 (프론트의 가정)
 

@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import type { LatestGraph } from "@/api/types";
+import type { LatestGraph, Market } from "@/api/types";
 import { josa } from "@/lib/format";
 import { OWNERSHIP_TYPES, relationshipMeta } from "@/lib/meta";
 import { CompanyAvatar, Empty, ScoreBar } from "@/components/ui";
@@ -96,7 +96,7 @@ export default function OwnershipView({ graph, onPick }: Props) {
         <div className="own-body">
           <div className="own-list scroll">
             <div className="own-root">
-              <CompanyAvatar name={rootNode.name} stockCode={rootNode.stockCode} industry={rootNode.industryName} size={40} />
+              <CompanyAvatar name={rootNode.name} stockCode={rootNode.stockCode} market={rootNode.market} industry={rootNode.industryName} size={40} />
               <div>
                 <b>{rootNode.name}</b>
                 <span className="meta num">
@@ -200,7 +200,7 @@ function OwnRow({
   expandable,
   onClick,
 }: {
-  node: { companyId: string; name: string; stockCode: string | null; industryName: string | null };
+  node: { companyId: string; name: string; stockCode: string | null; market: Market; industryName: string | null };
   score: number;
   color: string;
   sub?: boolean;
@@ -209,7 +209,7 @@ function OwnRow({
 }) {
   return (
     <button type="button" className="own-row" onClick={onClick}>
-      <CompanyAvatar name={node.name} stockCode={node.stockCode} industry={node.industryName} size={sub ? 28 : 32} radius={sub ? 14 : 16} />
+      <CompanyAvatar name={node.name} stockCode={node.stockCode} market={node.market} industry={node.industryName} size={sub ? 28 : 32} radius={sub ? 14 : 16} />
       <span className="nm">
         <b>{node.name}</b>
         <span className="meta num">{[node.industryName, node.stockCode].filter(Boolean).join(" · ")}</span>

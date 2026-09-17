@@ -253,7 +253,7 @@ export default function CompanyNodes({ model, emphasis, hoveredId, onHover, onCl
       center.x += node.pos[0];
       center.y += node.pos[1];
       center.z += node.pos[2];
-      const idx = ensureLogoCell(`${node.stockCode}|${node.name}`, initials(node.name), node.color, logoUrl(node.stockCode));
+      const idx = ensureLogoCell(`${node.market}|${node.stockCode}|${node.name}`, initials(node.name), node.color, logoUrl(node.stockCode, node.market));
       const [u, v] = cellUv(idx);
       cell[i * 2] = u;
       cell[i * 2 + 1] = v;

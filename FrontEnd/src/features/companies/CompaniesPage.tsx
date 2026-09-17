@@ -113,7 +113,7 @@ export default function CompaniesPage() {
                 const s = stats.get(w.companyId);
                 return (
                   <button key={w.companyId} type="button" className="watch-item" onClick={() => openPreview(w.companyId)}>
-                    <CompanyAvatar name={w.name} stockCode={w.stockCode} industry={w.primaryIndustry?.name} size={40} />
+                    <CompanyAvatar name={w.name} stockCode={w.stockCode} market={w.market} industry={w.primaryIndustry?.name} size={40} />
                     <span className="grow">
                       <b>{w.name}</b>
                       <span className="meta num">
@@ -224,7 +224,7 @@ export default function CompaniesPage() {
                       <tr key={c.companyId} className="row-btn" onClick={() => openPreview(c.companyId)} tabIndex={0} onKeyDown={(e) => e.key === "Enter" && openPreview(c.companyId)}>
                         <td>
                           <div className="co">
-                            <CompanyAvatar name={c.name} stockCode={c.stockCode} industry={c.primaryIndustry?.name} size={36} />
+                            <CompanyAvatar name={c.name} stockCode={c.stockCode} market={c.market} industry={c.primaryIndustry?.name} size={36} />
                             <div>
                               <b>{c.name}</b>
                               {/* 종목코드·영문명은 선택 필드라 없는 값은 구분점째로 접는다 */}

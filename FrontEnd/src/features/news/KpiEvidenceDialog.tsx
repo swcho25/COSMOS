@@ -77,7 +77,7 @@ function CompaniesBasis({ news, onPick }: { news: NewsDetail; onPick: (id: strin
       <div className="ev-list mt-12">
         {news.relatedCompanies.map((r) => (
           <button key={r.companyId} type="button" className="rank" onClick={() => onPick(r.companyId)}>
-            <CompanyAvatar name={r.name} size={32} radius={16} />
+            <CompanyAvatar name={r.name} companyId={r.companyId} size={32} radius={16} />
             <span className="nm">
               <b>{r.name}</b>
               <span className="meta num">

@@ -1,7 +1,9 @@
 /**
- * 기업 로고 수집 — 종목코드/티커 → 대표 도메인(계열사는 그룹 도메인) 순으로
- * Clearbit Logo API, Google favicon 서비스를 차례로 시도해 public/company-logos/{code}.png 로 저장한다.
- * 이미 있는 파일은 건너뛴다. 실행: npm run logos:fetch  (--force 로 덮어쓰기)
+ * 기업 로고 수집 — 종목코드/티커 → 대표 도메인(계열사는 그룹 도메인) 순으로 공개 아이콘 출처를 훑어
+ * public/company-logos/{code}.{ext} 로 저장한다. 후보 중 긴 변 128px 이상이 나오면 그것을 쓰고,
+ * 없으면 가장 큰 것을 쓴다 (가이드 권장 조건: 정사각형·투명 배경·최소 128×128).
+ * 이미 있는 파일은 건너뛴다 — 특정 기업만 다시 받으려면 그 파일을 지우고 실행한다.
+ * 실행: npm run logos:fetch  (--force 로 전부 덮어쓰기)
  * 저장된 목록은 src/lib/logo-codes.json 으로 다시 생성된다.
  */
 import { mkdir, readdir, writeFile, stat } from "node:fs/promises";
@@ -214,14 +216,87 @@ const DOMAINS = {
   ALB: ["albemarle.com"],
   STLD: ["steeldynamics.com"],
   // 산업군 재편으로 추가된 기업
-  "066570": ["lge.co.kr", "lg.com"],
+  "066570": ["lg.com", "lge.co.kr"], // LG전자
   "000720": ["hdec.kr", "hyundai.com"],
-  "241560": ["doosanbobcat.com", "bobcat.com"],
+  "241560": ["doosanbobcat.com", "bobcat.com", "doosan.com"], // 두산밥캣
   "042670": ["hd-infracore.com", "hd.com"],
-  "028050": ["samsungena.com", "samsung.com"],
-  "047810": ["koreaaero.com"],
-  "011200": ["hmm21.com"],
-  "003490": ["koreanair.com"],
+  "028050": ["samsungena.com", "samsungengineering.com", "samsung.com"], // 삼성E&A
+  "047810": ["koreaaero.com", "kai.co.kr"], // 한국항공우주
+  "011200": ["hmm21.com", "hmm.co.kr"], // HMM
+  "003490": ["koreanair.com", "koreanair.co.kr"], // 대한항공
+  // KOSPI — 로고 가이드(2026-09-16) 누락 34종목
+  "009540": ["ksoe.co.kr", "hd.com"], // HD한국조선해양
+  "033780": ["ktng.com"], // KT&G
+  "024110": ["ibk.co.kr", "kiup.co.kr"], // 기업은행
+  "278470": ["aprbeauty.com", "medicube.co.kr"], // 에이피알
+  "272210": ["hanwhasystems.com", "hanwha.com"], // 한화시스템
+  "005830": ["idbins.com", "dbgroup.co.kr"], // DB손해보험
+  "078930": ["gs.co.kr", "gscorp.co.kr"], // GS
+  "071050": ["koreaholdings.com", "truefriend.com"], // 한국금융지주
+  "047050": ["poscointl.com", "posco.com"], // 포스코인터내셔널
+  "005940": ["nhqv.com", "nonghyup.com"], // NH투자증권
+  "180640": ["hanjinkal.co.kr", "hanjin.com"], // 한진칼
+  "443060": ["hd-hyundaims.com", "hyundai-globalservice.com", "hd.com"], // HD현대마린솔루션
+  "006260": ["lsholdings.com", "ls.co.kr"], // LS
+  "0126Z0": ["samsungbioepis.com", "samsung.com"], // 삼성에피스홀딩스
+  "007660": ["isupetasys.com", "isu.co.kr"], // 이수페타시스
+  "016360": ["samsungpop.com", "samsung.com"], // 삼성증권
+  "021240": ["coway.com", "coway.co.kr"], // 코웨이
+  "039490": ["kiwoom.com"], // 키움증권
+  "047040": ["daewooenc.com"], // 대우건설
+  "267270": ["hd-hyundaice.com", "hyundai-ce.com", "hd.com"], // HD현대건설기계
+  "000500": ["gaoncable.com"], // 가온전선
+  "062040": ["sanilelectric.com", "sanil.co.kr"], // 산일전기
+  "175330": ["jbfg.com"], // JB금융지주
+  "029780": ["samsungcard.com", "samsung.com"], // 삼성카드
+  "001440": ["taihan.com"], // 대한전선
+  "088350": ["hanwhalife.com", "hanwha.com"], // 한화생명
+  "353200": ["daeduck.com"], // 대덕전자
+  "088980": ["mkif.com", "macquarie.com"], // 맥쿼리인프라
+  // NASDAQ — 로고 가이드(2026-09-16) 누락 43종목
+  ALNY: ["alnylam.com"], // Alnylam
+  GOOG: ["google.com", "abc.xyz"], // Alphabet C
+  AEP: ["aep.com"], // American Electric Power
+  ALAB: ["asteralabs.com"], // Astera Labs
+  ADP: ["adp.com"], // Automatic Data Processing
+  AXON: ["axon.com"], // Axon
+  CTAS: ["cintas.com"], // Cintas
+  CSCO: ["cisco.com"], // Cisco
+  CCEP: ["cocacolaep.com"], // Coca-Cola Europacific
+  CPRT: ["copart.com"], // Copart
+  CRWV: ["coreweave.com"], // CoreWeave
+  CSX: ["csx.com"], // CSX
+  FANG: ["diamondbackenergy.com"], // Diamondback Energy
+  EXC: ["exeloncorp.com"], // Exelon
+  FAST: ["fastenal.com"], // Fastenal
+  FER: ["ferrovial.com"], // Ferrovial
+  GEHC: ["gehealthcare.com"], // GE HealthCare
+  HONA: ["honeywell.com"], // Honeywell Aerospace
+  HON: ["honeywell.com"], // Honeywell
+  IDXX: ["idexx.com"], // Idexx
+  KDP: ["keurigdrpepper.com"], // Keurig Dr Pepper
+  KHC: ["kraftheinzcompany.com"], // Kraft Heinz
+  LITE: ["lumentum.com"], // Lumentum
+  MAR: ["marriott.com"], // Marriott
+  MSTR: ["strategy.com", "microstrategy.com"], // Strategy (MicroStrategy)
+  MPWR: ["monolithicpower.com"], // Monolithic Power
+  MNST: ["monsterbevcorp.com", "monsterenergy.com"], // Monster Beverage
+  NBIS: ["nebius.com"], // Nebius
+  ORLY: ["oreillyauto.com"], // O'Reilly
+  ODFL: ["odfl.com"], // Old Dominion
+  PCAR: ["paccar.com"], // Paccar
+  PAYX: ["paychex.com"], // Paychex
+  RKLB: ["rocketlabusa.com"], // Rocket Lab
+  ROP: ["ropertech.com"], // Roper
+  ROST: ["rossstores.com"], // Ross Stores
+  SNDK: ["sandisk.com"], // Sandisk
+  STX: ["seagate.com"], // Seagate
+  SPCX: ["spacex.com"], // SpaceX
+  TER: ["teradyne.com"], // Teradyne
+  TRI: ["thomsonreuters.com"], // Thomson Reuters
+  WMT: ["walmart.com"], // Walmart
+  WBD: ["wbd.com"], // Warner Bros. Discovery
+  WDC: ["westerndigital.com"], // Western Digital
 };
 
 const UA = "Mozilla/5.0 (compatible; cosmos-logo-fetch/1.0)";
@@ -240,32 +315,83 @@ async function tryFetch(url, minBytes) {
   }
 }
 
+/** 확장자는 실제 content-type 으로 정한다 (favicon 이 png 인 사이트, apple-touch-icon 이 jpeg 인 사이트가 섞여 있다) */
+function extOf(type) {
+  if (type.includes("svg")) return "svg";
+  if (type.includes("jpeg") || type.includes("jpg")) return "jpg";
+  if (type.includes("webp")) return "webp";
+  if (type.includes("icon")) return "ico";
+  return "png";
+}
+
+/**
+ * 이미지의 긴 변(px). 가이드의 권장 조건이 최소 128×128 이라, 16~48px favicon 을 로고로 잡아 두는 것을 막는 데 쓴다.
+ * 헤더만 읽어 판단하며, 못 읽는 형식은 0 을 돌려 후보 비교에서 뒤로 밀린다 (SVG 는 해상도 제한이 없으므로 최댓값).
+ */
+function maxDim(buf) {
+  if (buf.length > 24 && buf.readUInt32BE(0) === 0x89504e47) return Math.max(buf.readUInt32BE(16), buf.readUInt32BE(20)); // PNG
+  if (buf.length > 6 && buf.readUInt32LE(0) === 0x00010000) {
+    // ICO — 디렉터리의 크기 바이트(0 은 256)
+    const n = buf.readUInt16LE(4);
+    let m = 0;
+    for (let i = 0; i < n && 6 + 16 * i + 1 < buf.length; i++) m = Math.max(m, buf[6 + 16 * i] || 256, buf[7 + 16 * i] || 256);
+    return m;
+  }
+  if (buf.length > 4 && buf[0] === 0xff && buf[1] === 0xd8) {
+    // JPEG — SOF 세그먼트
+    for (let i = 2; i + 9 < buf.length; ) {
+      if (buf[i] !== 0xff) { i++; continue; }
+      const marker = buf[i + 1];
+      if (marker >= 0xc0 && marker <= 0xc2) return Math.max(buf.readUInt16BE(i + 5), buf.readUInt16BE(i + 7));
+      i += 2 + buf.readUInt16BE(i + 2);
+    }
+    return 0;
+  }
+  if (buf.length > 30 && buf.toString("ascii", 0, 4) === "RIFF" && buf.toString("ascii", 8, 12) === "WEBP") {
+    const fmt = buf.toString("ascii", 12, 16);
+    if (fmt === "VP8X") return Math.max(1 + buf.readUIntLE(24, 3), 1 + buf.readUIntLE(27, 3));
+    if (fmt === "VP8 ") return Math.max(buf.readUInt16LE(26) & 0x3fff, buf.readUInt16LE(28) & 0x3fff);
+    return 0;
+  }
+  if (buf.toString("ascii", 0, 200).includes("<svg")) return Number.MAX_SAFE_INTEGER;
+  return 0;
+}
+
+const MIN_PX = 128;
+
+/**
+ * 한 도메인의 후보를 순서대로 훑되, 128px 이상이 나오면 그 자리에서 멈춘다.
+ * 하나도 그 크기에 못 미치면 그중 가장 큰 것을 쓴다 — 작은 favicon 이라도 모노그램보다는 기업을 알아보기 쉽다.
+ */
 async function fetchLogo(domain) {
-  // 1) Clearbit — 정사각형 고해상도 로고 (서비스 중단 시 건너뜀)
-  const a = await tryFetch(`https://logo.clearbit.com/${domain}?size=256`, 1500);
-  if (a) return { ...a, source: "clearbit", ext: "png" };
-  // 2) 사이트의 apple-touch-icon (보통 180px 정방형)
-  for (const host of [domain, `www.${domain}`]) {
-    const b = await tryFetch(`https://${host}/apple-touch-icon.png`, 1500);
-    if (b) return { ...b, source: "touch-icon", ext: "png" };
+  const candidates = [
+    // 1) Clearbit — 정사각형 고해상도 로고 (서비스 중단 시 건너뜀)
+    ["clearbit", `https://logo.clearbit.com/${domain}?size=256`, 1500],
+    // 2) 사이트의 apple-touch-icon (보통 180px 정방형)
+    ["touch-icon", `https://${domain}/apple-touch-icon.png`, 1500],
+    ["touch-icon", `https://www.${domain}/apple-touch-icon.png`, 1500],
+    // 3) Google favicon 256px
+    ["gstatic", `https://t1.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://${domain}&size=256`, 2500],
+    // 4) logo.dev (공개 문서용 publishable key, 프로토타입 한정 — 서비스 시 자체 키·표기 필요)
+    ["logo.dev", `https://img.logo.dev/${domain}?token=pk_X-1ZO13GSgeOoUrIuJ6GMQ&size=256&format=png`, 1500],
+    // 5) DuckDuckGo 아이콘 (ico, 다중 크기)
+    ["ddg", `https://icons.duckduckgo.com/ip3/${domain}.ico`, 1500],
+    // 6) 사이트 루트의 favicon.ico / precomposed 터치 아이콘 — 대개 32px 이하라 마지막에 둔다
+    ["favicon", `https://www.${domain}/favicon.ico`, 1500],
+    ["favicon", `https://${domain}/favicon.ico`, 1500],
+    ["touch-icon-pre", `https://www.${domain}/apple-touch-icon-precomposed.png`, 1500],
+    ["touch-icon-pre", `https://${domain}/apple-touch-icon-precomposed.png`, 1500],
+  ];
+  let best = null;
+  for (const [source, url, minBytes] of candidates) {
+    const got = await tryFetch(url, minBytes);
+    if (!got) continue;
+    const dim = maxDim(got.buf);
+    const hit = { ...got, source, ext: extOf(got.type), dim };
+    if (dim >= MIN_PX) return hit;
+    if (!best || dim > best.dim) best = hit;
   }
-  // 3) Google favicon 256px (16px 기본 아이콘은 크기로 걸러낸다)
-  const c = await tryFetch(`https://t1.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://${domain}&size=256`, 2500);
-  if (c) return { ...c, source: "gstatic", ext: "png" };
-  // 4) DuckDuckGo 아이콘 (ico, 다중 크기)
-  const d = await tryFetch(`https://icons.duckduckgo.com/ip3/${domain}.ico`, 1500);
-  if (d) return { ...d, source: "ddg", ext: d.type.includes("png") ? "png" : "ico" };
-  // 5) 사이트 루트의 favicon.ico / precomposed 터치 아이콘
-  for (const host of [`www.${domain}`, domain]) {
-    const e = await tryFetch(`https://${host}/favicon.ico`, 1500);
-    if (e) return { ...e, source: "favicon", ext: e.type.includes("png") ? "png" : e.type.includes("svg") ? "svg" : "ico" };
-    const f = await tryFetch(`https://${host}/apple-touch-icon-precomposed.png`, 1500);
-    if (f) return { ...f, source: "touch-icon-pre", ext: f.type.includes("jpeg") ? "jpg" : "png" };
-  }
-  // 6) logo.dev (공개 문서용 publishable key, 프로토타입 한정 — 서비스 시 자체 키·표기 필요)
-  const g = await tryFetch(`https://img.logo.dev/${domain}?token=pk_X-1ZO13GSgeOoUrIuJ6GMQ&size=256&format=png`, 1500);
-  if (g) return { ...g, source: "logo.dev", ext: g.type.includes("jpeg") ? "jpg" : "png" };
-  return null;
+  return best;
 }
 
 async function exists(p) {
@@ -293,7 +419,7 @@ const worker = async () => {
       const got = await fetchLogo(d);
       if (got) {
         await writeFile(path.join(outDir, `${code}.${got.ext}`), got.buf);
-        report.saved.push(`${code} ← ${d} (${got.source}, ${Math.round(got.buf.length / 1024)}KB)`);
+        report.saved.push(`${code} ← ${d} (${got.source}, ${got.dim >= MIN_PX ? `${got.dim}px` : `${got.dim}px ⚠ ${MIN_PX}px 미만`}, ${Math.round(got.buf.length / 1024)}KB)`);
         done = true;
         break;
       }
@@ -303,7 +429,7 @@ const worker = async () => {
 };
 await Promise.all(Array.from({ length: 6 }, worker));
 
-const files = (await readdir(outDir)).filter((f) => /\.(png|ico|jpg|svg)$/.test(f)).sort();
+const files = (await readdir(outDir)).filter((f) => /\.(png|ico|jpg|svg|webp)$/.test(f)).sort();
 await writeFile(path.join(root, "src", "lib", "logo-codes.json"), JSON.stringify(files, null, 2) + "\n");
 
 console.log(`kept ${report.kept.length}, saved ${report.saved.length}, failed ${report.failed.length}`);

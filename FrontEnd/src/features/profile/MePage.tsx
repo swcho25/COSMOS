@@ -104,7 +104,7 @@ function WatchCard() {
         {!watch.isLoading && !items.length && <Empty>은하에서 기업을 선택하고 ★ 관심 등록을 눌러보세요.</Empty>}
         {items.map((w) => (
           <div key={w.companyId} className="me-item">
-            <CompanyAvatar name={w.name} stockCode={w.stockCode} industry={w.primaryIndustry?.name} size={40} />
+            <CompanyAvatar name={w.name} stockCode={w.stockCode} market={w.market} industry={w.primaryIndustry?.name} size={40} />
             <button type="button" className="grow" style={{ textAlign: "left" }} onClick={() => navigate(`/?company=${w.companyId}`)}>
               <b>{w.name}</b>
               <span className="meta num">

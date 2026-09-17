@@ -58,7 +58,7 @@ export default function CompanyPreviewDialog({ companyId, onClose, onOpenGalaxy 
         ) : (
           <>
             <div className="row mt-12" style={{ gap: 14, alignItems: "flex-start" }}>
-              <CompanyAvatar name={c.name} stockCode={c.stockCode} industry={c.industries[0]?.name} size={48} />
+              <CompanyAvatar name={c.name} stockCode={c.stockCode} market={c.market} industry={c.industries[0]?.name} size={48} />
               <div className="grow">
                 <div id="company-preview-title" style={{ fontSize: 19, fontWeight: 700 }}>
                   {c.name}
