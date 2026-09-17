@@ -124,51 +124,34 @@ export const CAMERA_PRESETS: { id: CameraPresetId; label: string; hint: string }
   { id: "top", label: "위에서", hint: "어느 기업이 가까운지 비교" },
   { id: "front", label: "정면에서", hint: "주가 등락 높이를 비교" },
 ];
+/** 카메라 프리셋 아래 한 줄로 늘 보여 주는 조작 힌트 — 조작법 표(CONTROL_HINTS)의 휠·W A S D·방향키 항목과 같은 내용 */
+export const NAV_HINT = "휠 확대·축소 · W A S D 이동 · ← → ↑ ↓ 회전";
+export const NAV_HINT_TITLE = "마우스 휠로 확대·축소, W A S D 로 시선을 옮기고, 방향키로 돌려 봅니다 (Shift 로 빠르게). 슬라이더를 만진 뒤에도 바로 먹습니다";
 export const CAMERA_UI = {
   groupLabel: "카메라 시점",
   /** 버튼 title 뒤에 붙는 설명 — 같은 프리셋을 다시 누르면 드래그로 흐트러진 시점이 되돌아온다 */
   reapply: "다시 누르면 이 시점으로 되돌립니다",
 };
 
-/* ---- 상시 "읽는 법" 바 (P0-1) · 범례 카드 (P0-10) ---- */
-export const READBAR = {
-  label: "읽는 법",
-  /** 축약 1행 — 순서대로 자리·굵기·색·점선·글자. 씬 인코딩(RelationLines·toon)과 같은 뜻이어야 한다 */
-  items: [
-    { key: "place", text: "위치=관계 강도" },
-    { key: "width", text: "굵기=점수" },
-    { key: "color", text: "색=영향 방향" },
-    { key: "dash", text: "점선=방향 없음" },
-    { key: "label", text: "선 위 글자=관계 종류" },
-  ],
-  expand: "필터·범례 펼치기",
-  collapse: "필터·범례 접기",
-};
-export const LEGEND_UI = {
-  kicker: "관계 필터",
-  typesTitle: "무엇이 이어졌나 — 종류",
-  typesHint: "선 위 글자와 기업 호버 시 이웃 링·태그로 표시 (색이 아님)",
-  impactTitle: "좋은 신호인가 — 영향 (선 색)",
-  impact: [
-    { key: "POSITIVE", label: "긍정" },
-    { key: "NEGATIVE", label: "부정" },
-    { key: "NEUTRAL", label: "중립" },
-  ],
-  widthHint: "굵을수록 점수가 높고, 점선은 방향이 없는 관계입니다",
-  mixTitle: "무엇으로 계산하나 — 뉴스 · 공시 비율",
-  mixHint: "이 비율로 관계 점수를 다시 섞습니다. 한쪽 근거가 없는 관계는 있는 쪽 점수를 그대로 씁니다",
-  mixScope: "이 탭에서만 유지되고, 다시 접속하면 50 : 50 으로 돌아갑니다",
-  mixReset: "50 : 50",
+/* ---- 하단 중앙 조절 도크 (Human Atlas 의 하단 explode 카드와 같은 자리) — 글자는 최소로, 설명은 title 에만 ---- */
+export const DOCK_UI = {
+  open: "조절판 열기",
+  close: "조절판 닫기",
+  spread: "펼치기",
+  spreadTitle: "은하를 평면으로 펼치고, 끝까지 밀면 행성 크기(시가총액·연결 가중치) 순으로 정렬합니다",
+  /** 슬라이더 아래 세 단계 라벨 — lib/spread 의 SpreadStage 와 같은 키 */
+  stages: { galaxy: "은하", flat: "평면", sorted: "정렬" } as Record<"galaxy" | "flat" | "sorted", string>,
+  types: "관계 종류",
+  advanced: "고급",
+  advancedTitle: "뉴스·공시 비율 · 최소 점수 · 주가 고도",
+  mix: "뉴스 · 공시",
+  mixTitle: "이 비율로 관계 점수를 다시 섞습니다 (이 탭에서만 유지)",
   minScore: "최소 점수",
   altitude: "주가 고도",
   altitudeTitle: "기간 등락률만큼 행성을 원반 위·아래로 띄웁니다",
-  altitudeHint: "위쪽 = 상승, 아래쪽 = 하락 (선택 기간 등락률)",
-  advanced: "고급",
-  topOnly: "상위만",
-  topOnlyTitle: "켜면 점수 상위 관계만 기본 표시, 나머지는 기업을 호버할 때 나타납니다",
-  nameLabels: "기업 이름표",
-  edgeLabels: "관계 종류 글자",
-  edgeLabelsTitle: "선 중간에 공급·투자·협력·경쟁 글자를 붙입니다 (상위 관계만)",
+  altitudeSuspended: "펼친 상태에서는 고도를 쓰지 않습니다 — 펼치기를 0 으로 되돌리세요",
+  reset: "초기화",
+  resetTitle: "펼치기 · 관계 종류 · 비율 · 최소 점수 · 고도를 기본값으로",
 };
 
 /** 기업 툴팁의 한 줄 힌트 — 조작법 표(CONTROL_HINTS)의 클릭·더블클릭 항목과 같은 문구 */
@@ -187,8 +170,8 @@ export const PREVIEW_UI = {
 
 /* ---- 공간 참조 구조 (P0-6) ---- */
 export const RINGS_UI = {
-  /** 허브 랭크 링 라벨 — 반지름 랭크 상위 비율 */
-  hub: (pct: number) => `허브 상위 ${pct}%`,
+  /** 허브 랭크 링 라벨 — 이 원 안쪽에 연결(가중 연결도) 상위 몇 %가 들어오는지. '허브' 라는 말 대신 기준을 그대로 쓴다 */
+  hub: (pct: number) => `연결 상위 ${pct}%`,
   hubPercents: [10, 30, 60],
   zeroPlane: "등락률 0%",
   /** 기업 중심 뷰 depth 1·2·3 궤도 */
@@ -327,12 +310,12 @@ export const HELP_SECTIONS: HelpSection[] = [
   {
     id: "filters",
     title: "필터와 화면 조절",
-    summary: "관계 종류 · 뉴스·공시 비율 · 최소 점수 · 상위만 · 주가 고도",
+    summary: "펼치기 · 관계 종류 · 뉴스·공시 비율 · 최소 점수 · 주가 고도",
     body: [
-      "오른쪽 아래 카드에서 관계 종류를 끄고 켜고, 최소 점수를 올려 약한 관계를 숨길 수 있습니다.",
-      "'뉴스 · 공시 비율' 을 움직이면 그 비율로 관계 점수를 다시 섞어 선의 굵기와 밝기가 바뀝니다. 한쪽 근거가 없는 관계는 있는 쪽 점수를 그대로 쓰고, 양쪽 다 없으면 선을 그리지 않습니다. 이 비율은 이 탭에서만 유지됩니다.",
-      "'상위만' 을 켜면 점수 상위 관계만 기본 표시되고 나머지는 기업에 커서를 올릴 때 나타납니다.",
-      "'주가 고도' 와 기간(1D·1M·3M)은 행성 높이의 기준을 바꿉니다.",
+      "하단 가운데 ^ 를 누르면 조절판이 열립니다. '펼치기' 를 밀면 은하가 평면으로 펴지고, 끝까지 밀면 행성이 크기(시가총액·연결 가중치) 순 격자로 정렬됩니다 — 이때 카메라는 위에서 보는 시점으로 바뀝니다.",
+      "관계 종류 버튼 4개로 공급·투자·협력·경쟁을 끄고 켭니다.",
+      "> 를 누르면 고급이 열립니다. '뉴스 · 공시' 비율을 움직이면 그 비율로 관계 점수를 다시 섞어 선의 굵기와 밝기가 바뀝니다. 한쪽 근거가 없는 관계는 있는 쪽 점수를 그대로 쓰고, 양쪽 다 없으면 선을 그리지 않습니다. 이 비율은 이 탭에서만 유지됩니다.",
+      "'최소 점수' 를 올리면 약한 관계가 숨고, '주가 고도' 와 기간(1D·1M·3M)은 행성 높이의 기준을 바꿉니다.",
       "위쪽 '산업' 에서 한 산업만 남길 수 있습니다.",
     ],
   },

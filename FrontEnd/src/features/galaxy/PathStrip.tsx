@@ -54,7 +54,7 @@ export default function PathStrip({ model }: Props) {
                     </span>
                   )}
                   <span className="path-node">
-                    <CompanyAvatar name={node.name} stockCode={node.stockCode} industry={node.industry} size={20} />
+                    <CompanyAvatar name={node.name} stockCode={node.stockCode} market={node.market} industry={node.industry} size={20} />
                     {node.name}
                   </span>
                 </span>

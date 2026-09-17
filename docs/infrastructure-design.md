@@ -24,7 +24,7 @@
 
 1. HDFS는 원본·정제·분석·집계 데이터의 보존과 재처리를 담당한다.
 2. PostgreSQL은 웹 API가 빠르게 조회할 정형 결과만 보관한다.
-3. 실시간 수집 데이터는 Kafka를 통해 HDFS Writer로 전달한다.
+3. 지속적으로 유입되는 뉴스는 Kafka를 통해 뉴스 전용 HDFS Writer로 전달한다. 공시와 주가는 검증된 배치 스냅샷을 HDFS에 직접 게시한다.
 4. 원본은 먼저 `raw`에 보존하고 정제·분석 결과를 별도 경로에 기록한다.
 5. Spark Driver는 Master에 두고 실제 Task는 Worker의 Executor가 수행한다.
 6. SSAFY 서버와 AWS 서버의 Hadoop 포트를 공용 인터넷에 공개하지 않는다.
@@ -36,7 +36,8 @@
 ```mermaid
 flowchart TB
     User[사용자 브라우저]
-    Source[뉴스 / OpenDART / SEC EDGAR / 주가 제공처]
+    NewsSource[국내·Yahoo·네이버 뉴스]
+    BatchSource[OpenDART / SEC EDGAR / 주가 제공처]
 
     subgraph SSAFY_MAIN[SSAFY 메인 EC2]
         Nginx[Nginx]
@@ -46,9 +47,10 @@ flowchart TB
     end
 
     subgraph SSAFY_MASTER[SSAFY 빅데이터 Master]
-        Collector[Collector]
+        NewsCollector[뉴스 Collector]
+        BatchCollector[공시·주가 Collector]
         Kafka[Kafka]
-        Writer[HDFS Writer]
+        Writer[뉴스 HDFS Writer]
         NN[HDFS NameNode]
         RM[YARN ResourceManager]
         Driver[Spark Driver]
@@ -69,8 +71,10 @@ flowchart TB
         AI_SERVER[AI 분석 서버]
     end
 
-    Source --> Collector
-    Collector --> Kafka --> Writer
+    NewsSource --> NewsCollector --> Kafka --> Writer
+    BatchSource --> BatchCollector
+    BatchCollector -. 파일·블록 위치 요청 .-> NN
+    BatchCollector -->|검증된 배치 스냅샷 직접 게시| DataLayer
     Writer -. 파일·블록 위치 요청 .-> NN
     NN -. 블록 배치·메타데이터 .-> DataLayer
     Writer -->|선택된 DataNode에 실제 블록 쓰기| DataLayer
@@ -106,9 +110,10 @@ Spring Boot는 사용자 요청 처리 중 HDFS 원본을 직접 조회하거나
 | NameNode | HDFS 디렉터리·파일·블록 ID·DataNode 위치 관리 |
 | ResourceManager | YARN 클러스터 자원 할당과 애플리케이션 실행 관리 |
 | Spark Driver | YARN `client` 배포 모드로 Master에서 실행하며 Job 계획 생성, Stage·Task 분할, Executor 조정 |
-| Kafka | 실시간 수집 이벤트의 완충, 재처리 및 생산자·소비자 분리 |
-| Collector | 외부 뉴스·공시·주가 데이터 수집 및 Kafka 발행 |
-| HDFS Writer | Kafka Consumer로서 실시간 원본을 HDFS `raw`에 저장 |
+| Kafka | 국내·Yahoo·네이버 뉴스 이벤트의 완충, 재처리 및 뉴스 Collector와 Writer 분리 |
+| 뉴스 Collector | 외부 뉴스를 수집하고 영속 Outbox를 거쳐 Kafka `news.raw`에 발행 |
+| 공시·주가 Collector | OpenDART·SEC·일봉을 수집·검증하고 완료된 배치 스냅샷을 HDFS `raw`에 직접 게시 |
+| 뉴스 HDFS Writer | `news.raw` Consumer로서 뉴스 원본을 HDFS `raw/realtime/news`에 저장 |
 | RDB Loader | 성공한 집계 결과를 PostgreSQL에 멱등 적재 |
 
 NameNode는 실제 원문 블록을 저장하지 않는다. 실제 데이터는 AWS DataNode 3대의 EBS에 저장한다.
@@ -176,11 +181,21 @@ Tailscale 사용이 허용되지 않으면 직접 구축한 WireGuard를 대안�
 
 다음 트리는 클러스터 전체에 하나만 존재하는 HDFS 네임스페이스다. 각 Worker의 로컬 파일시스템에 동일한 폴더 트리를 만들지 않는다.
 
+뉴스 원문은 과거 Backfill 데이터와 실시간 수집 데이터를 다음 경로로 구분해 보관한다.
+
+```text
+뉴스 원문
+├── 과거 Backfill
+│   └── /datasets/news/snapshots/20260908-prepared/news
+└── 실시간
+    └── /data-lake/raw/realtime/news/topic=news.raw/partition=*/start=*/
+```
+
 ```text
 /data-lake
 ├── raw
-│   ├── news
-│   │   └── ingestion_type=realtime
+│   ├── realtime
+│   │   └── news
 │   ├── disclosures
 │   └── stocks
 ├── cleaned
@@ -249,11 +264,11 @@ NameNode는 HDFS 디스크 상태를 기준으로 블록 위치를 선택한다.
 예시:
 
 ```text
-/data-lake/raw/news/
-  ingestion_type=realtime/
-  event_date=2026-09-12/
-  hour=13/
-  part-00000.jsonl.gz
+/data-lake/raw/realtime/news/
+  topic=news.raw/
+  partition=0/
+  start=00000000000000000000/
+  part-00000.parquet
 
 /data-lake/cleaned/news/
   event_date=2026-09-12/
@@ -323,10 +338,12 @@ Worker 3 작업 중지 → EC2 중지 → 유형 변경 → 시작 → DataNode/
 
 ```mermaid
 flowchart LR
-    External[뉴스·공시·주가 원천]
-    Collector[Collector]
+    NewsSource[국내·Yahoo·네이버 뉴스]
+    BatchSource[OpenDART·SEC·주가]
+    NewsCollector[뉴스 Collector]
+    BatchCollector[공시·주가 Collector]
     Kafka[Kafka]
-    RealtimeWriter[HDFS Writer]
+    RealtimeWriter[뉴스 HDFS Writer]
     Raw[(HDFS raw)]
     CleanJob[Spark 정제·정규화]
     Cleaned[(HDFS cleaned)]
@@ -341,7 +358,8 @@ flowchart LR
     API[Spring Boot]
     Web[웹 페이지]
 
-    External --> Collector --> Kafka --> RealtimeWriter --> Raw
+    NewsSource --> NewsCollector --> Kafka --> RealtimeWriter --> Raw
+    BatchSource --> BatchCollector -->|검증된 스냅샷 직접 게시| Raw
     Raw --> CleanJob --> Cleaned --> AI --> Analyzed
     Analyzed --> FeatureJob --> Features --> Aggregate --> Aggregated
     Aggregated --> Loader --> PG --> API --> Web
@@ -349,23 +367,27 @@ flowchart LR
 
 ### 7.1 실시간·주기 수집
 
-1. Collector가 외부 API 또는 크롤링 결과를 수신한다.
-2. 출처, 외부 식별자, 수집 시각, 스키마 버전과 실행 ID를 추가한다.
-3. Kafka의 데이터 유형별 Topic에 발행한다.
-4. HDFS Writer가 Consumer Group으로 메시지를 읽는다.
-5. 일정 크기·시간 단위로 묶어 `raw/realtime`에 저장한다.
-6. HDFS 저장과 체크포인트 기록이 완료된 뒤 Kafka offset을 commit한다.
-7. 최종 실패 건은 DLQ와 `quarantine`에 기록한다.
+뉴스는 다음 순서로 처리한다.
 
-Kafka Topic 이름은 구현 전 확정하되 다음 구분을 권장한다.
+1. 국내 사이트·Yahoo·네이버 API Collector가 뉴스와 수집 메타데이터를 영속 Outbox에 기록한다.
+2. Collector가 공통 뉴스 이벤트를 Kafka `news.raw`에 발행한다.
+3. 뉴스 HDFS Writer가 `cosmos-news-hdfs-v1` Consumer Group으로 메시지를 읽는다.
+4. Kafka 파티션과 offset 범위를 기준으로 묶어 `raw/realtime/news`에 저장한다.
+5. HDFS 파일·manifest·체크포인트 기록이 완료된 뒤 Kafka offset을 commit한다.
+6. 스키마 오류 원문은 HDFS `quarantine`에 보존하고 `pipeline.dlq`에는 실패 위치와 해시를 기록한다.
+
+OpenDART·SEC·주가는 정기 배치 특성과 원문 파일 크기를 고려해 Kafka를 사용하지 않는다. 각 Collector가 로컬 staging에서 파일·행·manifest를 검증하고 HDFS 임시 경로에 업로드한 뒤 최종 경로로 원자적으로 게시한다. 게시 완료 결과만 후속 정제·Loader 입력으로 사용한다.
+
+운영 Kafka Topic은 다음 두 개다.
 
 ```text
 news.raw
-disclosures.opendart.raw
-disclosures.sec.raw
-stocks.raw
 pipeline.dlq
 ```
+
+- `news.raw`: 3 partitions, 뉴스 정상 이벤트
+- `pipeline.dlq`: 1 partition, 뉴스 Writer가 처리하지 못한 이벤트의 격리 위치·해시·offset
+- `cosmos.news.verify.*`: 통합 검증 실행이 만든 증빙용 임시 Topic이며 운영 입력으로 사용하지 않는다.
 
 ### 7.2 정제·정규화
 
@@ -472,10 +494,9 @@ Spring 그래프 조회는 `REPEATABLE READ`로 동일 요청 안에서 스냅�
 ## 9. 최종 구조 요약
 
 ```text
-외부 데이터
-→ Collector
-→ Kafka
-→ HDFS raw 분산 저장, replication=2
+뉴스 원천 → 뉴스 Collector → Kafka news.raw → 뉴스 HDFS Writer ┐
+OpenDART·SEC → 공시 Collector → 검증된 배치 직접 게시          ├→ HDFS raw 분산 저장, replication=2
+주가 원천 → 주가 Collector → 검증된 Parquet 직접 게시          ┘
 → Spark 증분 정제·정규화
 → AI 분석
 → Spark 기반 점수 및 7D·30D·90D 관계 집계

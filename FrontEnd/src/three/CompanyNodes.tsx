@@ -17,8 +17,9 @@ import { discFragment, discVertex } from "./logoDiscShader";
 import { dragState, liveFor, morphState, type LiveTransform } from "./morph";
 import { ensureNameCell, nameAtlasTexture, type NameCell } from "./nameAtlas";
 import { animFor } from "./nodeAnim";
+import { spreadState } from "./spread";
 import { dotTexture, ringTexture } from "./textures";
-import { planetGeometry, planetPaletteFor, toonGradient, type PlanetPalette } from "./toon";
+import { PLANET_RADIUS_K, planetGeometry, planetPaletteFor, toonGradient, type PlanetPalette } from "./toon";
 
 interface Props {
   model: SceneModel;
@@ -26,7 +27,7 @@ interface Props {
   hoveredId: string | null;
   onHover: (id: string | null) => void;
   onClick: (id: string) => void;
-  /** 이름표 칩에 기업명을 펼칠지 (끄면 로고 원만 남는다). 강조로 고정된 노드는 항상 펼친다 */
+  /** 이름표 칩에 기업명을 펼칠 수 있게 할지 (끄면 언제나 로고 원만 남는다). 켜 두어도 이름은 호버·강조 고정·중심에서만 펼쳐진다 */
   showLabels?: boolean;
   /** 더블클릭(두 번째 click, nativeEvent.detail ≥ 2) — 그 기업의 관계망으로. 첫 클릭은 onClick(미리보기)으로 이미 처리돼 있다 */
   onDoubleClick?: (id: string) => void;
@@ -127,12 +128,12 @@ function cullOverlappingChips(order: number[], rect: Float32Array, prio: Float32
   }
 }
 /**
- * 티어별 칩이 완전히 사라지는 카메라 거리 — 0.75 배 지점부터 페이드. 허브는 은하 기본 자세에서도 보인다.
- * 은하: 기본 자세(poseFor, 188개 목업 기준 카메라 거리 ≈ 250~290, 30° 부감·주가 고도 켬)에서 tier 1(질량 랭크 12~49)이
- *       가장 가까워도 ≈ 200 이므로 tier 1 상한을 140 으로 두어 '기본 자세에서는 허브만' 을 지킨다 (페이드 105~140).
- * 기업 중심: 기본 자세(거리 ≈ 118)에서 depth 1 궤도가 96~142 에 걸치므로 200 을 유지해야 첫 궤도 칩이 다 보인다.
+ * 티어별 칩이 완전히 사라지는 카메라 거리 — 0.75 배 지점부터 페이드.
+ * 이름은 이제 호버(와 강조 고정)에서만 펼쳐지므로 기본 상태의 칩은 로고 원 하나(aspect 1)뿐이다. 예전처럼
+ * 이름 폭까지 감안해 거리를 좁게 잡을 이유가 없어져, 기본 자세(은하 카메라 거리 ≈ 250~290)에서 모든 티어의
+ * 아이콘이 보이도록 넉넉히 둔다. 혼잡은 거리 LOD 가 아니라 칩 사각형 겹침 판정(cullOverlappingChips)이 맡는다.
  */
-const TIER_FAR: Record<SceneModel["kind"], number[]> = { galaxy: [520, 140, 110], system: [520, 200, 110] };
+const TIER_FAR: Record<SceneModel["kind"], number[]> = { galaxy: [900, 620, 460], system: [900, 620, 460] };
 /**
  * 칩 겹침 판정의 여백(px) — 화면에 실제로 그려질 칩 사각형이 이 여백 안으로 겹치면 우선순위 낮은 쪽을 숨긴다.
  * 예전 방식(행성 위치를 96×28 격자에 넣어 같은 칸만 겹침으로 침)은 칩이 칸보다 넓어지자 무력해졌다 — 26px 칩은 폭이 100~150px 라
@@ -141,14 +142,31 @@ const TIER_FAR: Record<SceneModel["kind"], number[]> = { galaxy: [520, 140, 110]
 const CHIP_GAP = 4;
 /**
  * 칩 목표 화면 높이(px)와 월드 높이 클램프 — 코앞에서도 너무 작아지지 않고 멀리서도 행성을 통째로 덮지 않게.
- * 20px·상한 4 일 때는 은하 기본 자세에서 칩이 13px 안팎, 글자는 7px 남짓이라 읽히지 않았다. 26px 로 키우고 상한을 10 으로 올렸다.
+ * 20px·상한 4 일 때는 은하 기본 자세에서 칩이 13px 안팎, 글자는 7px 남짓이라 읽히지 않았다. 26px 로 키우고 상한을 10 으로 올렸다가,
+ * 이름이 호버에서만 나오게 바뀐 뒤 글자를 키우려고 30 → 34px 로 올렸다 (글자 ≈ 17px → 23px, 굵기는 그대로).
+ * 화면 px 로 고정하면 확대할수록 행성만 커지고 로고는 그대로라 작아 보인다 — 아래 CHIP_OF_PLANET 하한이 그때 로고를 함께 키운다.
  * 상한이 걸리는 구간(기본 자세 카메라 거리 ≈ 265~310 에서 계산): 캔버스 세로 790px 이상이면 허브 칩이 모두 26px, 720px 에서는 23.8~26px,
  * 650px 에서는 21.5~25.2px. 글자 높이는 이름 아틀라스 행(ROW 44 중 글자 36)에 따라 칩 높이의 약 0.65 배 ≈ 17px 이다.
  * 하한은 코앞(궤도 최소 거리 22)에서 칩이 화면 45~65px 로 커지는 정도 — 더 올리면 긴 이름이 화면 1/3 을 덮는다
  */
-const CHIP_PX = 26;
+const CHIP_PX = 34;
 const CHIP_MIN = 1.3;
 const CHIP_MAX = 10.0;
+/**
+ * 칩 높이의 하한 — 행성 반지름의 이 배. 가까이 다가가 행성이 커지면 로고도 같이 커진다 (멀리서는 CHIP_PX 가 이긴다).
+ * 로고 원 지름이 행성 지름의 45% 남짓이 되는 값이다 — 더 키우면 로고가 행성을 덮어 버린다.
+ * 멀리서 격자를 볼 때는 행성이 작아 이 하한이 걸리지 않으므로, 정렬 화면의 촘촘함에는 영향을 주지 않는다
+ */
+const CHIP_OF_PLANET = 0.9;
+/**
+ * 화면 중앙에서 멀어질수록 칩을 옅게 — 초점에 있는 기업이 진하게 읽히고 가장자리는 배경으로 물러난다.
+ * q 는 화면 중앙에서의 거리(가로·세로 반폭 기준, 모서리가 ≈ 1.41). q ≤ CHIP_SOLID_Q 면 그대로,
+ * CHIP_FADE_Q 에서 CHIP_EDGE_ALPHA 까지 떨어진다. 호버·강조로 고정된 칩은 어디에 있든 이 감쇠를 받지 않는다.
+ * 화면 밖으로 완전히 나간 칩은 여기서 뺀다 — 어차피 안 보이는데 겹침 판정에서 다른 칩을 밀어내면 안 된다.
+ */
+const CHIP_SOLID_Q = 0.34;
+const CHIP_FADE_Q = 1.05;
+const CHIP_EDGE_ALPHA = 0.45;
 /** 항성 점광 레이어 — 랩과 동일 */
 const LIT = 1;
 /** 피킹에서 무시하는 배지·칩 알파 — 이 아래는 보이지 않는데 포인터를 가로채면 안 된다 */
@@ -174,7 +192,7 @@ function filteredRaycast(accept: (instanceId: number, uv: THREE.Vector2) => bool
  * - 산업색에서 만든 팔레트로 면 단위 바다·대륙을 칠하고, 대륙형·고리형·위성형을 기업 id 시드로 섞는다
  *   (은하 뷰와 기업 중심 뷰에서 같은 기업이 같은 행성으로 보인다)
  * - 크기는 연결 가중치 + 시가총액(node.size, graph.ts nodeSize), 호버·중심·강조로 크기와 밝기를 프레임마다 lerp. 위치는 live 버퍼(morph.ts)에서 읽는다
- * - 행성 표면은 비워 두고, 로고·기업명은 행성 위 깃발 칩(InstancedMesh 1회)에 놓는다. 칩은 화면상 약 26px 높이로
+ * - 행성 표면은 비워 두고, 로고·기업명은 행성 위 깃발 칩(InstancedMesh 1회)에 놓는다. 칩은 화면상 약 30px 높이로
  *   항상 카메라를 향하고, 티어(허브·첫 껍질·나머지)별 거리 LOD 와 칩 사각형 겹침 판정(cullOverlappingChips)으로 혼잡을 억제한다
  * - 정면 배지(흰 로고 원판)는 emphasis.badges — 호버·중심·선택 간선 양끝 — 에서만 카메라→행성 시선 위에 떠오른다
  * - 멀리서도 위치가 보이도록 아주 약한 헤일로 점광을 함께 둔다
@@ -198,7 +216,7 @@ export default function CompanyNodes({ model, emphasis, hoveredId, onHover, onCl
         // 배열 인덱스가 아니라 기업 id 로 시드를 만들어 뷰가 바뀌어도 외형이 유지된다
         const h = (hashString(node.id) % 1000) / 1000;
         const variant: Variant = h < 0.15 ? "ring" : h < 0.27 ? "moon" : "land";
-        const radius = node.size * 1.3;
+        const radius = node.size * PLANET_RADIUS_K;
         const palette = planetPaletteFor(node.color);
         const seed = 0.5 + h * 9;
         // 세분화는 반지름과 무관하게 고정한다 — 뷰마다 size 가 달라도(기업 중심의 중심 3.4 등) 같은 면 분할·대륙 모양이 나오도록.
@@ -252,7 +270,7 @@ export default function CompanyNodes({ model, emphasis, hoveredId, onHover, onCl
       center.x += node.pos[0];
       center.y += node.pos[1];
       center.z += node.pos[2];
-      const idx = ensureLogoCell(`${node.stockCode}|${node.name}`, initials(node.name), node.color, logoUrl(node.stockCode));
+      const idx = ensureLogoCell(`${node.market}|${node.stockCode}|${node.name}`, initials(node.name), node.color, logoUrl(node.stockCode, node.market));
       const [u, v] = cellUv(idx);
       cell[i * 2] = u;
       cell[i * 2 + 1] = v;
@@ -496,12 +514,15 @@ export default function CompanyNodes({ model, emphasis, hoveredId, onHover, onCl
 
       // 칩 폭(aspect)은 여기서 이 프레임 값으로 확정한다 — 겹침 판정(아래)과 배치(두 번째 루프)가 같은 폭을 봐야 한다.
       // 역할 태그 폭은 호버 순간 0 → 전체로 바로 뛰므로 직전 프레임 값을 쓰면 그 프레임에 이웃 칩과 겹친다
-      a.nameOn += ((showLabels || pinned ? 1 : 0) - a.nameOn) * kFast;
+      // 기본은 로고 아이콘만 — 이름은 호버한 기업과 그 이웃(pinned), 그리고 기업 중심 뷰의 중심에서만 펼친다.
+      // 폭을 lerp 로 늘리면 그 사이 프레임에서 이름이 오른쪽으로 밀려 나오듯(그리고 눌린 듯) 보여서, 켜고 끄는 건 즉시 한다 —
+      // 나타나는 감각은 칩 자체의 알파 페이드(chipA)가 맡는다
+      a.nameOn = showLabels && (pinned || isCenter) ? 1 : 0;
       const roleW = roleArr[i * 4 + 3] > 0 ? (roleArr[i * 4 + 2] / roleArr[i * 4 + 3]) * 0.8 : 0;
       built.aspectArr[i] = 1 + a.nameOn * ((built.nameCells[i]?.aspect ?? 0) * 0.8 + 0.3) + (roleW > 0 ? roleW + 0.15 : 0);
 
       // 칩 목표 알파: 티어별 거리 LOD × 강조, 고정 노드는 항상. 모프 중에는 중심만
-      scratch.h[i] = THREE.MathUtils.clamp(dist * pxK, CHIP_MIN, CHIP_MAX);
+      scratch.h[i] = Math.max(THREE.MathUtils.clamp(dist * pxK, CHIP_MIN, CHIP_MAX), r * CHIP_OF_PLANET);
       const far = tierFar[Math.min(node.tier, tierFar.length - 1)] * narrow;
       let ct = pinned ? 1 : 1 - THREE.MathUtils.smoothstep(dist, far * 0.75, far);
       ct *= 0.15 + 0.85 * emph;
@@ -526,9 +547,18 @@ export default function CompanyNodes({ model, emphasis, hoveredId, onHover, onCl
           scratch.rect[o + 1] = bottom - h * pxw;
           scratch.rect[o + 2] = px + (aspect - 0.5) * h * pxw;
           scratch.rect[o + 3] = bottom;
-          // 정수부 = 우선순위, 소수부 = 크기(≤ 3.5) — 같은 우선순위면 큰 행성이 앞선다
-          scratch.prio[i] = prioOf(node) * 10 + node.size;
-          CHIP_ORDER.push(i);
+          // 화면 밖으로 완전히 나갔으면 그리지도, 겹침 판정에 넣지도 않는다
+          if (scratch.rect[o + 2] < 0 || scratch.rect[o] > W || scratch.rect[o + 3] < 0 || scratch.rect[o + 1] > H) ct = 0;
+          else {
+            // 중앙에서 멀어질수록 옅게 (고정된 칩은 그대로)
+            if (!pinned && !isCenter) {
+              const q = Math.hypot((px - W * 0.5) / (W * 0.5), (py - H * 0.5) / (H * 0.5));
+              ct *= 1 - (1 - CHIP_EDGE_ALPHA) * THREE.MathUtils.smoothstep(q, CHIP_SOLID_Q, CHIP_FADE_Q);
+            }
+            // 정수부 = 우선순위, 소수부 = 크기(≤ 3.5) — 같은 우선순위면 큰 행성이 앞선다
+            scratch.prio[i] = prioOf(node) * 10 + node.size;
+            CHIP_ORDER.push(i);
+          }
         }
       }
       scratch.target[i] = ct;
@@ -548,8 +578,8 @@ export default function CompanyNodes({ model, emphasis, hoveredId, onHover, onCl
       halo = { version: dragState.version };
       HALO_SYNC.set(built, halo);
     }
-    // 고도 전이는 dragState.version 을 올리지 않고 y 만 옮긴다(간선 재생성을 피하려고) — 헤일로는 그동안 직접 따라가야 한다
-    if (morphing || altitudeState.animating || halo.version !== dragState.version) {
+    // 고도·펼치기 전이는 dragState.version 을 올리지 않고 좌표만 옮긴다(간선 재생성을 피하려고) — 헤일로는 그동안 직접 따라가야 한다
+    if (morphing || altitudeState.animating || spreadState.animating || halo.version !== dragState.version) {
       halo.version = dragState.version;
       built.haloPos.needsUpdate = true;
     }

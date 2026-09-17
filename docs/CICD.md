@@ -47,7 +47,7 @@ Webhook을 사용할 수 없다면 `cosmos-web` Configure → Poll SCM을 `H/5 *
 4. 운영망과 분리된 임시 PostgreSQL·Redis를 띄워 백엔드 테스트를 수행한다. 테스트 결과 XML은 Jenkins에 남기고 임시 테스트 환경은 정리한다.
 5. 커밋 해시와 빌드 번호로 프론트·백엔드 이미지에 태그를 붙인다.
 6. `cosmos-web`의 `dev` 빌드에 한해서 최신 원격 커밋인지 다시 확인하고 배포한다.
-7. 백엔드·프론트 컨테이너와 외부 HTTPS 응답을 확인하고 성공 버전을 기록한다.
+7. 백엔드·프론트 컨테이너와 외부 HTTPS 응답을 확인하고 성공 버전을 기록한 뒤, 현재·직전 배포 이미지만 남긴다.
 
 애플리케이션 배포는 `deploy/scripts/deploy.sh`로 실행한다. 파일 잠금으로 동시에 두 배포가 수행되지 않게 한다. DB·Redis 볼륨은 애플리케이션 교체와 별도로 유지한다. 배포 중에는 짧은 서비스 중단이 발생할 수 있으며 무중단 배포를 보장하지 않는다.
 
@@ -55,12 +55,14 @@ Webhook을 사용할 수 없다면 `cosmos-web` Configure → Poll SCM을 `H/5 *
 
 - 릴리스 구성: `/opt/cosmos/releases/<IMAGE_TAG>/compose.yml`
 - 마지막 정상 릴리스: `/opt/cosmos/releases/current`
+- 직전 정상 릴리스: `/opt/cosmos/releases/.previous`
 - 운영 환경변수: `/etc/cosmos/app.env` (`root:cosmos-ci`, 0640)
+- 기본 운영 환경 파일이 유실됐지만 기존 `cosmos` 백엔드가 실행 중이면 배포 스크립트가 컨테이너의 현재 DB·Redis·JWT·CORS 값을 `/opt/cosmos/releases/app.env`에 `0600`으로 복구해 재사용한다. 임의 비밀값은 생성하지 않으며, 최초 배포 또는 `COSMOS_ENV_FILE`로 명시한 파일이 없을 때는 중단한다.
 - PostgreSQL 볼륨: `cosmos_postgres_data`
 - Redis 볼륨: `cosmos_redis_data`
 - Jenkins 볼륨: `cosmos_jenkins_home`
 
-새 컨테이너가 시작되지 않거나 상태 확인에 실패하면 직전 정상 릴리스의 이미지·Compose 구성으로 복구한다. SIGTERM/SIGINT에도 복구를 시도한다. 강제 전원 종료나 SIGKILL 이후에는 상태 확인과 수동 복구가 필요하다. 첫 배포에는 이전 버전이 없으므로 실패 시 자동 복구 대상도 없다.
+새 컨테이너가 시작되지 않거나 상태 확인에 실패하면 직전 정상 릴리스의 이미지·Compose 구성으로 복구한다. SIGTERM/SIGINT에도 복구를 시도한다. 복구가 끝나거나 새 배포가 정상 완료되면 `cosmos-backend`와 `cosmos-frontend`는 현재·직전 정상 릴리스 태그만 보존하고, 더 오래된 태그 및 임시 `*-build` 이미지는 제거한다. PostgreSQL·Redis·Jenkins 등 다른 저장소의 이미지는 정리 대상이 아니다. 강제 전원 종료나 SIGKILL 이후에는 상태 확인과 수동 복구가 필요하다. 첫 배포에는 이전 버전이 없으므로 실패 시 자동 복구 대상도 없다.
 
 ```bash
 # 서버에서 이미지가 존재하는 이전 릴리스로 복구

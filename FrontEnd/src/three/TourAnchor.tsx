@@ -5,6 +5,7 @@ import type { SceneModel } from "@/lib/graph";
 import { bezier, CHORD_CLEAR, controlPoint } from "./edgeCurve";
 import { liveFor } from "./morph";
 import { tourAnchor } from "./tourState";
+import { PLANET_RADIUS_K } from "./toon";
 
 const P = new THREE.Vector3();
 const Q = new THREE.Vector3();
@@ -61,7 +62,7 @@ export default function TourAnchor({ model }: { model: SceneModel }) {
       P.fromArray(live.pos, i * 3);
       // 화면 반지름은 카메라 오른쪽으로 행성 반지름만큼 떨어진 점을 함께 투영해 잰다
       RIGHT.setFromMatrixColumn(camera.matrixWorld, 0).normalize();
-      Q.copy(P).addScaledVector(RIGHT, model.nodes[i].size * 1.3);
+      Q.copy(P).addScaledVector(RIGHT, model.nodes[i].size * PLANET_RADIUS_K);
       const c = project(P);
       const e = project(Q);
       write(c.x, c.y, Math.max(44, Math.hypot(e.x - c.x, e.y - c.y) * 3.2), c.front);

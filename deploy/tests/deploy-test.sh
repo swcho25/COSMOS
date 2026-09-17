@@ -20,6 +20,22 @@ printf 'docker %s\n' "$*" >> "$FAKE_CALLS"
 if [[ "$1" == image && "$2" == inspect ]]; then
     exit 0
 fi
+if [[ "$1" == image && "$2" == ls ]]; then
+    printf '%s\n' "$FAKE_IMAGES"
+    exit 0
+fi
+if [[ "$1" == image && "$2" == rm ]]; then
+    exit 0
+fi
+if [[ "$1" == ps ]]; then
+    [[ -z "${FAKE_BACKEND_ID:-}" ]] || printf '%s\n' "$FAKE_BACKEND_ID"
+    exit 0
+fi
+if [[ "$1" == inspect ]]; then
+    [[ -n "${FAKE_BACKEND_ENV_FILE:-}" ]] || exit 1
+    cat "$FAKE_BACKEND_ENV_FILE"
+    exit 0
+fi
 if [[ "$1" != compose ]]; then
     echo 'Unexpected docker command in test' >&2
     exit 90
@@ -78,6 +94,17 @@ run_case() {
     export FAKE_SCENARIO="$scenario"
     export FAKE_CALLS="$case_dir/calls"
     export FAKE_ACTIVE="$case_dir/active"
+    export FAKE_IMAGES="cosmos-backend ancient
+cosmos-frontend ancient
+cosmos-backend older
+cosmos-frontend older
+cosmos-backend previous
+cosmos-frontend previous
+cosmos-backend candidate
+cosmos-frontend candidate
+cosmos-backend-build candidate
+cosmos-frontend-build ancient
+postgres 17-alpine"
     : > "$COSMOS_ENV_FILE"
     : > "$FAKE_CALLS"
     if [[ "${5:-}" == loader ]]; then
@@ -87,6 +114,7 @@ run_case() {
         mkdir -p "$COSMOS_STATE_DIR/previous"
         cp "$fixture/repo/deploy/compose.yml" "$COSMOS_STATE_DIR/previous/compose.yml"
         printf 'previous\n' > "$COSMOS_STATE_DIR/current"
+        printf 'older\n' > "$COSMOS_STATE_DIR/.previous"
         printf 'previous\n' > "$FAKE_ACTIVE"
     fi
     if bash "$fixture/repo/deploy/scripts/deploy.sh" "$tag" > "$case_dir/output" 2>&1; then
@@ -104,6 +132,14 @@ run_case success success candidate yes
 [[ "$status" == 0 ]] || fail 'successful release returned failure'
 [[ "$(cat "$COSMOS_STATE_DIR/current")" == candidate ]] || fail 'successful release was not promoted'
 [[ "$(cat "$FAKE_ACTIVE")" == candidate ]] || fail 'successful candidate is not active'
+[[ "$(cat "$COSMOS_STATE_DIR/.previous")" == previous ]] || fail 'successful release did not retain the prior deployment marker'
+grep -q 'docker image rm cosmos-backend:ancient' "$FAKE_CALLS" || fail 'superseded backend image was not removed'
+grep -q 'docker image rm cosmos-frontend:older' "$FAKE_CALLS" || fail 'older frontend image was not removed'
+grep -q 'docker image rm cosmos-backend-build:candidate' "$FAKE_CALLS" || fail 'temporary backend build image was not removed'
+grep -q 'docker image rm cosmos-frontend-build:ancient' "$FAKE_CALLS" || fail 'temporary frontend build image was not removed'
+! grep -q 'docker image rm cosmos-backend:previous' "$FAKE_CALLS" || fail 'previous backend image was removed'
+! grep -q 'docker image rm cosmos-frontend:candidate' "$FAKE_CALLS" || fail 'current frontend image was removed'
+! grep -q 'docker image rm postgres:17-alpine' "$FAKE_CALLS" || fail 'unmanaged image was removed'
 echo 'PASS: healthy candidate is promoted'
 
 if grep -q 'rdb-loader.compose.yml' "$FAKE_CALLS"; then
@@ -128,6 +164,8 @@ run_case health-failure health-failure candidate yes
 [[ "$(cat "$COSMOS_STATE_DIR/current")" == previous ]] || fail 'unhealthy release changed current'
 [[ "$(cat "$FAKE_ACTIVE")" == previous ]] || fail 'previous application was not restored'
 grep -q 'Restored application release previous' "$fixture/health-failure/output" || fail 'restore outcome missing'
+grep -q 'docker image rm cosmos-backend:candidate' "$FAKE_CALLS" || fail 'failed candidate image was not removed after rollback'
+! grep -q 'docker image rm cosmos-frontend:older' "$FAKE_CALLS" || fail 'rollback fallback image was removed'
 echo 'PASS: health failure restores and retains previous release'
 
 run_case start-failure start-failure candidate yes
@@ -159,6 +197,48 @@ run_case first-failure health-failure candidate no
 [[ ! -f "$COSMOS_STATE_DIR/current" ]] || fail 'first failed deployment created current marker'
 grep -q 'No previous application release exists' "$fixture/first-failure/output" || fail 'missing release outcome not reported'
 echo 'PASS: first failed release is not promoted'
+
+recovery_dir="$fixture/environment-recovery"
+mkdir -p "$recovery_dir/state"
+export COSMOS_STATE_DIR="$recovery_dir/state"
+unset COSMOS_ENV_FILE
+export COSMOS_SMOKE_URL=https://test.invalid
+export COSMOS_RDB_LOADER_COMPOSE_OVERRIDE="$recovery_dir/rdb-loader.override.yml"
+export FAKE_SCENARIO=success
+export FAKE_CALLS="$recovery_dir/calls"
+export FAKE_ACTIVE="$recovery_dir/active"
+export FAKE_BACKEND_ID=running-backend
+export FAKE_BACKEND_ENV_FILE="$recovery_dir/backend.env"
+export FAKE_IMAGES="cosmos-backend candidate
+cosmos-frontend candidate"
+cat > "$FAKE_BACKEND_ENV_FILE" <<'ENV'
+DB_PASSWORD=existing-db-password
+REDIS_PASSWORD=existing-redis-password
+JWT_SECRET=existing-jwt-secret
+CORS_ALLOWED_ORIGINS=https://test.invalid
+ENV
+: > "$FAKE_CALLS"
+if bash "$fixture/repo/deploy/scripts/deploy.sh" candidate > "$recovery_dir/output" 2>&1; then
+    status=0
+else
+    status=$?
+fi
+[[ "$status" == 0 ]] || fail 'deployment did not recover the missing default environment file'
+[[ "$(stat -c '%a' "$COSMOS_STATE_DIR/app.env")" == 600 ]] || fail 'recovered environment file permissions are not 0600'
+grep -q '^DB_PASSWORD=existing-db-password$' "$COSMOS_STATE_DIR/app.env" || fail 'database password was not recovered'
+grep -q '^REDIS_PASSWORD=existing-redis-password$' "$COSMOS_STATE_DIR/app.env" || fail 'Redis password was not recovered'
+grep -q '^JWT_SECRET=existing-jwt-secret$' "$COSMOS_STATE_DIR/app.env" || fail 'JWT secret was not recovered'
+grep -q '^PUBLIC_URL=https://test.invalid$' "$COSMOS_STATE_DIR/app.env" || fail 'public URL was not recovered'
+! grep -q 'existing-.*password\|existing-jwt-secret' "$recovery_dir/output" || fail 'recovered secrets were written to deployment output'
+echo 'PASS: missing default environment is recovered from the running backend'
+
+export COSMOS_ENV_FILE="$recovery_dir/explicit-missing.env"
+if bash "$fixture/repo/deploy/scripts/deploy.sh" candidate > "$recovery_dir/explicit-output" 2>&1; then
+    fail 'missing explicit environment override unexpectedly recovered from a container'
+fi
+grep -q "Missing environment file: $COSMOS_ENV_FILE" "$recovery_dir/explicit-output" || fail 'missing explicit environment override was not reported'
+echo 'PASS: an explicit missing environment override remains a hard failure'
+unset FAKE_BACKEND_ID FAKE_BACKEND_ENV_FILE
 
 run_case invalid-tag success '../escape' yes
 [[ "$status" == 2 ]] || fail 'invalid tag did not return validation error'

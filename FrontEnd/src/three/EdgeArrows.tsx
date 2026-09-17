@@ -7,7 +7,8 @@ import { altitudeGate } from "./altitude";
 import { bezier, CHORD_CLEAR, controlPoint, radiusOf } from "./edgeCurve";
 import type { Emphasis } from "./emphasis";
 import { dragState, liveFor, morphState } from "./morph";
-import { beamColorFor } from "./toon";
+import { spreadDim, spreadGate } from "./spread";
+import { beamColorFor, PLANET_RADIUS_K } from "./toon";
 
 interface Props {
   model: SceneModel;
@@ -77,7 +78,7 @@ export default function EdgeArrows({ model, emphasis }: Props) {
       // 빔(RelationLines)과 같은 clear 를 줘야 화살촉이 빔 위에 놓인다
       const dist = controlPoint(live.pos, live.pos, CTRL, si * 3, ti * 3, CHORD_CLEAR[model.kind]);
       // target 행성 반지름(size×1.3)의 바깥 + 콘 반 높이만큼 끝에서 물러난다 (곡선 끝부분은 거의 직선이라 거리 비로 근사)
-      const rT = (model.nodeById.get(e.target)?.size ?? 1) * 1.3;
+      const rT = (model.nodeById.get(e.target)?.size ?? 1) * PLANET_RADIUS_K;
       const back = rT * 1.15 + (scale * CONE_H) / 2;
       const t = THREE.MathUtils.clamp(1 - back / Math.max(1e-3, dist), 0.5, 0.93);
       bezier(live.pos, live.pos, CTRL, t, P, si * 3, ti * 3);
@@ -116,9 +117,11 @@ export default function EdgeArrows({ model, emphasis }: Props) {
       place();
     }
     const warping = useGalaxy.getState().phase === "warp";
-    // 주가 고도 전이 중에는 빔이 꺼져 있고 끝점도 이동 끝에 한 번만 갱신된다 — 화살촉만 옛 자리에 남지 않게 함께 숨긴다
+    // 주가 고도·펼치기 전이 중에는 빔이 꺼져 있고 끝점도 이동 끝에 한 번만 갱신된다 — 화살촉만 옛 자리에 남지 않게 함께 숨긴다.
+    // 정렬 격자 단계(spreadDim)에서는 선 자체가 잡음이라 화살촉도 같이 흐려진다
     const alt = altitudeGate();
-    const open = !warping && !morphState.plan && morphState.reveal >= 0.99 && alt.fade >= 0.99 && alt.reveal >= 0.99;
+    const sp = spreadGate();
+    const open = !warping && !morphState.plan && morphState.reveal >= 0.99 && alt.fade >= 0.99 && alt.reveal >= 0.99 && sp.fade >= 0.99 && sp.reveal >= 0.99 && spreadDim() >= 0.99;
     // 숨어 있는 동안 live 는 중간 좌표였다 — 마운트 시점(워프 커밋)에 놓은 자리는 이전 배치의 것이므로,
     // 다시 보이기 직전에 한 번 더 놓는다. 열려 있는 동안은 드래그 버전만 보면 된다
     if (open && followed.gated) place();

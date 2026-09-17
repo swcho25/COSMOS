@@ -1,17 +1,41 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { ImpactDirection, Market, RelationshipType, Sentiment } from "@/api/types";
-import { IMPACT_META, RELATIONSHIP_ORDER, SENTIMENT_META, industryColor, relationshipMeta } from "@/lib/meta";
+import { IMPACT_META, RELATIONSHIP_ORDER, SENTIMENT_META, SENTIMENT_PENDING, UNCLASSIFIED_INDUSTRY, industryColor, relationshipMeta } from "@/lib/meta";
 import { initials } from "@/lib/format";
-import { logoUrl } from "@/lib/logos";
+import { logoUrl, useCompanyLogoRef } from "@/lib/logos";
 import { ROLE_META, roleColor, type RoleKey } from "@/lib/roles";
 import { LAB } from "@/three/toon";
 
 /* ------------------------------ 로고 아바타 ------------------------------ */
 
-export function CompanyAvatar({ name, stockCode, industry, size = 44, radius }: { name: string; stockCode?: string | null; industry?: string | null; size?: number; radius?: number }) {
-  const [broken, setBroken] = useState(false);
-  const url = logoUrl(stockCode);
-  const hasLogo = Boolean(url) && !broken;
+/**
+ * 기업 로고 — 로고 키는 `시장 + 종목코드`다. 두 값을 아는 화면은 그대로 넘기고,
+ * `companyId`·`name` 만 가진 화면(뉴스의 관련 기업 등)은 companyId 를 넘기면 api 경계에서 적어 둔 참조로 찾는다.
+ * 파일이 없거나 이미지 로딩이 실패하면 깨진 이미지 대신 기업명 이니셜을 그린다.
+ */
+export function CompanyAvatar({
+  name,
+  companyId,
+  stockCode,
+  market,
+  industry,
+  size = 44,
+  radius,
+}: {
+  name: string;
+  companyId?: string | null;
+  stockCode?: string | null;
+  market?: Market | null;
+  industry?: string | null;
+  size?: number;
+  radius?: number;
+}) {
+  // 이미 코드를 아는 화면은 조회를 건너뛴다 — 훅 자체는 항상 호출해야 하므로 인자만 비운다
+  const ref = useCompanyLogoRef(stockCode ? null : companyId);
+  const url = logoUrl(stockCode ?? ref?.stockCode, market ?? ref?.market);
+  // 목록이 재사용되며 다른 기업으로 바뀔 수 있으므로 '깨짐'은 그 URL 에만 붙인다
+  const [brokenUrl, setBrokenUrl] = useState<string | null>(null);
+  const hasLogo = Boolean(url) && url !== brokenUrl;
   const color = industryColor(industry);
   return (
     <span
@@ -19,14 +43,15 @@ export function CompanyAvatar({ name, stockCode, industry, size = 44, radius }: 
       style={{ width: size, height: size, borderRadius: radius ?? Math.round(size * 0.28), fontSize: Math.max(11, Math.round(size * 0.3)), background: hasLogo ? "#fff" : `linear-gradient(140deg, ${color}66, ${color}22)`, color: "#fff", border: `1px solid ${color}55` }}
       aria-hidden="true"
     >
-      {hasLogo ? <img src={url!} alt="" onError={() => setBroken(true)} /> : initials(name)}
+      {hasLogo ? <img src={url!} alt="" loading="lazy" decoding="async" onError={() => setBrokenUrl(url)} /> : initials(name)}
     </span>
   );
 }
 
 /* ------------------------------ 배지 ------------------------------ */
-export function SentimentBadge({ value, compact = false }: { value: Sentiment; compact?: boolean }) {
-  const m = SENTIMENT_META[value] ?? SENTIMENT_META.NEUTRAL;
+/** sentiment 는 분석 전이면 null 이다 — 그때는 중립이 아니라 '분석 전' 톤으로 그린다 */
+export function SentimentBadge({ value, compact = false }: { value: Sentiment | null | undefined; compact?: boolean }) {
+  const m = (value && SENTIMENT_META[value]) ?? SENTIMENT_PENDING;
   return (
     <span className="badge" style={{ background: m.bg, color: m.fg }}>
       <i className="dot" style={{ background: m.color }} />
@@ -54,11 +79,13 @@ export function TypeBadge({ type, directed }: { type: RelationshipType; directed
     </span>
   );
 }
-export function IndustryBadge({ name }: { name: string }) {
-  const c = industryColor(name);
+/** 대표 산업이 없는 기업(primaryIndustry: null)은 '미분류' 로 표시한다 */
+export function IndustryBadge({ name }: { name: string | null | undefined }) {
+  const label = name || UNCLASSIFIED_INDUSTRY;
+  const c = industryColor(label);
   return (
     <span className="badge" style={{ background: `${c}22`, color: c }}>
-      {name}
+      {label}
     </span>
   );
 }
@@ -76,7 +103,9 @@ export function RoleBadge({ role, count, on = false, dimmed = false, title, onCl
     </button>
   );
 }
-export function MarketTag({ market }: { market: Market }) {
+/** 시장 코드가 비어 있으면(백엔드가 "" 로 내려주는 기업) 빈 칸 대신 아무것도 그리지 않는다 */
+export function MarketTag({ market }: { market: Market | null | undefined }) {
+  if (!market) return null;
   return (
     <span className="meta num" style={{ fontFamily: "var(--mono)", fontSize: 11, letterSpacing: "0.04em" }}>
       {market}

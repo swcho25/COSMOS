@@ -4,7 +4,7 @@
  */
 import type { CompanyGraph, GraphEdge, LatestGraph, LatestGraphNode, Market, RelationshipType } from "@/api/types";
 import { ARMS, ARM_SPREAD, CORE_Y, DISC_Y, R_CORE, R_MAX, armTheta, nearestArm } from "./galaxyShape";
-import { INDUSTRY_COLORS, industryColor, relationshipMeta } from "./meta";
+import { INDUSTRY_COLORS, UNCLASSIFIED_INDUSTRY, industryColor, relationshipMeta } from "./meta";
 import { gaussian, hashString, seededRandom } from "./rng";
 
 export type Vec3 = [number, number, number];
@@ -73,6 +73,8 @@ export interface SceneModel {
 }
 
 const INDUSTRY_ORDER = Object.keys(INDUSTRY_COLORS);
+/** 대표 산업이 없는 노드(industryName: null)는 '미분류' 성단 하나로 모은다 — 성단 키가 null 이면 팔 배정·색이 깨진다 */
+const industryNameOf = (n: { industryName: string | null }) => n.industryName ?? UNCLASSIFIED_INDUSTRY;
 
 function weightedDegree(edges: GraphEdge[]) {
   const deg = new Map<string, number>();
@@ -241,8 +243,8 @@ const SIM_DAMP = 0.85;
 const SIM_STEP = 0.18;
 /** 한 스텝 최대 이동 — 겹친 노드가 서로를 걷어차는 순간의 안전판 */
 const MAX_STEP = 4;
-/** 반발 사거리와 세기 — 사거리를 34→40 으로 늘려 이웃 행성이 더 떨어져 앉는다 (스프링 목표·하드 간격·핵 사다리도 함께 키웠다) */
-const REP_D = 40;
+/** 반발 사거리와 세기 — 34 → 40 → 46 으로 늘려 이웃 행성이 더 떨어져 앉는다 (스프링 목표·하드 간격·핵 사다리도 함께 키웠다) */
+const REP_D = 46;
 const REP_K = 0.9;
 /** 간선 스프링 세기 — 목표 거리는 점수 100 → 11, 점수 0 → 32 */
 const SPRING_K = 0.06;
@@ -260,9 +262,12 @@ const RADIUS_JITTER = 0.12;
 const RADIUS_K = 0.03;
 /** 마지막 이 횟수 동안은 하드 최소 간격을 직접 밀어 지킨다 */
 const HARD_TAIL = 40;
-/** 하드 최소 간격 = (반지름 합) × 이 값 + 여백 — 칩(화면 26px)과 행성이 겹치지 않고 이웃이 한눈에 구분되는 간격 */
-const GAP_K = 4.0;
-const GAP_PAD = 5;
+/**
+  * 하드 최소 간격 = (node.size 합) × 이 값 + 여백. 행성 반지름(size × PLANET_RADIUS_K)이 커지고 이름표 칩도
+  * 34px 로 커져 4.0 에서는 이웃끼리 답답해 보였다 — 5.0 이면 가장 큰 두 행성이 붙어 서도 반지름 합이 간격의 60% 안쪽이다
+  */
+const GAP_K = 5.0;
+const GAP_PAD = 6;
 /**
  * 핵 사다리의 최소 간격 배율 — 핵 6개는 하드 간격 패스가 밀지 않으므로(고정) 사다리를 늘릴 때 이 배율로 벌린다.
  * 기본 자세에서 이름표가 보이는 것은 핵 허브들뿐이라 여기가 벌어져야 "간격이 넓어졌다" 가 눈에 보인다.
@@ -270,11 +275,11 @@ const GAP_PAD = 5;
  * 즉 지금 벌지 크기는 CORE_SCALE_MAX 가 정하고, 이 값은 허브가 더 작은 데이터에서만 효력이 있다.
  * 결과(실측): 핵 최소 쌍거리 8.3 → 11.7, 기본 자세 화면 간격 +28%, 팔 시작 반지름 32 → 46
  */
-const CORE_GAP_K = 1.8;
+const CORE_GAP_K = 2.2;
 /** 팔 배정 그리디의 부하 벌점 — 없으면 친화도가 큰 팔 하나로 전부 몰려 나선이 한 줄만 굵어진다 */
 const ARM_BALANCE = 0.4;
-/** 핵 사다리를 늘리는 배율의 상한 — 벌지가 원반만큼 커지지 않게 (2.8 이면 바깥 허브 r ≈ 36, 팔 시작 r ≈ 46 으로 원반 반지름의 약 27%) */
-const CORE_SCALE_MAX = 2.8;
+/** 핵 사다리를 늘리는 배율의 상한 — 벌지가 원반만큼 커지지 않게 (3.3 이면 바깥 허브 r ≈ 42, 팔 시작 r ≈ 54 로 원반 반지름의 약 31%) */
+const CORE_SCALE_MAX = 3.3;
 /**
  * 핵 6개가 처음 각도에서 벗어날 수 있는 한계(rad).
  * 반지름을 고정한 채 각도를 풀어 주면 이웃 두 허브가 같은 방위로 모여 붙어 버린다(실측 3.9 유닛).
@@ -308,9 +313,9 @@ export function layoutGalaxy(graph: LatestGraph, capT: CapScale = capScale(graph
   const maxMass = Math.max(1e-6, massOf(ranked[0].companyId));
 
   /* 2) 산업 → 팔 (그리디). 산업 간 간선 가중치 합이 큰 산업끼리 같은 팔에서 출발한다 */
-  const industryOf = new Map(graph.nodes.map((c) => [c.companyId, c.industryName]));
+  const industryOf = new Map(graph.nodes.map((c) => [c.companyId, industryNameOf(c)]));
   const groups = new Map<string, number>();
-  graph.nodes.forEach((c) => groups.set(c.industryName, (groups.get(c.industryName) ?? 0) + 1));
+  graph.nodes.forEach((c) => groups.set(industryNameOf(c), (groups.get(industryNameOf(c)) ?? 0) + 1));
   const industries = [...groups.keys()].sort((a, b) => {
     const ia = INDUSTRY_ORDER.indexOf(a);
     const ib = INDUSTRY_ORDER.indexOf(b);
@@ -402,7 +407,7 @@ export function layoutGalaxy(graph: LatestGraph, capT: CapScale = capScale(graph
       r = rStart + (rOuter - rStart) * Math.sqrt((i - coreCount) / Math.max(1, n - coreCount));
       r = Math.max(rStart, Math.min(rOuter, r * (1 + (rng() * 2 - 1) * RADIUS_JITTER)));
       interArm[i] = rng() < INTER_ARM_SHARE ? 1 : 0;
-      const arm = armOf.get(c.industryName) ?? 0;
+      const arm = armOf.get(industryNameOf(c)) ?? 0;
       // 각도 산포는 반지름에 비례(ARM_SPREAD)해 팔이 바깥으로 갈수록 넓어진다
       th = (single ? phase + (i / n) * Math.PI * 2 : armTheta(arm, r)) + gaussian(rng) * ARM_SPREAD(r);
     }
@@ -553,7 +558,7 @@ export function layoutGalaxy(graph: LatestGraph, capT: CapScale = capScale(graph
     nodes.push({
       id: c.companyId,
       name: c.name,
-      industry: c.industryName,
+      industry: industryNameOf(c),
       market: c.market,
       stockCode: c.stockCode,
       color: industryColor(c.industryName),
@@ -613,7 +618,7 @@ const RING_GAP = 24;
  * 기업 중심 배치가 산업·시장·종목코드·시가총액 순위를 채우는 데 쓰는 조회 함수 (전체 우주 스냅샷에서 만든다).
  * capT 는 capScale 로 만든 0~1 척도 — 은하 뷰와 같은 척도라야 워프 전후로 행성 크기가 튀지 않는다
  */
-export type CompanyLookup = (id: string) => { name?: string; industryName: string; market: Market; stockCode: string | null; capT?: number } | undefined;
+export type CompanyLookup = (id: string) => { name?: string; industryName: string | null; market: Market; stockCode: string | null; capT?: number } | undefined;
 
 export function layoutSystem(graph: CompanyGraph, lookup: CompanyLookup): SceneModel {
   const rng = seededRandom(hashString(graph.snapshotId + graph.centerCompanyId));
@@ -705,7 +710,7 @@ export function layoutSystem(graph: CompanyGraph, lookup: CompanyLookup): SceneM
     nodes.push({
       id: n.companyId,
       name: n.name,
-      industry: info?.industryName ?? "",
+      industry: info?.industryName ?? UNCLASSIFIED_INDUSTRY,
       market: info?.market ?? "",
       stockCode: info?.stockCode ?? null,
       color: industryColor(info?.industryName),

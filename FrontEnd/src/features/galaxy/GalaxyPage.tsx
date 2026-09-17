@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ApiError } from "@/api";
 import { useSearchParams } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import Scene from "@/three/Scene";
@@ -11,13 +12,12 @@ import { useUi } from "@/store/ui";
 import { Icon } from "@/components/ui";
 import CameraPresets from "./CameraPresets";
 import CompanyPanel from "./CompanyPanel";
+import ControlDock from "./ControlDock";
 import HelpHub, { HelpHotkey } from "./HelpHub";
 import HopSummary from "./HopSummary";
 import IndustryPicker from "./IndustryPicker";
-import LegendCard from "./LegendCard";
 import MyGalaxyBar, { MyGalaxyEmpty } from "./MyGalaxyBar";
 import PathStrip from "./PathStrip";
-import ReadBar from "./ReadBar";
 import RelationshipPanel from "./RelationshipPanel";
 import SceneTip, { type PointerPos } from "./SceneTip";
 import SearchPalette from "./SearchPalette";
@@ -45,7 +45,6 @@ function HoverPrefetch({ focusId }: { focusId: string | null }) {
  */
 export default function GalaxyPage() {
   const [params, setParams] = useSearchParams();
-  const qc = useQueryClient();
 
   const scope = useGalaxy((s) => s.scope);
   const includeNeighbors = useGalaxy((s) => s.includeNeighbors);
@@ -247,6 +246,12 @@ export default function GalaxyPage() {
   const scopeLoading = mineScope ? universe.isLoading || watchlist.isLoading : latest.isLoading;
   const loading = scopeLoading || (Boolean(focusId) && focusGraph.isLoading && !systemModel);
   const scopeError = mineScope ? universe.isError : latest.isError;
+  // 공개된 스냅샷이 아직 없는 것(404 GRAPH_SNAPSHOT_NOT_FOUND)은 장애가 아니다 — 분석 결과가 게시되기 전 상태를 그대로 알린다
+  const scopeErr = mineScope ? universe.error : latest.error;
+  const noSnapshot = scopeErr instanceof ApiError && scopeErr.status === 404;
+  // 기업 중심 그래프만 실패한 경우(딥링크한 기업이 스냅샷에 없음 등) — 씬이 빈 이유를 말하고 은하로 돌아갈 길을 준다
+  const focusError = Boolean(focusId) && focusGraph.isError && !systemModel;
+  const focusNoSnapshot = focusGraph.error instanceof ApiError && focusGraph.error.status === 404;
   // 관심 기업이 0개거나(watchIds 없음), 있어도 전부 우주 스냅샷 밖이라 배치할 별이 없으면 씬 대신 안내 카드를 보여 준다
   // (워프해 들어간 상태에서는 씬이 주인공이므로 비운다)
   const noStars = watchIds.length === 0 || (mine !== null && mine.model.nodes.length === 0);
@@ -281,11 +286,25 @@ export default function GalaxyPage() {
       )}
       {scopeError && (
         <div className="stage-loading" style={{ pointerEvents: "auto" }}>
-          <b>연결 실패</b>
-          <span>그래프 스냅샷을 가져오지 못했습니다.</span>
+          <b>{noSnapshot ? "아직 공개된 관계 그래프가 없습니다" : "연결 실패"}</b>
+          <span>{noSnapshot ? "뉴스·공시 분석 결과가 게시되면 은하가 나타납니다. 뉴스·기업 탭은 지금도 볼 수 있습니다." : "그래프 스냅샷을 가져오지 못했습니다."}</span>
           <button type="button" className="btn btn-g btn-sm" onClick={() => (mineScope ? universe.refetch() : latest.refetch())}>
             다시 시도
           </button>
+        </div>
+      )}
+      {!scopeError && focusError && (
+        <div className="stage-loading" style={{ pointerEvents: "auto" }}>
+          <b>{focusNoSnapshot ? "이 기업의 관계망이 아직 없습니다" : "관계망을 불러오지 못했습니다"}</b>
+          <span>{focusNoSnapshot ? "공개된 스냅샷에 이 기업의 관계가 없습니다. 분석 결과가 게시되면 나타납니다." : "기업 관계 그래프를 가져오지 못했습니다."}</span>
+          <div className="row" style={{ gap: 8 }}>
+            <button type="button" className="btn btn-g btn-sm" onClick={() => focusGraph.refetch()}>
+              다시 시도
+            </button>
+            <button type="button" className="btn btn-g btn-sm" onClick={() => warpTo(null)}>
+              은하로 돌아가기
+            </button>
+          </div>
         </div>
       )}
       {showEmpty && <MyGalaxyEmpty outOfSnapshot={watchIds.length > 0} onSearch={() => setSearchOpen(true)} onBack={() => pickScope("all")} />}
@@ -323,6 +342,7 @@ export default function GalaxyPage() {
         ) : (
           <IndustryPicker
             industries={industries.data?.items ?? []}
+            loading={industries.isLoading}
             total={universe.data?.nodes.length}
             value={industryId}
             onChange={(id) => {
@@ -366,19 +386,21 @@ export default function GalaxyPage() {
               {stale && <span className="meta">· 새 스냅샷 가능</span>}
             </div>
             <div className="meta num" style={{ marginTop: 4 }}>
-              {snapshot ? `${fmtDateTime(snapshot.asOfAt)} 기준 · 다음 갱신 ${fmtDateTime(snapshot.nextRefreshAt).slice(-5)}` : "불러오는 중"}
+              {snapshot
+                ? `${fmtDateTime(snapshot.asOfAt)} 기준 · 다음 갱신 ${fmtDateTime(snapshot.nextRefreshAt).slice(-5)}`
+                : scopeError
+                  ? noSnapshot
+                    ? "공개된 스냅샷 없음 · 분석 결과 게시 전"
+                    : "스냅샷 확인 실패"
+                  : "불러오는 중"}
             </div>
           </div>
-          <button type="button" onClick={() => qc.invalidateQueries({ queryKey: ["graph"] })} aria-label="그래프 새로고침" title="최신 스냅샷 확인">
-            <Icon.Refresh />
-          </button>
         </div>
       </div>
 
-      {/* 우하단: 관계 필터·범례 카드 (P0-10, 종류/영향 분리) — 두 뷰 모두. 접힘 상태의 진입점은 하단 중앙 읽는 법 바다 */}
-      <LegendCard />
-      {/* 하단 중앙: 상시 "읽는 법" 1행 (P0-1). 조작법은 여기 대신 ? 허브 6절·투어 4/4·기업 툴팁이 안내한다 */}
-      <ReadBar />
+      {/* 하단 중앙: 조절 도크 — '^' 로 열면 펼치기 슬라이더(은하 → 평면 → 크기순 정렬) · 관계 종류 4개 · '>' 고급(뉴스·공시 비율 · 최소 점수 · 주가 고도).
+          씬 인코딩 설명(자리·굵기·색·점선)은 ? 허브에만 둔다 */}
+      <ControlDock />
       {/* 왼쪽: 뜻밖의 관계 — 예상 밖의 연결만 골라 보여 주는 이 제품의 핵심 카드. 행 호버 = 씬 강조, 클릭 = 근거 패널 */}
       <SurpriseRail model={focusId ? systemModel : galaxyModel} onPickCompany={pickCompany} />
 

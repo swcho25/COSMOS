@@ -43,6 +43,11 @@ interface GalaxyState {
   altitudeOn: boolean;
   /** 고도의 기준 기간 */
   altitudeWindow: AltitudeWindow;
+  /**
+   * 펼치기 0~1 — 0 나선 은하 · 0.5 평면 · 1 행성 크기순 격자 (lib/spread). 은하 뷰 전용이라 워프하면 0 으로 돌아간다.
+   * 서버·저장소에 두지 않는 이 화면의 표시 설정이다
+   */
+  spread: number;
 
   /* ---- 패널 ---- */
   panelTab: PanelTab;
@@ -51,8 +56,10 @@ interface GalaxyState {
   searchOpen: boolean;
   /** 우측 인텔리전스 패널 펼침 여부 (접으면 오른쪽 가장자리에 꼬리표) */
   panelOpen: boolean;
-  /** 우하단 관계 유형·최소 점수 카드 펼침 여부 */
-  legendOpen: boolean;
+  /** 하단 중앙 조절 도크(펼치기·관계 종류·고급) 펼침 여부 — '^' 버튼으로 연다 */
+  dockOpen: boolean;
+  /** 도크의 '>' 고급 영역(뉴스·공시 비율·최소 점수·주가 고도) 펼침 여부 */
+  dockAdvanced: boolean;
   /** 상단 산업 선택판 펼침 여부 — ESC 한 겹으로 닫히도록 스토어에 둔다 */
   industryOpen: boolean;
   /** 선 중간의 관계 종류 글자(EdgeLabels) 표시 여부 */
@@ -84,12 +91,16 @@ interface GalaxyState {
   toggleEdgeBudget(): void;
   setAltitude(on: boolean): void;
   setAltitudeWindow(w: AltitudeWindow): void;
+  setSpread(v: number): void;
+  setDockOpen(v: boolean): void;
+  setDockAdvanced(v: boolean): void;
+  /** 도크가 다루는 표시 설정을 기본값으로 — 펼치기 0 · 관계 종류 전부 · 최소 점수 0 · 주가 고도 켬(1M). 뉴스·공시 비율은 store/weight 가 따로 되돌린다 */
+  resetControls(): void;
   setPanelTab(t: PanelTab): void;
   setWindow(w: MetricWindow): void;
   setPricePeriod(p: PricePeriod): void;
   setSearchOpen(v: boolean): void;
   setPanelOpen(v: boolean): void;
-  toggleLegend(): void;
   setIndustryOpen(v: boolean): void;
   setCameraPreset(p: CameraPresetId): void;
   toggleEdgeLabels(): void;
@@ -118,14 +129,16 @@ export const useGalaxy = create<GalaxyState>((set, get) => ({
   edgeBudget: true,
   altitudeOn: true,
   altitudeWindow: "1M",
+  spread: 0,
 
   panelTab: "news",
   window: "30D",
   pricePeriod: "1M",
   searchOpen: false,
   panelOpen: true,
-  // 범례 카드는 접힌 채로 시작한다 — 하단 중앙의 상시 "읽는 법" 바가 축약판이고, 누르면 펼쳐진다 (기획서 P0-1)
-  legendOpen: false,
+  // 도크는 펼친 채로 시작한다 — 조절 수단이 첫 화면에 보여야 한다. 접으면 하단 중앙 '^' 버튼만 남는다
+  dockOpen: true,
+  dockAdvanced: true,
   industryOpen: false,
   cameraPreset: "orbit",
   cameraPresetNonce: 0,
@@ -149,6 +162,8 @@ export const useGalaxy = create<GalaxyState>((set, get) => ({
       roleFilter: null,
       panelOpen: true,
       industryOpen: false,
+      // 펼치기는 은하 뷰의 배치다 — 기업 중심 뷰로 들어가면(또는 돌아오면) 나선 배치에서 시작한다
+      spread: 0,
     });
   },
   commitWarp() {
@@ -214,6 +229,18 @@ export const useGalaxy = create<GalaxyState>((set, get) => ({
   setAltitudeWindow(w) {
     set({ altitudeWindow: w });
   },
+  setSpread(v) {
+    set({ spread: Math.max(0, Math.min(1, v)) });
+  },
+  setDockOpen(v) {
+    set({ dockOpen: v });
+  },
+  setDockAdvanced(v) {
+    set({ dockAdvanced: v });
+  },
+  resetControls() {
+    set({ spread: 0, activeTypes: new Set(RELATIONSHIP_ORDER), minScore: 0, altitudeOn: true, altitudeWindow: "1M" });
+  },
   toggleLabels() {
     set((s) => ({ showLabels: !s.showLabels }));
   },
@@ -231,9 +258,6 @@ export const useGalaxy = create<GalaxyState>((set, get) => ({
   },
   setPanelOpen(v) {
     set({ panelOpen: v });
-  },
-  toggleLegend() {
-    set((s) => ({ legendOpen: !s.legendOpen }));
   },
   setIndustryOpen(v) {
     set({ industryOpen: v });

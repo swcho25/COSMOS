@@ -268,6 +268,44 @@ class PostgresPublicationTests(unittest.TestCase):
             "SELECT record_count, stored_count FROM graph_snapshot_load"
         ).fetchone(), (6, 3))
 
+    def test_verified_run_maps_company_keys_and_publishes_metrics_atomically(self):
+        self.connection.execute(
+            "UPDATE company SET market='KOSPI', stock_code=CASE company_id WHEN %s THEN '000001' ELSE '000002' END WHERE company_id IN (%s, %s)",
+            (self.a, self.a, self.b),
+        )
+        manifest = self.manifest()
+        keyed_rows = [
+            {
+                "source_market": "KOSPI", "source_stock_code": "000001",
+                "target_market": "KOSPI", "target_stock_code": "000002",
+                "relationship_type_code": "SUPPLY", "window_type": row["window_type"],
+                **{key: row[key] for key in (
+                    "news_score", "disclosure_score", "score", "confidence", "evidence_count",
+                    "impact_direction", "period_start", "period_end",
+                )},
+            }
+            for row in self.rows(manifest)
+        ]
+        metrics = [
+            dict(market="KOSPI", stock_code="000001", measured_at=manifest.as_of_at,
+                 window_type=window, news_mention_count=7, positive_count=4,
+                 negative_count=1, sentiment_score=Decimal("0.5"),
+                 relationship_count=1, metric_version="metric-v1")
+            for window in WINDOWS
+        ]
+        result = publish_snapshot(
+            self.connection, manifest, keyed_rows,
+            company_metrics=metrics, company_keys=True,
+        )
+        self.assertFalse(result.already_published)
+        self.assertEqual(self.count("company_metric_history"), 3)
+        self.assert_current(manifest.snapshot_id)
+        retry = publish_snapshot(
+            self.connection, manifest, [], company_metrics=[], company_keys=True,
+        )
+        self.assertTrue(retry.already_published)
+        self.assertEqual(self.count("company_metric_history"), 3)
+
     def test_repeatable_read_keeps_in_flight_graph_consistent_during_publish(self):
         initial = self.manifest()
         publish_snapshot(self.connection, initial, self.rows(initial))

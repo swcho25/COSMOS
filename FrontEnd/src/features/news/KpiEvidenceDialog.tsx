@@ -1,7 +1,7 @@
 import { useEffect } from "react";
-import type { NewsDetail, Sentiment } from "@/api/types";
+import type { NewsDetail, NewsRelatedCompany, Sentiment } from "@/api/types";
 import { fmtPctFrom01 } from "@/lib/format";
-import { SENTIMENT_META } from "@/lib/meta";
+import { SENTIMENT_META, SENTIMENT_PENDING, type ToneMeta } from "@/lib/meta";
 import { CompanyAvatar, Empty, Icon, SentimentBadge } from "@/components/ui";
 
 export type KpiEvidenceKind = "companies" | "sentiment" | "evidence" | "confidence";
@@ -77,7 +77,7 @@ function CompaniesBasis({ news, onPick }: { news: NewsDetail; onPick: (id: strin
       <div className="ev-list mt-12">
         {news.relatedCompanies.map((r) => (
           <button key={r.companyId} type="button" className="rank" onClick={() => onPick(r.companyId)}>
-            <CompanyAvatar name={r.name} size={32} radius={16} />
+            <CompanyAvatar name={r.name} companyId={r.companyId} size={32} radius={16} />
             <span className="nm">
               <b>{r.name}</b>
               <span className="meta num">
@@ -94,23 +94,39 @@ function CompaniesBasis({ news, onPick }: { news: NewsDetail; onPick: (id: strin
 
 const SENTIMENT_ORDER: Sentiment[] = ["POSITIVE", "NEGATIVE", "NEUTRAL"];
 
+interface SentimentBucket {
+  key: Sentiment | "PENDING";
+  tone: ToneMeta;
+  rows: NewsRelatedCompany[];
+}
+
 function SentimentBasis({ news, onPick }: { news: NewsDetail; onPick: (id: string) => void }) {
-  const groups = SENTIMENT_ORDER.map((s) => ({ sentiment: s, rows: news.relatedCompanies.filter((r) => r.sentiment === s) }));
-  const [pos, neg, neu] = groups.map((g) => g.rows.length);
+  // 감성 분석 전(sentiment: null) 기업도 한 묶음으로 센다 — 연결 기업 수와 이 모달의 합이 어긋나지 않게
+  const groups: SentimentBucket[] = [
+    ...SENTIMENT_ORDER.map((s) => ({ key: s, tone: SENTIMENT_META[s], rows: news.relatedCompanies.filter((r) => r.sentiment === s) })),
+    { key: "PENDING", tone: SENTIMENT_PENDING, rows: news.relatedCompanies.filter((r) => r.sentiment == null) },
+  ];
+  const [pos, neg, neu, pending] = groups.map((g) => g.rows.length);
   const shown = groups.filter((g) => g.rows.length > 0);
-  if (!shown.length) return <Empty>이 뉴스에 연결된 기업이 없습니다.</Empty>;
+  if (!news.relatedCompanies.length) return <Empty>이 뉴스에 연결된 기업이 없습니다.</Empty>;
   return (
     <>
       <div className="meta mt-8">
         연결 기업 각각에 매겨진 감성 태그를 센 값입니다 — 긍정 <b className="num">{pos}</b> · 부정 <b className="num">{neg}</b> · 중립{" "}
-        <b className="num">{neu}</b>.
+        <b className="num">{neu}</b>
+        {pending > 0 && (
+          <>
+            {" "}· 분석 전 <b className="num">{pending}</b>
+          </>
+        )}
+        .
       </div>
       {shown.map((g) => (
-        <div key={g.sentiment} className="mt-12">
+        <div key={g.key} className="mt-12">
           <div className="row" style={{ gap: 7, alignItems: "center" }}>
-            <i className="dot" style={{ background: SENTIMENT_META[g.sentiment].color }} />
-            <span className="kick" style={{ color: SENTIMENT_META[g.sentiment].color }}>
-              {SENTIMENT_META[g.sentiment].label} · {g.rows.length}개
+            <i className="dot" style={{ background: g.tone.color }} />
+            <span className="kick" style={{ color: g.tone.color }}>
+              {g.tone.label} · {g.rows.length}개
             </span>
           </div>
           <div className="row wrap mt-8" style={{ gap: 8 }}>

@@ -1,19 +1,26 @@
 import { useEffect, useRef } from "react";
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { ApiError } from "@/api";
 import Header from "@/components/Header";
 import Toasts from "@/components/Toasts";
 import AuthDialog from "@/features/auth/AuthDialog";
 import GalaxyPage from "@/features/galaxy/GalaxyPage";
 import NewsPage from "@/features/news/NewsPage";
 import CompaniesPage from "@/features/companies/CompaniesPage";
+import CommunityPage from "@/features/community/CommunityPage";
 import MePage from "@/features/profile/MePage";
 import ArtLabPage from "@/features/lab/ArtLabPage";
 import { useSession } from "@/store/session";
 
 const queryClient = new QueryClient({
   defaultOptions: {
-    queries: { staleTime: 60_000, retry: 1, refetchOnWindowFocus: false },
+    queries: {
+      staleTime: 60_000,
+      // 4xx 는 다시 보내도 같은 답이다(404 GRAPH_SNAPSHOT_NOT_FOUND·401 등) — 네트워크·5xx 만 1회 재시도한다
+      retry: (count, err) => count < 1 && !(err instanceof ApiError && err.status < 500),
+      refetchOnWindowFocus: false,
+    },
   },
 });
 
@@ -45,6 +52,7 @@ export default function App() {
             <Route path="/" element={<GalaxyPage />} />
             <Route path="/news" element={<NewsPage />} />
             <Route path="/companies" element={<CompaniesPage />} />
+            <Route path="/community" element={<CommunityPage />} />
             <Route path="/me" element={<MePage />} />
             {/* 아트 디렉션 실험 페이지 — 내비게이션 미노출 */}
             <Route path="/lab/art" element={<ArtLabPage />} />

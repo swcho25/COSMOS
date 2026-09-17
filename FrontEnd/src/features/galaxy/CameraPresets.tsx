@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { CAMERA_PRESETS, CAMERA_UI, type CameraPresetId } from "@/lib/guide";
+import { CAMERA_PRESETS, CAMERA_UI, NAV_HINT, NAV_HINT_TITLE, type CameraPresetId } from "@/lib/guide";
 import { useGalaxy } from "@/store/galaxy";
 import { Icon } from "@/components/ui";
 
@@ -18,7 +18,6 @@ export default function CameraPresets() {
   const preset = useGalaxy((s) => s.cameraPreset);
   const nonce = useGalaxy((s) => s.cameraPresetNonce);
   const setCameraPreset = useGalaxy((s) => s.setCameraPreset);
-  const current = CAMERA_PRESETS.find((p) => p.id === preset) ?? CAMERA_PRESETS[0];
   return (
     <div className="cam-presets">
       {/* key=nonce: 누를 때마다 다시 마운트돼 켜진 버튼의 flash 애니메이션이 재생된다 — 같은 프리셋 재클릭(시점 되돌리기)도 눌렸다는 표시가 남는다 */}
@@ -30,8 +29,12 @@ export default function CameraPresets() {
           </button>
         ))}
       </div>
-      <div className="cam-hint meta" aria-live="polite">
-        {current.hint}
+      {/* 프리셋 설명(예: "전체를 둘러보기")은 버튼 자체의 title·aria-label 로 충분해 이 줄에서는 뺐다.
+          여기 남는 것은 드래그·휠 말고도 키로 움직일 수 있다는 안내뿐이다 — 조작법 표(? 허브)까지 열지 않아도 보이게 */}
+      <div className="cam-hint meta">
+        <span className="cam-keys" title={NAV_HINT_TITLE}>
+          {NAV_HINT}
+        </span>
       </div>
     </div>
   );

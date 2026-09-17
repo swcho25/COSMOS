@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import type { NewsDetail } from "@/api/types";
 import { fmtDateTime, fmtPctFrom01 } from "@/lib/format";
-import { SENTIMENT_META } from "@/lib/meta";
+import { SENTIMENT_META, SENTIMENT_PENDING } from "@/lib/meta";
 import { Icon, SentimentBadge, Skeleton } from "@/components/ui";
 
 interface Props {
@@ -52,7 +52,7 @@ export default function NewsDetailDialog({ open, news, activeCompanyId, onClose,
                 {news.publisher} · {fmtDateTime(news.publishedAt)}
                 {news.author ? ` · ${news.author}` : ""}
               </span>
-              <SentimentBadge value={news.relatedCompanies[0]?.sentiment ?? "NEUTRAL"} />
+              <SentimentBadge value={news.relatedCompanies[0]?.sentiment} />
             </div>
 
             <div className="mt-12" style={{ fontSize: 14, lineHeight: 1.65, color: "var(--text-3)" }}>
@@ -81,7 +81,7 @@ export default function NewsDetailDialog({ open, news, activeCompanyId, onClose,
                     onClose();
                   }}
                 >
-                  <i style={{ background: SENTIMENT_META[r.sentiment].color }} />
+                  <i style={{ background: (r.sentiment && SENTIMENT_META[r.sentiment])?.color ?? SENTIMENT_PENDING.color }} />
                   {r.name}
                   <b className="num" style={{ opacity: 0.7 }}>
                     {fmtPctFrom01(r.relevanceScore, "")}

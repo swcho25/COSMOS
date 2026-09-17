@@ -4,11 +4,58 @@ cd "$(dirname "$0")/../.."
 tag="${1:?usage: deploy.sh IMAGE_TAG}"
 [[ "$tag" =~ ^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,100}$ ]] || exit 2
 state="${COSMOS_STATE_DIR:-/opt/cosmos/releases}"
-secrets="${COSMOS_ENV_FILE:-/etc/cosmos/app.env}"
+env_override="${COSMOS_ENV_FILE:-}"
+secrets="${env_override:-/etc/cosmos/app.env}"
 mkdir -p "$state"
 exec 9>"$state/deploy.lock"
 flock -n 9 || { echo 'Another deployment is running' >&2; exit 1; }
-[[ -r "$secrets" ]] || { echo "Missing environment file: $secrets" >&2; exit 1; }
+recover_environment_from_backend() {
+    local recovery_file="$state/app.env" backend_id container_env
+    local db_password redis_password jwt_secret public_url temporary_file
+    if [[ -r "$recovery_file" ]]; then
+        secrets="$recovery_file"
+        echo "Using recovered deployment environment: $recovery_file" >&2
+        return 0
+    fi
+    backend_id="$(docker ps \
+        --filter 'label=com.docker.compose.project=cosmos' \
+        --filter 'label=com.docker.compose.service=backend' \
+        --format '{{.ID}}' | head -n 1)"
+    [[ -n "$backend_id" ]] || return 1
+    container_env="$(docker inspect --format '{{range .Config.Env}}{{println .}}{{end}}' "$backend_id")"
+    env_value() {
+        local key="$1" line
+        while IFS= read -r line; do
+            if [[ "$line" == "$key="* ]]; then
+                printf '%s' "${line#*=}"
+                return 0
+            fi
+        done <<< "$container_env"
+        return 1
+    }
+    db_password="$(env_value DB_PASSWORD)" || return 1
+    redis_password="$(env_value REDIS_PASSWORD)" || return 1
+    jwt_secret="$(env_value JWT_SECRET)" || return 1
+    public_url="$(env_value CORS_ALLOWED_ORIGINS)" || return 1
+    [[ -n "$db_password" && -n "$redis_password" && -n "$jwt_secret" && -n "$public_url" ]] || return 1
+    temporary_file="$(mktemp "$state/.app.env.XXXXXX")"
+    chmod 0600 "$temporary_file"
+    if ! printf 'PUBLIC_URL=%s\nDB_PASSWORD=%s\nREDIS_PASSWORD=%s\nJWT_SECRET=%s\n' \
+        "$public_url" "$db_password" "$redis_password" "$jwt_secret" > "$temporary_file"; then
+        rm -f -- "$temporary_file"
+        return 1
+    fi
+    mv "$temporary_file" "$recovery_file"
+    secrets="$recovery_file"
+    unset container_env db_password redis_password jwt_secret public_url
+    echo "Recovered deployment environment from the running backend: $recovery_file" >&2
+}
+if [[ ! -r "$secrets" ]]; then
+    if [[ -n "$env_override" ]] || ! recover_environment_from_backend; then
+        echo "Missing environment file: $secrets" >&2
+        exit 1
+    fi
+fi
 docker image inspect "cosmos-backend:$tag" "cosmos-frontend:$tag" >/dev/null
 export IMAGE_TAG="$tag"
 release="$state/$tag"
@@ -26,6 +73,30 @@ fi
 "${compose[@]}" config --quiet
 previous=''
 [[ ! -f "$state/current" ]] || previous="$(cat "$state/current")"
+previous_previous=''
+[[ ! -f "$state/.previous" ]] || previous_previous="$(cat "$state/.previous")"
+prune_deployment_images() {
+    local keep_current="$1" keep_previous="${2:-}" repository image_tag ref
+    while read -r repository image_tag; do
+        case "$repository" in
+            cosmos-backend|cosmos-frontend)
+                [[ "$image_tag" == "$keep_current" || (-n "$keep_previous" && "$image_tag" == "$keep_previous") ]] && continue
+                ;;
+            cosmos-backend-build|cosmos-frontend-build)
+                ;;
+            *)
+                continue
+                ;;
+        esac
+        [[ "$image_tag" != '<none>' ]] || continue
+        ref="$repository:$image_tag"
+        if docker image rm "$ref" >/dev/null; then
+            printf 'Removed superseded deployment image: %s\n' "$ref"
+        else
+            printf 'Warning: could not remove superseded deployment image: %s\n' "$ref" >&2
+        fi
+    done < <(docker image ls --format '{{.Repository}} {{.Tag}}')
+}
 check_health() {
     local attempt
     for ((attempt=0; attempt<60; attempt++)); do
@@ -47,6 +118,7 @@ rollback() {
             printf '%s\n' "$previous" > "$state/current.next"
             mv "$state/current.next" "$state/current"
             echo "Restored application release $previous" >&2
+            prune_deployment_images "$previous" "$previous_previous"
         else
             echo 'ROLLBACK FAILED: manual intervention required' >&2
         fi
@@ -69,4 +141,13 @@ if [[ -n "${COSMOS_SMOKE_URL:-}" ]]; then
 fi
 printf '%s\n' "$tag" > "$state/current.next"
 mv "$state/current.next" "$state/current"
+if [[ -n "$previous" && "$previous" != "$tag" ]]; then
+    printf '%s\n' "$previous" > "$state/.previous.next"
+    mv "$state/.previous.next" "$state/.previous"
+elif [[ -z "$previous" ]]; then
+    rm -f -- "$state/.previous" "$state/.previous.next"
+fi
+retained_previous=''
+[[ ! -f "$state/.previous" ]] || retained_previous="$(cat "$state/.previous")"
+prune_deployment_images "$tag" "$retained_previous"
 printf 'Deployment healthy: %s\n' "$tag"
