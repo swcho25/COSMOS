@@ -35,7 +35,11 @@ interface Props {
   roleTags?: Map<string, RoleKey> | null;
 }
 
-type Variant = "land" | "ring" | "moon";
+/**
+ * 행성 외형 — 대륙형과 고리형 둘. 예전에는 작은 위성이 도는 "moon" 형도 있었지만, 그 위성이 옆 기업의 행성처럼
+ * 읽혀 관계도를 오해하게 한다는 지적이 있어 없앴다 (같은 비율만큼 고리형으로 돌린다).
+ */
+type Variant = "land" | "ring";
 interface Planet {
   node: SceneNode;
   radius: number;
@@ -43,7 +47,6 @@ interface Planet {
   variant: Variant;
   seed: number;
   geo: THREE.BufferGeometry;
-  moonGeo: THREE.BufferGeometry | null;
 }
 
 const tmpObj = new THREE.Object3D();
@@ -204,7 +207,6 @@ export default function CompanyNodes({ model, emphasis, hoveredId, onHover, onCl
   const ring = useRef<THREE.Sprite>(null);
   const groups = useRef<(THREE.Group | null)[]>([]);
   const bodies = useRef<(THREE.Mesh | null)[]>([]);
-  const moons = useRef<(THREE.Group | null)[]>([]);
   const n = model.nodes.length;
   const live = liveFor(model);
   const gl = useThree((s) => s.gl);
@@ -215,15 +217,14 @@ export default function CompanyNodes({ model, emphasis, hoveredId, onHover, onCl
       model.nodes.map((node) => {
         // 배열 인덱스가 아니라 기업 id 로 시드를 만들어 뷰가 바뀌어도 외형이 유지된다
         const h = (hashString(node.id) % 1000) / 1000;
-        const variant: Variant = h < 0.15 ? "ring" : h < 0.27 ? "moon" : "land";
+        const variant: Variant = h < 0.27 ? "ring" : "land";
         const radius = node.size * PLANET_RADIUS_K;
         const palette = planetPaletteFor(node.color);
         const seed = 0.5 + h * 9;
         // 세분화는 반지름과 무관하게 고정한다 — 뷰마다 size 가 달라도(기업 중심의 중심 3.4 등) 같은 면 분할·대륙 모양이 나오도록.
         // 188개 × 320면이라 비용은 무시할 수준
         const geo = planetGeometry(radius, palette, seed, 2, variant === "ring" ? 0.3 : 0.45);
-        const moonGeo = variant === "moon" ? planetGeometry(radius * 0.3, palette, seed + 5, 1, 0.2) : null;
-        return { node, radius, palette, variant, seed, geo, moonGeo };
+        return { node, radius, palette, variant, seed, geo };
       }),
     [model],
   );
@@ -231,7 +232,6 @@ export default function CompanyNodes({ model, emphasis, hoveredId, onHover, onCl
     () => () => {
       planets.forEach((p) => {
         p.geo.dispose();
-        p.moonGeo?.dispose();
       });
     },
     [planets],
@@ -488,8 +488,6 @@ export default function CompanyNodes({ model, emphasis, hoveredId, onHover, onCl
         body.rotation.y = t * 0.12 + p.seed;
         (body.material as THREE.MeshToonMaterial).color.setScalar(br);
       }
-      const moon = moons.current[i];
-      if (moon) moon.rotation.y = t * 0.5 + p.seed;
 
       TO_CAM.copy(cam.position).sub(TMP);
       const dist = TO_CAM.length();
@@ -812,18 +810,6 @@ export default function CompanyNodes({ model, emphasis, hoveredId, onHover, onCl
               <ringGeometry args={[p.radius * 1.45, p.radius * 2.05, 40, 1]} />
               <meshToonMaterial color={p.palette.ring} gradientMap={grad} side={THREE.DoubleSide} transparent opacity={0.9} />
             </mesh>
-          )}
-          {p.variant === "moon" && p.moonGeo && (
-            <group
-              ref={(el) => {
-                moons.current[i] = el;
-              }}
-              rotation={[0.3, 0, 0.15]}
-            >
-              <mesh geometry={p.moonGeo} position={[p.radius * 2.0, 0, 0]} raycast={() => null} onUpdate={(m) => m.layers.enable(LIT)}>
-                <meshToonMaterial vertexColors gradientMap={grad} />
-              </mesh>
-            </group>
           )}
         </group>
       ))}
