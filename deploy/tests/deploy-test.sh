@@ -20,6 +20,13 @@ printf 'docker %s\n' "$*" >> "$FAKE_CALLS"
 if [[ "$1" == image && "$2" == inspect ]]; then
     exit 0
 fi
+if [[ "$1" == image && "$2" == ls ]]; then
+    printf '%s\n' "$FAKE_IMAGES"
+    exit 0
+fi
+if [[ "$1" == image && "$2" == rm ]]; then
+    exit 0
+fi
 if [[ "$1" != compose ]]; then
     echo 'Unexpected docker command in test' >&2
     exit 90
@@ -78,6 +85,17 @@ run_case() {
     export FAKE_SCENARIO="$scenario"
     export FAKE_CALLS="$case_dir/calls"
     export FAKE_ACTIVE="$case_dir/active"
+    export FAKE_IMAGES="cosmos-backend ancient
+cosmos-frontend ancient
+cosmos-backend older
+cosmos-frontend older
+cosmos-backend previous
+cosmos-frontend previous
+cosmos-backend candidate
+cosmos-frontend candidate
+cosmos-backend-build candidate
+cosmos-frontend-build ancient
+postgres 17-alpine"
     : > "$COSMOS_ENV_FILE"
     : > "$FAKE_CALLS"
     if [[ "${5:-}" == loader ]]; then
@@ -87,6 +105,7 @@ run_case() {
         mkdir -p "$COSMOS_STATE_DIR/previous"
         cp "$fixture/repo/deploy/compose.yml" "$COSMOS_STATE_DIR/previous/compose.yml"
         printf 'previous\n' > "$COSMOS_STATE_DIR/current"
+        printf 'older\n' > "$COSMOS_STATE_DIR/.previous"
         printf 'previous\n' > "$FAKE_ACTIVE"
     fi
     if bash "$fixture/repo/deploy/scripts/deploy.sh" "$tag" > "$case_dir/output" 2>&1; then
@@ -104,6 +123,14 @@ run_case success success candidate yes
 [[ "$status" == 0 ]] || fail 'successful release returned failure'
 [[ "$(cat "$COSMOS_STATE_DIR/current")" == candidate ]] || fail 'successful release was not promoted'
 [[ "$(cat "$FAKE_ACTIVE")" == candidate ]] || fail 'successful candidate is not active'
+[[ "$(cat "$COSMOS_STATE_DIR/.previous")" == previous ]] || fail 'successful release did not retain the prior deployment marker'
+grep -q 'docker image rm cosmos-backend:ancient' "$FAKE_CALLS" || fail 'superseded backend image was not removed'
+grep -q 'docker image rm cosmos-frontend:older' "$FAKE_CALLS" || fail 'older frontend image was not removed'
+grep -q 'docker image rm cosmos-backend-build:candidate' "$FAKE_CALLS" || fail 'temporary backend build image was not removed'
+grep -q 'docker image rm cosmos-frontend-build:ancient' "$FAKE_CALLS" || fail 'temporary frontend build image was not removed'
+! grep -q 'docker image rm cosmos-backend:previous' "$FAKE_CALLS" || fail 'previous backend image was removed'
+! grep -q 'docker image rm cosmos-frontend:candidate' "$FAKE_CALLS" || fail 'current frontend image was removed'
+! grep -q 'docker image rm postgres:17-alpine' "$FAKE_CALLS" || fail 'unmanaged image was removed'
 echo 'PASS: healthy candidate is promoted'
 
 if grep -q 'rdb-loader.compose.yml' "$FAKE_CALLS"; then
@@ -128,6 +155,8 @@ run_case health-failure health-failure candidate yes
 [[ "$(cat "$COSMOS_STATE_DIR/current")" == previous ]] || fail 'unhealthy release changed current'
 [[ "$(cat "$FAKE_ACTIVE")" == previous ]] || fail 'previous application was not restored'
 grep -q 'Restored application release previous' "$fixture/health-failure/output" || fail 'restore outcome missing'
+grep -q 'docker image rm cosmos-backend:candidate' "$FAKE_CALLS" || fail 'failed candidate image was not removed after rollback'
+! grep -q 'docker image rm cosmos-frontend:older' "$FAKE_CALLS" || fail 'rollback fallback image was removed'
 echo 'PASS: health failure restores and retains previous release'
 
 run_case start-failure start-failure candidate yes
