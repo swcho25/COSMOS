@@ -8,6 +8,7 @@ import AuthDialog from "@/features/auth/AuthDialog";
 import GalaxyPage from "@/features/galaxy/GalaxyPage";
 import NewsPage from "@/features/news/NewsPage";
 import CompaniesPage from "@/features/companies/CompaniesPage";
+import CommunityPage from "@/features/community/CommunityPage";
 import MePage from "@/features/profile/MePage";
 import ArtLabPage from "@/features/lab/ArtLabPage";
 import { useSession } from "@/store/session";
@@ -51,6 +52,7 @@ export default function App() {
             <Route path="/" element={<GalaxyPage />} />
             <Route path="/news" element={<NewsPage />} />
             <Route path="/companies" element={<CompaniesPage />} />
+            <Route path="/community" element={<CommunityPage />} />
             <Route path="/me" element={<MePage />} />
             {/* 아트 디렉션 실험 페이지 — 내비게이션 미노출 */}
             <Route path="/lab/art" element={<ArtLabPage />} />

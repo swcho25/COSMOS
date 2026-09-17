@@ -64,6 +64,22 @@ python3 -m venv .venv-rdb-loader
 스냅샷마다 새 UUID와 새 경로를 사용한다. 완료 경로의 파일은 수정하지 않는다.
 Loader는 HDFS 디렉터리를 `hdfs dfs -get`으로 임시 디렉터리에 가져온 뒤 검사한다.
 
+현재 분석 파이프라인의 `HDFS_VERIFIED_ONLY` run은 다음 세 결과와 전역 `_VERIFIED`를
+하나의 발행 단위로 사용한다. Loader는 run별 manifest의 `run_id`, `snapshot_id`, `as_of`,
+`publication_sha256`, HDFS 체크섬과 행 수를 서로 대조한다.
+
+```text
+/data-lake/metadata/runs/run_id=<run_id>/_VERIFIED
+/data-lake/aggregated/company-metrics/run_id=<run_id>/
+/data-lake/aggregated/relationship-scores/run_id=<run_id>/
+/data-lake/snapshots/graph/run_id=<run_id>/
+```
+
+`market + stock_code`는 기존 `company`에 매핑하고, `relationship_type_code`는 기존
+`relationship_type`에 매핑한다. 모르는 기업이나 유형은 제외하지 않고 전체 적재를 실패시킨다.
+관계 점수와 기업 지표는 같은 트랜잭션에서 적재되며 마지막에 그래프 스냅샷을
+`PUBLISHED`로 바꾼다. 기존 UUID 스냅샷 계약도 호환을 위해 유지한다.
+
 ```text
 relationship-scores/<snapshot UUID>/
 ├── data/
@@ -194,7 +210,8 @@ DB 관리자가 Loader 계정을 준비한다. Loader에는 대상 테이블 조
 sudo install -o root -g ubuntu -m 0640 \
   deploy/rdb-loader/rdb-loader.env.example /etc/cosmos/rdb-loader.env
 sudo install -o root -g root -m 0644 \
-  deploy/rdb-loader/cosmos-rdb-loader@.service /etc/systemd/system/
+  deploy/rdb-loader/cosmos-rdb-loader@.service \
+  deploy/rdb-loader/cosmos-lake-loader@.service /etc/systemd/system/
 sudo systemctl daemon-reload
 ```
 
@@ -207,6 +224,16 @@ sudo systemctl daemon-reload
 호출을 작업 스케줄러의 다음 단계로 연결한다. `systemctl start`는 적재 완료/실패까지 기다린다.
 
 ```bash
+# 현재 HDFS_VERIFIED_ONLY run 검증만 수행(DB 미접속)
+bash deploy/rdb-loader/run-loader.sh --run-id "${run_id}" \
+  --lake-root "${RDB_LOADER_LAKE_ROOT}" --validate-only
+
+# Spark가 전역 _VERIFIED를 기록한 뒤 실행
+sudo systemctl start "cosmos-lake-loader@${run_id}.service"
+systemctl status "cosmos-lake-loader@${run_id}.service"
+journalctl -u "cosmos-lake-loader@${run_id}.service" --no-pager
+
+# 기존 UUID 스냅샷 방식
 systemctl status "cosmos-rdb-loader@${snapshot_id}.service"
 journalctl -u "cosmos-rdb-loader@${snapshot_id}.service" --no-pager
 ```

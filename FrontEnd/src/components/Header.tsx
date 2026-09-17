@@ -10,6 +10,7 @@ const NAV = [
   { to: "/", label: "전체 은하", end: true },
   { to: "/news", label: "뉴스" },
   { to: "/companies", label: "기업" },
+  { to: "/community", label: "커뮤니티" },
 ];
 
 /** 헤더 — 탭 3개 + 게스트/로그인 2가지 상태 (화면구성도 ⑩) */

@@ -61,12 +61,6 @@
   line-height: 1.55;
   color: var(--text-4);
 }
-/* 뉴스 상세 모달 */
-.dialog.news-detail {
-  width: min(640px, 100%);
-  max-height: 82vh;
-  overflow-y: auto;
-}
 .crumbs {
   display: flex;
   align-items: center;
@@ -123,6 +117,17 @@
   font-weight: 700;
   line-height: 1.4;
   margin-top: 6px;
+}
+/* 원문 보기로 바뀌며 기자명 대신 화면에 보여줄 기사 요약 — 목록 카드 요약과 달리 잘리지 않고
+   전체가 보이되, 과도하게 길어져 레이아웃이 늘어지지 않도록 내부 스크롤로 높이를 제한한다. */
+.map-summary {
+  margin-top: 10px;
+  font-size: 13.5px;
+  line-height: 1.65;
+  color: var(--text-3);
+  max-height: 4.8em;
+  overflow-y: auto;
+  padding-right: 4px;
 }
 .map-tools {
   display: flex;
@@ -213,28 +218,18 @@
   flex-wrap: wrap;
 }
 /*
- * 랭킹·경로 카드가 각각 전체 폭(full)을 혼자 쓰며 세로로 쌓이던 것을, 데스크톱 폭에서는 이미
- * 정의돼 있던 2열 그리드를 실제로 활용해 나란히 배치하도록 바꿨다 — 랭킹 목록의 점수 막대가
- * 900px 가까이 늘어나던 것도 카드 폭이 절반으로 줄면서 자연스럽게 해소된다.
- * align-items:start 로 두 카드 높이가 다를 때 짧은 카드가 억지로 늘어나지 않게 한다.
- * 1100px 이하에서는 기존과 동일하게 1fr(세로 쌓기)로 접힌다.
+ * "산업·관계 유형 분포" 카드를 모달로 옮기면서 이 영역엔 랭킹 카드 하나만 남았다 — 더는
+ * 2열 그리드가 필요 없어 일반 블록으로 바꾼다.
  */
 .analysis {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 14px;
   margin-top: 14px;
-  align-items: start;
 }
 .analysis .card {
   padding: 20px 22px;
 }
-.analysis .full {
-  grid-column: 1 / -1;
-}
 /*
- * hop>0(간접 전이) 행 아래에 "왜 이어지는지" 한 줄(.rank-why)을 추가로 보여주기 위해, 기존
- * 한 줄짜리 가로 flex 행을 .rank-row로 감싸고 .rank 자체는 세로로 쌓는 컨테이너로 바꿨다.
+ * .rank 는 KpiEvidenceDialog 의 세로 목록(연결 기업 근거)에서도 재사용하는 기본 스타일이라
+ * 그대로 둔다 — 한 줄 레이아웃은 아래 .rank-list 스코프 안에서만 덮어쓴다.
  */
 .rank {
   display: flex;
@@ -249,15 +244,6 @@
 .rank:hover {
   background: rgba(255, 255, 255, 0.03);
 }
-.rank-row {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  width: 100%;
-}
-.rank .idx {
-  width: 22px;
-}
 .rank .nm {
   width: 150px;
   flex: none;
@@ -267,31 +253,74 @@
   font-weight: 600;
   display: block;
 }
-.rank .sc {
-  width: 74px;
+/*
+ * 카드형 2열 그리드는 한 항목의 상하 길이(이름 줄 + 시장·종목코드 줄 + 왜 이어지는지 줄, 3줄)가
+ * 길어서 스크롤이 잦았다 — 다시 한 줄에 기업 1개씩 나열하되, 시장 표시(KRX 등)·종목코드·전이
+ * 이유 설명을 이름 옆(오른쪽)으로 옮겨 한 줄로 눌러 담아 항목 높이를 줄였다.
+ */
+.rank-list {
+  margin-top: 12px;
+}
+.rank-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+}
+.rank .idx {
+  width: 20px;
+  flex: none;
+}
+/* 기업명은 한 줄로 두고, 시장·종목코드·(간접 전이 행이면) 전이 이유까지 같은 줄에 이어 붙인다.
+   폭이 모자라면 뒤쪽(이유 → 종목코드 순)부터 말줄임되므로 이름은 항상 온전히 보인다 — 잘린
+   내용은 title 속성(브라우저 기본 툴팁)으로 전체를 볼 수 있다. .rank .nm 기본값(150px 고정폭)은
+   KpiEvidenceDialog 용이라 여기서 덮어쓴다. */
+.rank-list .nm {
+  flex: 1;
+  min-width: 0;
+  width: auto;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.rank-list .nm b {
+  display: inline;
+}
+.rank-list .nm .meta {
+  margin-left: 8px;
+}
+/* "AA는 BB와 CC 관계(점수 DD)로 이어져 있습니다" 문장에서 기업명 둘·관계 유형·점수 네 부분을
+   굵게 + 색으로 강조한다(색 자체는 JSX 쪽에서 부분별로 다르게 지정). */
+.why-hl {
+  font-weight: 700;
+}
+/* ScoreBar(components/ui.tsx)는 원래 flex:1 인라인 스타일로 부모 flex 행의 남은 폭을 전부
+   차지하도록 만들어져 있다 — 한 줄 목록에서 그대로 두면 막대가 다시 지나치게 길어지므로,
+   flex 부모가 아닌 고정 폭 래퍼로 한 번 감싸 폭을 제한한다(ScoreBar 자체·다른 화면의 쓰임은
+   건드리지 않는다). */
+.rank-bar-wrap {
+  flex: none;
+  width: 130px;
+}
+.rank-bar-wrap .bar {
+  display: block;
+  width: 100%;
+}
+.rank-list .sc {
+  width: 70px;
+  flex: none;
   text-align: right;
 }
-.rank .sc b {
-  font-size: 20px;
+.rank-list .sc b {
+  font-size: 18px;
   font-weight: 700;
   display: block;
 }
-.rank-why {
-  margin-top: 4px;
-  margin-left: 82px;
-  font-size: 11px;
-  line-height: 1.5;
-  color: var(--text-4);
-}
 /*
- * "산업 분포"·"관계 유형 분포" — 예전 "주요 경로" 카드가 2홉 이상일 때만 의미가 있어 실제로는
- * 거의 항상 비다시피 했던 것을, 기사 길이와 무관하게 항상 채워지는 요약으로 바꿨다.
+ * "산업 분포"·"관계 유형 분포" — 이제 DistributionDialog(스크랩·원문 보기 옆 "산업·관계 분포"
+ * 버튼으로 여는 모달) 안에서만 쓴다. 모달 폭(440px)에 맞춰 두 섹션을 세로로 쌓아 보여준다
+ * (섹션 사이 간격은 컴포넌트 쪽 mt-16 유틸리티로 준다).
  */
-.dist-row {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 16px;
-}
 .dist-col .lab {
   display: block;
   margin-bottom: 8px;
@@ -312,11 +341,6 @@
   font-size: 12px;
   font-weight: 600;
 }
-@media (max-width: 480px) {
-  .dist-row {
-    grid-template-columns: 1fr;
-  }
-}
 .path-chain-chip:hover {
   border-color: rgba(198, 165, 255, 0.5);
   color: var(--text);
@@ -326,6 +350,34 @@
   flex-direction: column;
   gap: 10px;
   margin-top: 12px;
+}
+/* 데스크톱 전용 전체 화면 레이아웃 — 페이지(body) 자체는 스크롤되지 않고, 좌측 뉴스 목록과
+   우측 분석 컬럼이 각자 내부에서만 스크롤된다. 1100px 이하(태블릿·모바일)는 기존처럼
+   페이지 전체가 자연스럽게 스크롤되는 레이아웃을 그대로 유지한다. */
+@media (min-width: 1101px) {
+  .page.news-viewport {
+    display: flex;
+    flex-direction: column;
+    height: calc(100vh - var(--header-h));
+    overflow: hidden;
+  }
+  .news-viewport > .news-page {
+    flex: 1;
+    min-height: 0;
+    align-items: stretch;
+  }
+  .news-viewport .news-rail {
+    position: static;
+    max-height: none;
+    height: 100%;
+    min-height: 0;
+  }
+  .news-viewport .news-analysis-col {
+    height: 100%;
+    min-height: 0;
+    overflow-y: auto;
+    padding-right: 4px;
+  }
 }
 @media (max-width: 1100px) {
   .news-page {
@@ -341,10 +393,17 @@
   .kpi-row {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
-  .analysis {
-    grid-template-columns: 1fr;
-  }
   .rel2d-wrap {
     max-height: 380px;
+  }
+  /* 좁은 화면에서는 점수 막대·점수 칸을 더 줄여 기업명이 잘리지 않도록 여유를 준다. */
+  .rank-bar-wrap {
+    width: 90px;
+  }
+  .rank-list .sc {
+    width: 54px;
+  }
+  .rank-list .sc b {
+    font-size: 15px;
   }
 }
