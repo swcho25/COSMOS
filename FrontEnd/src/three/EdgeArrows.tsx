@@ -94,7 +94,7 @@ export default function EdgeArrows({ model, emphasis }: Props) {
       m.setMatrixAt(i, tmpObj.matrix);
       // 빔과 달리 여기는 meshBasicMaterial 이라 three 가 출력 색공간 변환을 붙여 준다 —
       // 그래서 THREE.Color 의 기본 sRGB→작업공간 변환을 그대로 태워야 화면에서 빔과 같은 색이 된다
-      COLOR.set(beamColorFor(e.impact));
+      COLOR.set(beamColorFor(e.type));
       // 빔은 강조로 투명해지는데 화살촉은 불투명 재질이라, 어두운 배경 위에서 같은 정도로 물러나도록 색을 눌러 준다
       COLOR.multiplyScalar(0.35 + 0.65 * emph);
       m.setColorAt(i, COLOR);

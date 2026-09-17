@@ -47,11 +47,17 @@ export interface RelationshipMeta {
   directed: boolean;
   description: string;
 }
+/**
+ * 관계 유형 색 — 화면의 모든 관계 표시가 이 한 곳을 본다: 씬의 빔·화살촉, 도크의 종류 칩, 호버 역할 태그·링,
+ * 경로 스트립, 툴팁, 뜻밖의 관계, 2D 관계 지도.
+ * 손잡는 관계는 파랑, 다투는 관계는 빨강, 그 밖(공급·투자)은 보라 계열로 읽는다 — 색 하나로 "협력이냐 경쟁이냐" 가 먼저 들어오게 한다.
+ * 공급과 투자는 같은 보라 계열이라 톤으로만 구분하고, 정확한 종류는 라벨·툴팁이 말한다.
+ */
 export const RELATIONSHIP_META: Record<string, RelationshipMeta> = {
-  SUPPLY: { code: "SUPPLY", label: "공급", color: "#63D7FF", directed: true, description: "부품·장비·원자재를 공급하는 관계. 화살표 방향으로 충격이 전이됩니다." },
+  SUPPLY: { code: "SUPPLY", label: "공급", color: "#A06BFF", directed: true, description: "부품·장비·원자재를 공급하는 관계. 화살표 방향으로 충격이 전이됩니다." },
   INVEST: { code: "INVEST", label: "투자·지분", color: "#C6A5FF", directed: true, description: "지분 보유·출자 관계. 지배 방향으로 표시합니다." },
-  PARTNER: { code: "PARTNER", label: "협력", color: "#4FE8C0", directed: false, description: "합작·제휴·공동 개발처럼 방향이 없는 협력 관계." },
-  COMPETE: { code: "COMPETE", label: "경쟁", color: "#FF8A7A", directed: false, description: "같은 시장에서 점유율·가격을 다투는 관계." },
+  PARTNER: { code: "PARTNER", label: "협력", color: "#4F8DFF", directed: false, description: "합작·제휴·공동 개발처럼 방향이 없는 협력 관계." },
+  COMPETE: { code: "COMPETE", label: "경쟁", color: "#FF4D6D", directed: false, description: "같은 시장에서 점유율·가격을 다투는 관계." },
 };
 export const RELATIONSHIP_ORDER: RelationshipType[] = ["SUPPLY", "INVEST", "PARTNER", "COMPETE"];
 /**
