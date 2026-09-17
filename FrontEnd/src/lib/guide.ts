@@ -170,8 +170,8 @@ export const PREVIEW_UI = {
 
 /* ---- 공간 참조 구조 (P0-6) ---- */
 export const RINGS_UI = {
-  /** 허브 랭크 링 라벨 — 반지름 랭크 상위 비율 */
-  hub: (pct: number) => `허브 상위 ${pct}%`,
+  /** 허브 랭크 링 라벨 — 이 원 안쪽에 연결(가중 연결도) 상위 몇 %가 들어오는지. '허브' 라는 말 대신 기준을 그대로 쓴다 */
+  hub: (pct: number) => `연결 상위 ${pct}%`,
   hubPercents: [10, 30, 60],
   zeroPlane: "등락률 0%",
   /** 기업 중심 뷰 depth 1·2·3 궤도 */
