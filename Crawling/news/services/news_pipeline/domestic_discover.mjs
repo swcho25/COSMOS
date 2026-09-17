@@ -14,7 +14,16 @@ export const SOURCES = {
   kpenews: { organization: "한국정경신문", domain: "kpenews.com", delayMs: 5_000, roots: ["https://kpenews.com/sitemap_googlenews.xml"] },
   mdtoday: { organization: "메디컬투데이", domain: "mdtoday.co.kr", delayMs: 1_500, roots: ["https://www.mdtoday.co.kr/sitemap.xml"] },
   sedaily: { organization: "서울경제", domain: "sedaily.com", delayMs: 1_500, roots: ["https://www.sedaily.com/sitemap/latestnews"] },
-  newspim: { organization: "뉴스핌", domain: "newspim.com", delayMs: 1_200, roots: ["https://www.newspim.com/sitemap/recent/all_1", "https://www.newspim.com/sitemap/recent/all_2"] },
+  newspim: {
+    organization: "뉴스핌",
+    domain: "newspim.com",
+    delayMs: 1_200,
+    roots: ["https://www.newspim.com/sitemap/recent/all_1", "https://www.newspim.com/sitemap/recent/all_2"],
+    articleSelectors: [
+      "article.bodynews section.contents[itemprop='articleBody']",
+      "#news-contents section.contents[itemprop='articleBody']",
+    ],
+  },
   newstomato: { organization: "뉴스토마토", domain: "newstomato.com", delayMs: 1_500, roots: ["http://www.newstomato.com/"], html: true },
   hellot: { organization: "헬로티", domain: "hellot.net", delayMs: 1_000, roots: [], urlTemplate: "https://www.hellot.net/news/article.html?no={id}" },
 };
@@ -249,7 +258,11 @@ export async function fetchArticle(options) {
   const url = normalizeArticleUrl(options.url);
   const externalId = articleId(url, source);
   if (!externalId) throw new Error("article_source_url_mismatch");
-  const article = await extractNewsArticle(url, { fetchImpl: makeRequester(source, options), timeoutMs: 60_000, maxResponseBytes: 2_000_000, maxContentChars: 200_000, minContentChars: 80, maxRedirects: 4, userAgent: USER_AGENT });
+  const article = await extractNewsArticle(url, {
+    fetchImpl: makeRequester(source, options), timeoutMs: 60_000, maxResponseBytes: 2_000_000,
+    maxContentChars: 200_000, minContentChars: 80, maxRedirects: 4, userAgent: USER_AGENT,
+    publisherSelectors: config.articleSelectors,
+  });
   let content = article.textContent.replace(/\r/g, "").replace(/[ \t]+\n/g, "\n").trim();
   if (source === "sedaily") content = content.replace(/^뉴스 듣기\s+글자 크기[\s\S]{0,300}?다음 채널구독\s*/u, "");
   content = content.replace(/\n{3,}/g, "\n\n").trim();

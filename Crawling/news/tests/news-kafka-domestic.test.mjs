@@ -119,6 +119,20 @@ test("article fetch preserves body/robots/source and never invents unknown publi
   await assert.rejects(fetchArticle({ source: "hellot", url: "http://127.0.0.1/news/article.html?no=100", ...network.options }), /private_host/);
 });
 
+test("NewsPim fetch uses the stable publisher article body", async () => {
+  clearRobotsPolicyCache();
+  const url = "https://www.newspim.com/news/view/20260916000286";
+  const body = `<p>${"뉴스핌의 실제 기사 본문을 나타내는 안정적인 문장입니다. ".repeat(12)}</p>`;
+  const html = `<html><head><title>뉴스핌 기사</title></head><body><article class="bodynews">
+    <div id="news-contents"><section class="contents" itemprop="articleBody">${body}</section>
+    <section>${"변경되는 추천 기사입니다. ".repeat(100)}</section></div></article></body></html>`;
+  const network = fakeNetwork({ [url]: () => new Response(html, { headers: { "content-type": "text/html; charset=utf-8" } }) });
+  const result = await fetchArticle({ source: "newspim", url, ...network.options });
+  assert.equal(result.extraction_method, "publisher-selector");
+  assert.match(result.content, /안정적인 문장/);
+  assert.doesNotMatch(result.content, /추천 기사/);
+});
+
 test("robots rejection and failed discovery are surfaced instead of advancing cursor", async () => {
   clearRobotsPolicyCache();
   let pageRequests = 0;

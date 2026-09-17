@@ -9,7 +9,7 @@ const DEFAULT_MIN_CONTENT_CHARS = 200;
 const DEFAULT_MAX_CONTENT_CHARS = 80_000;
 const DEFAULT_MAX_REDIRECTS = 4;
 
-export type ArticleExtractionMethod = "json-ld" | "readability" | "naver-selector" | "article-selector";
+export type ArticleExtractionMethod = "publisher-selector" | "json-ld" | "readability" | "naver-selector" | "article-selector";
 
 export type ExtractedNewsArticle = {
   requestedUrl: string;
@@ -35,6 +35,7 @@ export type ArticleFetchOptions = {
   minContentChars?: number;
   maxRedirects?: number;
   userAgent?: string;
+  publisherSelectors?: string[];
 };
 
 type ArticleCandidate = {
@@ -119,7 +120,7 @@ export async function extractNewsArticle(
 export function extractNewsArticleFromHtml(
   html: string,
   finalUrl: string,
-  options: Pick<ArticleFetchOptions, "minContentChars" | "maxContentChars"> = {},
+  options: Pick<ArticleFetchOptions, "minContentChars" | "maxContentChars" | "publisherSelectors"> = {},
 ): Omit<ExtractedNewsArticle, "requestedUrl" | "finalUrl" | "robots"> {
   const minContentChars = positiveInteger(options.minContentChars, DEFAULT_MIN_CONTENT_CHARS);
   const maxContentChars = positiveInteger(options.maxContentChars, DEFAULT_MAX_CONTENT_CHARS);
@@ -129,6 +130,11 @@ export function extractNewsArticleFromHtml(
   }
   const jsonLdCandidate = extractJsonLdCandidate(document);
   const readabilityCandidate = extractReadabilityCandidate(document);
+  const publisherSelectorCandidate = extractSelectorCandidate(
+    document,
+    options.publisherSelectors ?? [],
+    "publisher-selector",
+  );
   const naverSelectorCandidate = extractSelectorCandidate(document, [
     "#dic_area",
     "#newsct_article",
@@ -149,7 +155,7 @@ export function extractNewsArticleFromHtml(
     ".newsct_article",
     ".view_cont",
   ], "article-selector");
-  const candidates = [jsonLdCandidate, readabilityCandidate, naverSelectorCandidate, selectorCandidate]
+  const candidates = [publisherSelectorCandidate, jsonLdCandidate, readabilityCandidate, naverSelectorCandidate, selectorCandidate]
     .filter((candidate): candidate is ArticleCandidate => Boolean(candidate))
     .filter((candidate) => candidate.textContent.length >= minContentChars);
   const best = candidates.sort(compareCandidates)[0];
@@ -232,7 +238,7 @@ function extractReadabilityCandidate(document: Document): ArticleCandidate | nul
 function extractSelectorCandidate(
   document: Document,
   selectors: string[],
-  method: Extract<ArticleExtractionMethod, "naver-selector" | "article-selector">,
+  method: Extract<ArticleExtractionMethod, "publisher-selector" | "naver-selector" | "article-selector">,
 ): ArticleCandidate | null {
   const candidates = selectors.flatMap((selector): ArticleCandidate[] => Array.from(document.querySelectorAll(selector)).flatMap((element) => {
     const cloned = element.cloneNode(true) as Element;
@@ -245,7 +251,13 @@ function extractSelectorCandidate(
 }
 
 function compareCandidates(left: ArticleCandidate, right: ArticleCandidate): number {
-  const methodScore: Record<ArticleExtractionMethod, number> = { "naver-selector": 4, "json-ld": 3, readability: 2, "article-selector": 1 };
+  const methodScore: Record<ArticleExtractionMethod, number> = {
+    "publisher-selector": 5,
+    "naver-selector": 4,
+    "json-ld": 3,
+    readability: 2,
+    "article-selector": 1,
+  };
   const leftScore = methodScore[left.method] * 10_000 + Math.min(left.textContent.length, 9_999);
   const rightScore = methodScore[right.method] * 10_000 + Math.min(right.textContent.length, 9_999);
   return rightScore - leftScore;
