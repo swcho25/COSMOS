@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { fmtRelative } from "@/lib/format";
 import { useIndustries, useLatestComments, useLatestGraph } from "@/lib/queries";
-import { CompanyAvatar, Empty, Skeleton } from "@/components/ui";
+import { CompanyAvatar, Empty, ErrorNotice, Skeleton } from "@/components/ui";
 import "./community.css";
 
 /**
@@ -61,13 +61,16 @@ export default function CommunityPage() {
 
       {industryId && (
         <div className="meta comm-hint mt-8">
-          스냅샷에 포함되지 않은 기업의 댓글은 산업 필터에 나타나지 않을 수 있습니다.
+          {universe.isError
+            ? "공개된 관계 스냅샷이 없어 산업 필터를 적용하면 모든 댓글이 숨겨집니다. 스냅샷이 게시된 뒤 다시 시도해 주세요."
+            : "스냅샷에 포함되지 않은 기업의 댓글은 산업 필터에 나타나지 않을 수 있습니다."}
         </div>
       )}
 
       <div className="card comm-card">
         {comments.isLoading && [0, 1, 2, 3, 4].map((i) => <Skeleton key={i} h={72} style={{ marginTop: i ? 10 : 0, borderRadius: 12 }} />)}
-        {!comments.isLoading && !filtered.length && <Empty>표시할 댓글이 없습니다.</Empty>}
+        {!comments.isLoading && comments.isError && !filtered.length && <ErrorNotice message="댓글을 불러오지 못했습니다." onRetry={() => comments.refetch()} />}
+        {!comments.isLoading && !comments.isError && !filtered.length && <Empty>표시할 댓글이 없습니다.</Empty>}
         {filtered.map((c) => (
           <button key={c.commentId} type="button" className="comm-item" onClick={() => goCompany(c.company.companyId)}>
             <CompanyAvatar name={c.company.name} size={36} radius={18} />

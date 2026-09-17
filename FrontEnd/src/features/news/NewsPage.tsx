@@ -7,7 +7,7 @@ import { SENTIMENTS, SENTIMENT_META, UNCLASSIFIED_INDUSTRY, marketLabel, relatio
 import { useCompany, useIndustries, useLatestGraph, useNewsDetail, useNewsFeed, useToggleScrap, useToggleWatch, useWatchedSet } from "@/lib/queries";
 import { useSession } from "@/store/session";
 import { useUi } from "@/store/ui";
-import { CompanyAvatar, Empty, Icon, Kpi, ScoreBar, SentimentBadge, Skeleton } from "@/components/ui";
+import { CompanyAvatar, Empty, ErrorNotice, Icon, Kpi, ScoreBar, SentimentBadge, Skeleton } from "@/components/ui";
 import DistributionDialog from "./DistributionDialog";
 import KpiEvidenceDialog, { type KpiEvidenceKind } from "./KpiEvidenceDialog";
 import RelationMap2D from "./RelationMap2D";
@@ -207,7 +207,8 @@ export default function NewsPage() {
 
           <div className="list scroll stack">
             {feed.isLoading && [0, 1, 2, 3].map((i) => <Skeleton key={i} h={110} style={{ borderRadius: 14 }} />)}
-            {!feed.isLoading && !items.length && <Empty>조건에 맞는 뉴스가 없습니다.</Empty>}
+            {!feed.isLoading && feed.isError && !items.length && <ErrorNotice message="뉴스를 불러오지 못했습니다." onRetry={() => feed.refetch()} />}
+            {!feed.isLoading && !feed.isError && !items.length && <Empty>조건에 맞는 뉴스가 없습니다.</Empty>}
             {items.map((n) => (
               <article key={n.newsId} className={`news-card ${n.newsId === activeId ? "on" : ""}`} onClick={() => setSelectedId(n.newsId)} role="button" tabIndex={0} onKeyDown={(e) => e.key === "Enter" && setSelectedId(n.newsId)}>
                 <div className="row between">
@@ -255,7 +256,7 @@ export default function NewsPage() {
                       focused company
                     </div>
                     <div className="ttl">{company.data.name}</div>
-                    <div className="meta">선택 뉴스 「{detail.data?.title.slice(0, 26) ?? "…"}…」 기준 관계망</div>
+                    <div className="meta">선택 뉴스 「{detail.isError ? "불러오기 실패" : detail.data?.title.slice(0, 26) ?? "…"}…」 기준 관계망</div>
                   </div>
                 </div>
               ) : (
@@ -263,9 +264,15 @@ export default function NewsPage() {
                   <div className="kick" style={{ color: "var(--primary-2)" }}>
                     selected news
                   </div>
-                  <div className="ttl">{detail.data?.title ?? <Skeleton h={22} w={360} />}</div>
-                  <div className="meta num mt-8">{detail.data ? [detail.data.publisher, fmtDateTime(detail.data.publishedAt), detail.data.author].filter(Boolean).join(" · ") : ""}</div>
-                  {detail.data?.summary && <p className="map-summary">{detail.data.summary}</p>}
+                  {detail.isError ? (
+                    <ErrorNotice message="선택한 뉴스를 불러오지 못했습니다." onRetry={() => detail.refetch()} />
+                  ) : (
+                    <>
+                      <div className="ttl">{detail.data?.title ?? <Skeleton h={22} w={360} />}</div>
+                      <div className="meta num mt-8">{detail.data ? [detail.data.publisher, fmtDateTime(detail.data.publishedAt), detail.data.author].filter(Boolean).join(" · ") : ""}</div>
+                      {detail.data?.summary && <p className="map-summary">{detail.data.summary}</p>}
+                    </>
+                  )}
                 </div>
               )}
               <div className="row" style={{ gap: 8, flex: "none" }}>
@@ -334,7 +341,13 @@ export default function NewsPage() {
                 <div className="stage-loading">
                   <span className="kick">relation map</span>
                   <i />
-                  <span>{detail.isLoading || universe.isLoading ? "관계 지도를 만드는 중" : "이 뉴스와 연결된 기업이 그래프에 없습니다"}</span>
+                  <span>
+                    {detail.isLoading || universe.isLoading
+                      ? "관계 지도를 만드는 중"
+                      : universe.isError
+                        ? "공개된 관계 스냅샷이 없어 관계 지도를 표시할 수 없습니다"
+                        : "이 뉴스와 연결된 기업이 그래프에 없습니다"}
+                  </span>
                 </div>
               )}
             </div>

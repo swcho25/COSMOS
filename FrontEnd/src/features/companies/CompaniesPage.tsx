@@ -5,7 +5,7 @@ import { fmtDateTime } from "@/lib/format";
 import { useCompanyDirectory, useIndustries, useLatestGraph, useToggleWatch, useWatchedSet, useWatchlist } from "@/lib/queries";
 import { useSession } from "@/store/session";
 import { useUi } from "@/store/ui";
-import { CompanyAvatar, Empty, Icon, IndustryBadge, MarketTag, ScoreBar, Skeleton } from "@/components/ui";
+import { CompanyAvatar, Empty, ErrorNotice, Icon, IndustryBadge, MarketTag, ScoreBar, Skeleton } from "@/components/ui";
 import CompanyPreviewDialog from "./CompanyPreviewDialog";
 import OwnershipView from "./OwnershipView";
 import "./companies.css";
@@ -87,7 +87,11 @@ export default function CompaniesPage() {
         <div>
           <span className="pill">기업 데이터</span>
           <h1>연결 기업 데이터</h1>
-          <p>최신 스냅샷의 관계 그래프에 포함된 {universe.data?.nodes.length ?? (universe.isError ? 0 : "…")}개 기업의 연결 관계와 관계 점수를 조회합니다.</p>
+          <p>
+            등록된 기업 목록에 최신 공개 스냅샷의 연결 관계 수·관계 점수를 함께 표시합니다.
+            {universe.data && ` 스냅샷에는 ${universe.data.nodes.length}개 기업이 포함되어 있습니다.`}
+            {universe.isError && " 현재 공개된 관계 스냅샷이 없어 연결 관계·점수는 모두 0으로 표시됩니다."}
+          </p>
         </div>
         <span className="status-line">
           <i className="dot" />
@@ -210,7 +214,14 @@ export default function CompaniesPage() {
                         </td>
                       </tr>
                     ))}
-                  {!dir.isLoading && !rows.length && (
+                  {!dir.isLoading && dir.isError && !rows.length && (
+                    <tr>
+                      <td colSpan={6}>
+                        <ErrorNotice message="기업 목록을 불러오지 못했습니다." onRetry={() => dir.refetch()} />
+                      </td>
+                    </tr>
+                  )}
+                  {!dir.isLoading && !dir.isError && !rows.length && (
                     <tr>
                       <td colSpan={6}>
                         <Empty>조건에 맞는 기업이 없습니다.</Empty>

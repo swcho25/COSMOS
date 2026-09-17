@@ -408,6 +408,10 @@ button:disabled {
   font-size: 13px;
   line-height: 1.7;
 }
+/* components/ui.tsx 의 <ErrorNotice> — 필터 조건에 맞는 결과가 없는 <Empty>와 달리 실패를 알린다 */
+.empty.error-notice {
+  color: var(--neg-fg);
+}
 .skeleton {
   background: linear-gradient(90deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.09), rgba(255, 255, 255, 0.04));
   background-size: 200% 100%;
