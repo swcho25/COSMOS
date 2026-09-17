@@ -39,6 +39,13 @@ _COPY_COLUMNS = (
 # One database-wide writer lock, shared by all invocations regardless of snapshot.
 _ADVISORY_LOCK = (1129272137, 1380205132)
 
+_RELATIONSHIP_TYPES = {
+    "COMPETE": ("경쟁", "UNDIRECTED"),
+    "INVEST": ("투자", "DIRECTED"),
+    "PARTNER": ("협력", "UNDIRECTED"),
+    "SUPPLY": ("공급", "DIRECTED"),
+}
+
 
 _CREATE_STAGE = """
 CREATE TEMP TABLE _rdb_relationship_stage (
@@ -91,7 +98,9 @@ AND ((r.source_company_id = c.source_company_id
 
 
 def publish_snapshot(
-    connection: Any, manifest: Any, rows: Iterable[Mapping[str, Any]],
+    connection: Any, manifest: Any, rows: Iterable[Mapping[str, Any]], *,
+    company_metrics: Iterable[Mapping[str, Any]] | None = None,
+    company_keys: bool = False,
 ) -> PublishResult:
     """Publish and commit CURRENT, HISTORY, and the snapshot marker together.
 
@@ -123,6 +132,14 @@ def publish_snapshot(
             cursor.execute("SET TRANSACTION ISOLATION LEVEL READ COMMITTED")
             cursor.execute("SET LOCAL TIME ZONE 'UTC'")
             cursor.execute("SELECT pg_advisory_xact_lock(%s, %s)", _ADVISORY_LOCK)
+            # The verified run URI contains run_id. It is the run-level receipt
+            # when the existing schema intentionally has no separate run table.
+            cursor.execute(
+                "SELECT snapshot_id FROM graph_snapshot WHERE hdfs_uri = %s AND snapshot_id <> %s LIMIT 1",
+                (manifest.hdfs_uri, manifest.snapshot_id),
+            )
+            if cursor.fetchone() is not None:
+                raise SnapshotConflictError("run_id URI was already used by another snapshot")
             cursor.execute(
                 """
                 SELECT g.status, g.as_of_at, g.formula_version, g.model_version,
@@ -155,12 +172,61 @@ def publish_snapshot(
 
             cursor.execute(_CREATE_STAGE)
             stored_count = 0
-            with cursor.copy(
-                "COPY _rdb_relationship_stage (" + ", ".join(_COPY_COLUMNS) + ") FROM STDIN"
-            ) as copy:
-                for row in rows:
-                    copy.write_row(tuple(row[column] for column in _COPY_COLUMNS))
-                    stored_count += 1
+            if company_keys:
+                cursor.execute("""
+                    CREATE TEMP TABLE _rdb_relationship_key_stage (
+                        source_market VARCHAR(30) NOT NULL, source_stock_code VARCHAR(30) NOT NULL,
+                        target_market VARCHAR(30) NOT NULL, target_stock_code VARCHAR(30) NOT NULL,
+                        relationship_type VARCHAR(50) NOT NULL,
+                        window_type VARCHAR(30) NOT NULL,
+                        news_score NUMERIC(18,6), disclosure_score NUMERIC(18,6),
+                        score NUMERIC(18,6) NOT NULL, confidence NUMERIC(7,6),
+                        evidence_count INTEGER NOT NULL, impact_direction VARCHAR(30),
+                        period_start TIMESTAMPTZ NOT NULL, period_end TIMESTAMPTZ NOT NULL,
+                        PRIMARY KEY (source_market, source_stock_code, target_market,
+                                     target_stock_code, relationship_type, window_type)
+                    ) ON COMMIT DROP
+                """)
+                key_columns = (
+                    "source_market", "source_stock_code", "target_market", "target_stock_code",
+                    "relationship_type_code", "window_type", "news_score", "disclosure_score",
+                    "score", "confidence", "evidence_count", "impact_direction", "period_start", "period_end",
+                )
+                with cursor.copy("COPY _rdb_relationship_key_stage FROM STDIN") as copy:
+                    for row in rows:
+                        copy.write_row(tuple(row[column] for column in key_columns))
+                        stored_count += 1
+                used_types = {row[0] for row in cursor.execute(
+                    "SELECT DISTINCT relationship_type FROM _rdb_relationship_key_stage"
+                ).fetchall()}
+                unknown = used_types - set(_RELATIONSHIP_TYPES)
+                if unknown:
+                    raise PublishError("unknown relationship_type_code: " + ", ".join(sorted(unknown)))
+                actual_types = dict(cursor.execute(
+                    "SELECT code, directionality FROM relationship_type WHERE code = ANY(%s)",
+                    (list(used_types),),
+                ).fetchall())
+                if any(actual_types.get(code) != _RELATIONSHIP_TYPES[code][1] for code in used_types):
+                    raise PublishError("relationship type is missing or differs from loader catalog")
+                cursor.execute("""
+                    INSERT INTO _rdb_relationship_stage
+                    SELECT src.company_id, dst.company_id, s.relationship_type, s.window_type,
+                           s.news_score, s.disclosure_score, s.score, s.confidence,
+                           s.evidence_count, s.impact_direction, s.period_start, s.period_end
+                    FROM _rdb_relationship_key_stage s
+                    JOIN company src ON src.market=s.source_market AND src.stock_code=s.source_stock_code
+                    JOIN company dst ON dst.market=s.target_market AND dst.stock_code=s.target_stock_code
+                """)
+                cursor.execute("SELECT count(*) FROM _rdb_relationship_stage")
+                if cursor.fetchone()[0] != stored_count:
+                    raise PublishError("relationship run references an unknown market/stock_code")
+            else:
+                with cursor.copy(
+                    "COPY _rdb_relationship_stage (" + ", ".join(_COPY_COLUMNS) + ") FROM STDIN"
+                ) as copy:
+                    for row in rows:
+                        copy.write_row(tuple(row[column] for column in _COPY_COLUMNS))
+                        stored_count += 1
             if stored_count > manifest.record_count:
                 raise PublishError("stored row count exceeds the manifest record_count")
             if not stored_count and not getattr(manifest, "allow_empty", False):
@@ -279,6 +345,50 @@ def publish_snapshot(
                 """, (manifest.snapshot_id, manifest.content_hash, manifest.record_count,
                         stored_count, list(_WINDOWS)),
             )
+            if company_metrics is not None:
+                cursor.execute("""
+                    CREATE TEMP TABLE _rdb_metric_stage (
+                        market VARCHAR(30) NOT NULL, stock_code VARCHAR(30) NOT NULL,
+                        measured_at TIMESTAMPTZ NOT NULL, window_type VARCHAR(30) NOT NULL,
+                        news_mention_count INTEGER NOT NULL, positive_count INTEGER NOT NULL,
+                        negative_count INTEGER NOT NULL, sentiment_score NUMERIC(18,6),
+                        relationship_count INTEGER NOT NULL, metric_version VARCHAR(50) NOT NULL,
+                        PRIMARY KEY (market, stock_code, measured_at, window_type)
+                    ) ON COMMIT DROP
+                """)
+                metric_columns = (
+                    "market", "stock_code", "measured_at", "window_type", "news_mention_count",
+                    "positive_count", "negative_count", "sentiment_score", "relationship_count", "metric_version",
+                )
+                metric_count = 0
+                with cursor.copy("COPY _rdb_metric_stage FROM STDIN") as copy:
+                    for row in company_metrics:
+                        copy.write_row(tuple(row[column] for column in metric_columns))
+                        metric_count += 1
+                cursor.execute("""
+                    SELECT count(*) FROM _rdb_metric_stage s
+                    JOIN company c ON c.market=s.market AND c.stock_code=s.stock_code
+                """)
+                if cursor.fetchone()[0] != metric_count:
+                    raise PublishError("metric run references an unknown market/stock_code")
+                cursor.execute("""
+                    INSERT INTO company_metric_history
+                        (company_id, measured_at, window_type, news_mention_count,
+                         positive_count, negative_count, sentiment_score,
+                         relationship_count, metric_version)
+                    SELECT c.company_id, s.measured_at, s.window_type, s.news_mention_count,
+                           s.positive_count, s.negative_count, s.sentiment_score,
+                           s.relationship_count, s.metric_version
+                    FROM _rdb_metric_stage s
+                    JOIN company c ON c.market=s.market AND c.stock_code=s.stock_code
+                    ON CONFLICT (company_id, measured_at, window_type) DO UPDATE SET
+                        news_mention_count=EXCLUDED.news_mention_count,
+                        positive_count=EXCLUDED.positive_count,
+                        negative_count=EXCLUDED.negative_count,
+                        sentiment_score=EXCLUDED.sentiment_score,
+                        relationship_count=EXCLUDED.relationship_count,
+                        metric_version=EXCLUDED.metric_version
+                """)
             # Publish last, in the same transaction as both score tables and receipt.
             cursor.execute(
                 """UPDATE graph_snapshot SET status = 'PUBLISHED', published_at = clock_timestamp()
