@@ -31,7 +31,8 @@ interface Props {
 }
 
 /**
- * 왼쪽 "뜻밖의 관계" 레일 — "생각지도 못한 관계를 안다" 는 이 제품의 첫 약속을 화면에서 지킨다.
+ * 왼쪽 "Special Link" 레일 — 관계가 많은 기업끼리의 뻔한 연결 말고, 산업·시장을 건너뛰거나 경쟁하면서도 손잡은
+ * 특별한 관계를 골라 보여 준다. 이 제품의 첫 약속을 화면에서 지키는 카드다.
  * lib/surprise 의 순위를 지금 화면 필터(최소 점수·활성 유형)로 한 번 더 걸러 씬에 실제로 보이는 간선만 남긴다.
  * 행에 호버·포커스하면 씬의 그 빔이 밝아지고(기존 emphasis 규칙), 누르면 관계 패널이 근거와 함께 연다 —
  * "3클릭 내 근거" 를 1클릭으로 줄이는 지점이다.
@@ -72,8 +73,8 @@ export default function SurpriseRail({ model, onPickCompany }: Props) {
     );
   }
 
+  // 제목 줄은 기업 중심 뷰에서만 — 은하 뷰에서는 머리의 'Special Link' 가 곧 이름이라 한 줄 더 둘 이유가 없다
   const centerName = centerId ? model.nodeById.get(centerId)?.name : undefined;
-  const title = centerName ? SURPRISE_UI.titleFor(centerName) : SURPRISE_UI.title;
 
   return (
     <aside className="hud hud-surprise">
@@ -86,7 +87,7 @@ export default function SurpriseRail({ model, onPickCompany }: Props) {
             <Icon.Close />
           </button>
         </div>
-        <div className="surprise-title">{title}</div>
+        {centerName && <div className="surprise-title">{SURPRISE_UI.titleFor(centerName)}</div>}
         {!centerId && <p className="meta surprise-lead">{SURPRISE_UI.lead}</p>}
         {rows.length === 0 ? (
           <Empty>{centerId ? SURPRISE_UI.emptyCompany : SURPRISE_UI.empty}</Empty>

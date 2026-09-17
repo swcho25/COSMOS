@@ -64,7 +64,7 @@ interface GalaxyState {
   industryOpen: boolean;
   /** 선 중간의 관계 종류 글자(EdgeLabels) 표시 여부 */
   showEdgeLabels: boolean;
-  /** 왼쪽 "뜻밖의 관계" 카드 펼침 여부 (접으면 꼬리표) */
+  /** 왼쪽 "Special Link" 카드 펼침 여부 (접으면 꼬리표) */
   surpriseOpen: boolean;
   /** 카메라 프리셋 — 궤도(둘러보기) · 위에서(거리 비교) · 정면에서(고도 비교). Director 가 자세를 만든다 */
   cameraPreset: CameraPresetId;

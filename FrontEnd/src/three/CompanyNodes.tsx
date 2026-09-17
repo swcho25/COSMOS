@@ -10,7 +10,7 @@ import { useGalaxy } from "@/store/galaxy";
 import { altitudeState } from "./altitude";
 import { touch } from "./bufferUtil";
 import { cameraBusy } from "./cameraState";
-import { CHIP_H, CHIP_PILL, CHIP_STEM, chipFragment, chipHit, chipVertex } from "./chipShader";
+import { CHIP_H, CHIP_NAME_H, CHIP_PILL, CHIP_STEM, chipFragment, chipHit, chipVertex } from "./chipShader";
 import type { Emphasis } from "./emphasis";
 import { ATLAS_CELL_UV, cellUv, ensureLogoCell, logoAtlasTexture } from "./logoAtlas";
 import { discFragment, discVertex } from "./logoDiscShader";
@@ -150,7 +150,8 @@ const CHIP_GAP = 4;
  * 칩 목표 화면 높이(px)와 월드 높이 클램프 — 코앞에서도 너무 작아지지 않고 멀리서도 행성을 통째로 덮지 않게.
  * 20px·상한 4 일 때는 은하 기본 자세에서 칩이 13px 안팎, 글자는 7px 남짓이라 읽히지 않았다. 26px 로 키우고 상한을 10 으로 올렸다가,
  * 이름이 호버에서만 나오게 바뀐 뒤 글자를 키우려고 30 → 34px 로, 기본 화면에 핵심 허브만 남고 카메라도 조금 물러난 뒤
- * 40px 로 올렸다 (글자 ≈ 17px → 26px, 굵기는 그대로).
+ * 40px 로 올렸다 (글자 ≈ 17px → 26px, 굵기는 그대로). 그 뒤 글자만 크다는 지적에 칩은 두고 글자 영역(chipShader CHIP_NAME_H)을
+ * 0.8 → 0.68 로 줄였다 (글자 ≈ 22px) — 로고 원 크기는 그대로다.
  * 화면 px 로 고정하면 확대할수록 행성만 커지고 로고는 그대로라 작아 보인다 — 아래 CHIP_OF_PLANET 하한이 그때 로고를 함께 키운다.
  * 상한이 걸리는 구간(기본 자세 카메라 거리 ≈ 265~310 에서 계산): 캔버스 세로 790px 이상이면 허브 칩이 모두 26px, 720px 에서는 23.8~26px,
  * 650px 에서는 21.5~25.2px. 글자 높이는 이름 아틀라스 행(ROW 44 중 글자 36)에 따라 칩 높이의 약 0.65 배 ≈ 17px 이다.
@@ -517,7 +518,7 @@ export default function CompanyNodes({ model, emphasis, hoveredId, onHover, onCl
       // 나타나는 감각은 칩 자체의 알파 페이드(chipA)가 맡는다
       a.nameOn = showLabels && (pinned || isCenter) ? 1 : 0;
       const roleW = roleArr[i * 4 + 3] > 0 ? (roleArr[i * 4 + 2] / roleArr[i * 4 + 3]) * 0.8 : 0;
-      built.aspectArr[i] = 1 + a.nameOn * ((built.nameCells[i]?.aspect ?? 0) * 0.8 + 0.3) + (roleW > 0 ? roleW + 0.15 : 0);
+      built.aspectArr[i] = 1 + a.nameOn * ((built.nameCells[i]?.aspect ?? 0) * CHIP_NAME_H + 0.3) + (roleW > 0 ? roleW + 0.15 : 0);
 
       // 칩 목표 알파: 티어별 거리 LOD × 강조, 고정 노드는 항상. 모프 중에는 중심만
       scratch.h[i] = Math.max(THREE.MathUtils.clamp(dist * pxK, CHIP_MIN, CHIP_MAX), r * CHIP_OF_PLANET);

@@ -401,7 +401,7 @@ export default function GalaxyPage() {
       {/* 하단 중앙: 조절 도크 — '^' 로 열면 펼치기 슬라이더(은하 → 평면 → 크기순 정렬) · 관계 종류 4개 · '>' 고급(뉴스·공시 비율 · 최소 점수 · 주가 고도).
           씬 인코딩 설명(자리·굵기·색·점선)은 ? 허브에만 둔다 */}
       <ControlDock />
-      {/* 왼쪽: 뜻밖의 관계 — 예상 밖의 연결만 골라 보여 주는 이 제품의 핵심 카드. 행 호버 = 씬 강조, 클릭 = 근거 패널 */}
+      {/* 왼쪽: Special Link — 특별한 관계만 골라 보여 주는 이 제품의 핵심 카드. 행 호버 = 씬 강조, 클릭 = 근거 패널 */}
       <SurpriseRail model={focusId ? systemModel : galaxyModel} onPickCompany={pickCompany} />
 
       {/* 우측 패널 — 닫으면 오른쪽 가장자리 꼬리표로 접힌다 */}

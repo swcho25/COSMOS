@@ -207,21 +207,24 @@ export const EVIDENCE_UI = {
   ],
 };
 
-/* ---- 뜻밖의 관계 — 이 제품의 핵심 경험 ---- */
+/**
+ * Special Link — 이 제품의 핵심 경험. 이름은 한 가지("Special Link")로만 부른다.
+ * "생각지 못한 연결" 같은 부제는 쓰지 않는다 — 고른 관계가 늘 처음 보는 사이인 것은 아니어서
+ * 과한 약속이 되고, 카드에 이름이 두 번 나와 읽는 데도 방해가 됐다.
+ */
 export const SURPRISE_UI = {
   mark: "✦",
-  badge: "뜻밖",
-  kicker: "뜻밖의 관계",
-  title: "생각지 못한 연결",
-  titleFor: (name: string) => `${name}의 뜻밖의 관계`,
-  lead: "산업·시장이 다르거나, 둘 다 허브가 아니거나, 경쟁하면서도 손잡은 — 예상 밖의 연결만 골랐습니다.",
+  badge: "Special Link",
+  kicker: "Special Link",
+  titleFor: (name: string) => `${name}의 Special Link`,
+  lead: "산업·시장이 다르거나, 둘 다 허브가 아니거나, 경쟁하면서도 손잡은 특별한 관계를 골랐습니다.",
   hoverHint: "커서를 올리면 은하에서 그 선이 밝아지고, 누르면 근거를 봅니다",
-  why: "왜 뜻밖인가",
-  empty: "지금 필터 안에는 뜻밖이라 할 만한 관계가 없습니다. 최소 점수를 낮추거나 관계 종류를 더 켜 보세요.",
+  why: "왜 특별한가",
+  empty: "지금 필터 안에는 Special Link 로 꼽을 관계가 없습니다. 최소 점수를 낮추거나 관계 종류를 더 켜 보세요.",
   emptyCompany: "이 기업의 관계는 모두 같은 산업·시장 안에 있습니다.",
   collapse: "접기",
   expandTag: (n: number) => `${n}개`,
-  tooltip: (labels: string[]) => `뜻밖 · ${labels.join(" · ")}`,
+  tooltip: (labels: string[]) => `Special Link · ${labels.join(" · ")}`,
 };
 
 export interface HelpSection {
@@ -280,12 +283,12 @@ export const HELP_SECTIONS: HelpSection[] = [
   },
   {
     id: "surprise",
-    title: "뜻밖의 관계 찾기",
-    summary: "예상 밖의 연결만 골라 보여 주는 카드",
+    title: "Special Link 찾기",
+    summary: "특별한 관계만 골라 보여 주는 카드",
     body: [
-      "왼쪽 '뜻밖의 관계' 카드는 산업이나 시장이 다른 두 기업, 둘 다 허브가 아닌 조합, 경쟁하면서도 협력·공급하는 관계처럼 예상 밖의 연결을 점수로 골라 보여 줍니다.",
+      "왼쪽 'Special Link' 카드는 산업이나 시장이 다른 두 기업, 둘 다 허브가 아닌 조합, 경쟁하면서도 협력·공급하는 관계처럼 특별한 연결을 점수로 골라 보여 줍니다.",
       "행에 커서를 올리면 은하에서 그 선이 밝아지고, 누르면 근거 뉴스가 열립니다. 선 위의 ✦ 표시도 같은 뜻입니다.",
-      "기업 관계망 안에서는 그 기업 기준의 뜻밖의 관계만 남습니다.",
+      "기업 관계망 안에서는 그 기업 기준의 Special Link 만 남습니다.",
     ],
   },
   {

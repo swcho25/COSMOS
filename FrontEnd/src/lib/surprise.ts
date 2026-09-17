@@ -2,9 +2,10 @@ import type { SceneEdge, SceneModel } from "./graph";
 import { RELATIONSHIP_META, UNCLASSIFIED_INDUSTRY } from "./meta";
 
 /**
- * 뜻밖의 관계 — "이 서비스로 생각지도 못한 관계를 알게 된다" 를 화면이 직접 하게 만드는 점수.
+ * Special Link 점수 — 화면에서는 "Special Link" 라는 이름으로만 부른다(lib/guide SURPRISE_UI).
+ * 뻔한 연결(허브끼리·같은 산업) 대신 눈여겨볼 만한 관계를 화면이 직접 골라내게 하는 점수다.
  * 그래프 스냅샷의 필드(유형·점수·양끝 기업의 산업·시장·연결 수·배치 좌표)만으로 계산하므로 추가 요청이 없다.
- * 사람이 "뜻밖" 이라고 느끼는 이유를 다섯 가지로 나눠 각각 0~1 로 재고, 가중합을 관계 점수로 살짝 눌러 정렬한다:
+ * 사람이 "특별하다" 고 느끼는 이유를 다섯 가지로 나눠 각각 0~1 로 재고, 가중합을 관계 점수로 살짝 눌러 정렬한다:
  *  - industry  두 기업의 산업이 다르다 (둘 다 산업이 있을 때만)          — 자동차 ↔ 게임
  *  - market    상장 시장이 다르다                                          — KOSPI ↔ NASDAQ
  *  - frenemy   같은 두 기업 사이에 경쟁 관계와 협력·공급·투자 관계가 함께 있다 — 적이자 동료
@@ -27,14 +28,14 @@ export interface SurpriseReason {
 
 export interface Surprise {
   edgeId: string;
-  /** 0~1. SURPRISE_MIN 이상이면 "뜻밖" 으로 표시한다 */
+  /** 0~1. SURPRISE_MIN 이상이면 Special Link 로 표시한다 */
   score: number;
   reasons: SurpriseReason[];
 }
 
-/** 이 값 이상이면 뜻밖 표식(✦)을 붙인다 */
+/** 이 값 이상이면 Special Link 표식(✦)을 붙인다 */
 export const SURPRISE_MIN = 0.42;
-/** 뜻밖 후보가 되기 위한 최소 관계 점수 — 약한 관계의 우연은 뜻밖이 아니라 잡음이다 */
+/** 후보가 되기 위한 최소 관계 점수 — 약한 관계의 우연은 특별한 게 아니라 잡음이다 */
 const MIN_EDGE_SCORE = 55;
 
 const W: Record<SurpriseReasonKey, number> = { industry: 0.3, market: 0.15, frenemy: 0.35, quiet: 0.22, rare: 0.15, far: 0.15 };
@@ -100,7 +101,7 @@ function contextOf(model: SceneModel): Ctx {
   return ctx;
 }
 
-/** 간선 하나의 뜻밖 점수와 이유. 관계 점수가 낮으면 이유가 있어도 0 이다 */
+/** 간선 하나의 Special Link 점수와 이유. 관계 점수가 낮으면 이유가 있어도 0 이다 */
 export function surpriseFor(model: SceneModel, edge: SceneEdge): Surprise {
   const none: Surprise = { edgeId: edge.id, score: 0, reasons: [] };
   if (edge.score < MIN_EDGE_SCORE) return none;
@@ -136,7 +137,7 @@ export function surpriseFor(model: SceneModel, edge: SceneEdge): Surprise {
   if (knownIndustries && (ctx.comboCount.get(comboKey(a.industry, b.industry, edge.type)) ?? 0) <= 1 && a.industry !== b.industry) {
     push("rare", 1, "이런 조합은 하나뿐", `${a.industry}와 ${b.industry} 사이 ${RELATIONSHIP_META[edge.type]?.label ?? edge.type} 관계는 이것이 유일`);
   }
-  // 점수 대비 멀리 — 같은 점수대 중앙값의 1.6 배부터 뜻밖, 2.6 배면 최대
+  // 점수 대비 멀리 — 같은 점수대 중앙값의 1.6 배부터 점수가 붙고, 2.6 배면 최대
   const ref = ctx.medianDist.get(Math.floor(edge.score / 10)) ?? ctx.medianAll;
   if (ref > 0) {
     const ratio = dist(edge) / ref;
@@ -154,13 +155,13 @@ export function surpriseFor(model: SceneModel, edge: SceneEdge): Surprise {
 
 export interface RankOptions {
   limit?: number;
-  /** 이 기업에 붙은 간선만 (기업 중심 뷰의 "이 기업의 뜻밖의 관계") */
+  /** 이 기업에 붙은 간선만 (기업 중심 뷰의 "{기업}의 Special Link") */
   incidentTo?: string | null;
   /** 한 기업이 목록을 독차지하지 않게 — 기업당 최대 등장 수 */
   perCompany?: number;
 }
 
-/** 모델 전체(또는 한 기업 주변)에서 뜻밖 점수 상위 간선. 결과는 모델 객체에 캐시된다 */
+/** 모델 전체(또는 한 기업 주변)에서 Special Link 점수 상위 간선. 결과는 모델 객체에 캐시된다 */
 const RANK = new WeakMap<SceneModel, Map<string, Surprise[]>>();
 export function rankSurprises(model: SceneModel, opts: RankOptions = {}): Surprise[] {
   const { limit = 6, incidentTo = null, perCompany = 2 } = opts;
@@ -202,7 +203,7 @@ export function rankSurprises(model: SceneModel, opts: RankOptions = {}): Surpri
   return out;
 }
 
-/** 씬(라벨·강조)이 빠르게 물을 수 있는 "뜻밖" 간선 id 집합 — 상위 목록보다 넓게, 임계를 넘는 전부 */
+/** 씬(라벨·강조)이 빠르게 물을 수 있는 Special Link 간선 id 집합 — 상위 목록보다 넓게, 임계를 넘는 전부 */
 const SET = new WeakMap<SceneModel, Set<string>>();
 export function surpriseSet(model: SceneModel): Set<string> {
   const hit = SET.get(model);

@@ -9,7 +9,7 @@
   line-height: 1.5;
 }
 
-/* ---- 뜻밖 배지·설명 줄 (공용) ---- */
+/* ---- Special Link 배지·설명 줄 (공용) ---- */
 .ev-surprise-badge {
   background: var(--warn-soft, rgba(245, 166, 35, 0.14));
   color: var(--warn-fg);
@@ -62,7 +62,7 @@
   white-space: nowrap;
 }
 
-/* ---- RelationshipPanel: 왜 뜻밖인가 — 이 제품의 핵심 메시지라 눈에 띄게 ---- */
+/* ---- RelationshipPanel: 왜 특별한가 — 이 제품의 핵심 메시지라 눈에 띄게 ---- */
 .ev-why {
   border-left: 3px solid var(--warn);
   background: rgba(245, 166, 35, 0.07);

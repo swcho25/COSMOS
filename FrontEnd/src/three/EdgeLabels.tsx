@@ -17,7 +17,7 @@ import { spreadDim, spreadGate } from "./spread";
 interface Props {
   model: SceneModel;
   emphasis: Emphasis;
-  /** 뜻밖 간선 id (lib/surprise 의 surpriseSet) — 앞에 SURPRISE_UI.mark 를 붙인다 */
+  /** Special Link 간선 id (lib/surprise 의 surpriseSet) — 앞에 SURPRISE_UI.mark 를 붙인다 */
   surprise: Set<string>;
 }
 
@@ -49,7 +49,7 @@ function setUniform(u: { value: number }, v: number) {
   u.value = v;
 }
 
-/** 관계 종류 라벨 문자열 — 유형(4) × 뜻밖 여부(2) = 최대 8종뿐이라 아틀라스 굽기 비용이 없다 (ensureNameCell 이 텍스트별로 캐시한다) */
+/** 관계 종류 라벨 문자열 — 유형(4) × Special Link 여부(2) = 최대 8종뿐이라 아틀라스 굽기 비용이 없다 (ensureNameCell 이 텍스트별로 캐시한다) */
 function labelText(type: RelationshipType, isSurprise: boolean) {
   const meta = RELATIONSHIP_META[type];
   const base = `${meta?.label ?? String(type)} ${meta?.directed ? "▸" : "⇄"}`;
