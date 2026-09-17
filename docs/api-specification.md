@@ -17,6 +17,7 @@
 - Refresh Token 원문은 HttpOnly·Secure 쿠키로 전달한다.
 - 공개 조회 API는 비로그인 사용자도 호출할 수 있다.
 - 관심 기업, 뉴스 스크랩, 댓글 작성·수정·삭제와 내 정보 API는 로그인이 필요하다.
+- 회원가입은 이메일 인증을 먼저 거친다. 순서는 인증 코드 발송 → 코드 확인 → 회원가입이며, 인증 완료 상태는 30분 유지된다.
 - 공개 API에 유효한 Access Token이 선택적으로 전달되면 스크랩 여부 등을 응답에 반영할 수 있다.
 
 ### 성공 응답
@@ -94,6 +95,8 @@
 | --- | --- | --- |
 | `GET` | `/api/auth/check-email` | 이메일 중복 확인 |
 | `GET` | `/api/auth/check-nickname` | 닉네임 중복 확인 |
+| `POST` | `/api/auth/email/send-code` | 이메일 인증 코드 발송 |
+| `POST` | `/api/auth/email/verify-code` | 이메일 인증 코드 확인 |
 | `POST` | `/api/auth/login` | 로그인 |
 | `POST` | `/api/auth/logout` | 로그아웃 |
 | `POST` | `/api/auth/refresh` | refresh토큰 재발급 |
@@ -200,6 +203,133 @@
 <td>400</td>
 <td>VALIDATION_FAILED</td>
 <td>닉네임 길이 또는 형식 오류</td>
+</tr>
+</table>
+
+#### POST /api/auth/email/send-code — 이메일 인증 코드 발송
+
+#### 목적
+가입 전 이메일 소유 확인. 숫자 6자리 인증 코드를 메일로 보낸다. 가입 흐름은 코드 발송 → 코드 확인 → 회원가입 순서다.
+#### 인증
+불필요
+#### Request
+```json
+{
+  "email": "kim@example.com"
+}
+```
+<table header-row="true">
+<tr>
+<td>필드</td>
+<td>규칙</td>
+</tr>
+<tr>
+<td>email</td>
+<td>이메일 형식, 255자 이하. 소문자로 정규화해 처리</td>
+</tr>
+</table>
+#### Response — 200 OK
+```json
+{
+  "email": "kim@example.com",
+  "expiresInSeconds": 300
+}
+```
+#### Notes
+- 코드는 5분 동안 유효하다. 같은 이메일로 다시 보내면 이전 코드는 무효가 된다.
+- 같은 이메일에는 60초에 한 번만 보낼 수 있다 (재발송 버튼은 60초 타이머 권장).
+- 메일 발송이 실패하면 코드도 저장하지 않는다.
+- 발신은 팀 공용 Gmail, 제목은 `[COSMOS] 이메일 인증 코드`.
+#### Errors
+<table header-row="true">
+<tr>
+<td>상태</td>
+<td>code</td>
+<td>언제</td>
+</tr>
+<tr>
+<td>400</td>
+<td>VALIDATION_FAILED</td>
+<td>이메일 형식 오류 (fieldErrors 포함)</td>
+</tr>
+<tr>
+<td>409</td>
+<td>EMAIL_DUPLICATED</td>
+<td>이미 가입된 이메일</td>
+</tr>
+<tr>
+<td>429</td>
+<td>EMAIL_CODE_TOO_FREQUENT</td>
+<td>60초 안에 같은 이메일로 다시 요청</td>
+</tr>
+<tr>
+<td>500</td>
+<td>INTERNAL_SERVER_ERROR</td>
+<td>메일 발송 실패</td>
+</tr>
+</table>
+
+#### POST /api/auth/email/verify-code — 이메일 인증 코드 확인
+
+#### 목적
+메일로 받은 코드를 확인해 "인증 완료" 상태를 만든다. 이 상태가 있어야 회원가입이 가능하다.
+#### 인증
+불필요
+#### Request
+```json
+{
+  "email": "kim@example.com",
+  "code": "482913"
+}
+```
+<table header-row="true">
+<tr>
+<td>필드</td>
+<td>규칙</td>
+</tr>
+<tr>
+<td>email</td>
+<td>코드를 받은 이메일. 소문자로 정규화해 처리</td>
+</tr>
+<tr>
+<td>code</td>
+<td>숫자 6자리</td>
+</tr>
+</table>
+#### Response — 200 OK
+```json
+{
+  "email": "kim@example.com",
+  "verified": true,
+  "validForSeconds": 1800
+}
+```
+#### Notes
+- 인증 완료 상태는 30분 유지된다. 이 안에 회원가입을 마쳐야 하며, 가입이 끝나면 상태는 사라진다.
+- 코드는 한 번 맞으면 폐기된다 (재사용 불가).
+- 5회 틀리면 코드가 폐기되어 다시 발송받아야 한다.
+- 프론트는 EMAIL_CODE_EXPIRED는 "재발송" 안내, EMAIL_CODE_INVALID는 "다시 입력" 안내로 구분한다.
+#### Errors
+<table header-row="true">
+<tr>
+<td>상태</td>
+<td>code</td>
+<td>언제</td>
+</tr>
+<tr>
+<td>400</td>
+<td>VALIDATION_FAILED</td>
+<td>이메일 형식 오류 또는 코드가 숫자 6자리가 아님 (fieldErrors 포함)</td>
+</tr>
+<tr>
+<td>400</td>
+<td>EMAIL_CODE_INVALID</td>
+<td>코드 불일치 (다시 입력 가능)</td>
+</tr>
+<tr>
+<td>400</td>
+<td>EMAIL_CODE_EXPIRED</td>
+<td>발송된 코드가 없거나 만료·폐기됨 (다시 발송 필요)</td>
 </tr>
 </table>
 
