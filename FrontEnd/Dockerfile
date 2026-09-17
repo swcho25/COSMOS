@@ -7,9 +7,9 @@ RUN npm ci --no-audit --no-fund
 
 COPY . .
 
-# Vite embeds these values in the bundle; runtime environment variables cannot change them.
-ENV VITE_API_MODE=live \
-    VITE_API_BASE=/api
+# Vite embeds this value in the bundle; runtime environment variables cannot change it.
+# The host Nginx routes /api to Spring Boot, so the bundle only needs the base path.
+ENV VITE_API_BASE=/api
 
 RUN npm run build
 

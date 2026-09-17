@@ -4,6 +4,7 @@ import * as THREE from "three";
 import { ARMS, ARM_SPREAD, DISC_Y, R_CORE, R_MAX, armTheta } from "@/lib/galaxyShape";
 import { gaussian, seededRandom } from "@/lib/rng";
 import { isLowEnd } from "./perf";
+import { spreadDim } from "./spread";
 import { dotTexture } from "./textures";
 import { glowTexture } from "./toon";
 
@@ -129,7 +130,7 @@ export default function GalaxyDust({ seed = 0, radius = R_MAX, spiral = true, wa
 
   useEffect(() => () => geo.dispose(), [geo]);
 
-  const uniforms = useMemo(() => ({ uMap: { value: dotTexture() }, uScale: { value: 270 }, uTime: { value: 0 }, uWarp: { value: 0 } }), []);
+  const uniforms = useMemo(() => ({ uMap: { value: dotTexture() }, uScale: { value: 270 }, uTime: { value: 0 }, uWarp: { value: 0 }, uSpread: { value: 1 } }), []);
 
   useFrame((state) => {
     const warp = warpRef?.current ?? 0;
@@ -137,10 +138,13 @@ export default function GalaxyDust({ seed = 0, radius = R_MAX, spiral = true, wa
     if (u) {
       u.uTime.value = state.clock.elapsedTime;
       u.uWarp.value = warp;
+      // 점 구름도 나선을 벗어날수록 옅어진다 (핵 글로우와 같은 배율)
+      u.uSpread.value = spreadDim();
       // aSize 가 "기준 거리에서의 화면 px" 이 되도록 화면 높이에 맞춘다
       u.uScale.value = state.size.height * 0.3;
     }
-    const dim = 1 - (1 - WARP_ALPHA) * warp;
+    // 펼치기가 나선을 벗어날수록(spreadDim) 별가루 나선도 함께 옅어진다 — 격자 위의 배경으로는 나선이 어울리지 않는다
+    const dim = (1 - (1 - WARP_ALPHA) * warp) * spreadDim();
     if (glowInner.current) glowInner.current.opacity = GLOW_INNER_A * dim;
     if (glowOuter.current) glowOuter.current.opacity = GLOW_OUTER_A * dim;
   });
@@ -169,6 +173,7 @@ const DUST_VERTEX = /* glsl */ `
   uniform float uScale;
   uniform float uTime;
   uniform float uWarp;
+  uniform float uSpread;
   varying vec3 vColor;
   varying float vAlpha;
   void main(){
@@ -176,7 +181,7 @@ const DUST_VERTEX = /* glsl */ `
     gl_PointSize = clamp(aSize * (uScale / -mv.z), 0.6, 4.0);
     // 아주 느린 반짝임 — 알파만 ±25% 흔들어 '살아 있는' 배경을 만든다
     vColor = aColor;
-    vAlpha = aAlpha * (1.0 + 0.25 * sin(uTime * 0.6 + aSeed)) * mix(1.0, ${WARP_ALPHA.toFixed(2)}, uWarp);
+    vAlpha = aAlpha * (1.0 + 0.25 * sin(uTime * 0.6 + aSeed)) * mix(1.0, ${WARP_ALPHA.toFixed(2)}, uWarp) * uSpread;
     gl_Position = projectionMatrix * mv;
   }
 `;

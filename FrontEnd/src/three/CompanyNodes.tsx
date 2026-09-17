@@ -17,6 +17,7 @@ import { discFragment, discVertex } from "./logoDiscShader";
 import { dragState, liveFor, morphState, type LiveTransform } from "./morph";
 import { ensureNameCell, nameAtlasTexture, type NameCell } from "./nameAtlas";
 import { animFor } from "./nodeAnim";
+import { spreadState } from "./spread";
 import { dotTexture, ringTexture } from "./textures";
 import { planetGeometry, planetPaletteFor, toonGradient, type PlanetPalette } from "./toon";
 
@@ -548,8 +549,8 @@ export default function CompanyNodes({ model, emphasis, hoveredId, onHover, onCl
       halo = { version: dragState.version };
       HALO_SYNC.set(built, halo);
     }
-    // 고도 전이는 dragState.version 을 올리지 않고 y 만 옮긴다(간선 재생성을 피하려고) — 헤일로는 그동안 직접 따라가야 한다
-    if (morphing || altitudeState.animating || halo.version !== dragState.version) {
+    // 고도·펼치기 전이는 dragState.version 을 올리지 않고 좌표만 옮긴다(간선 재생성을 피하려고) — 헤일로는 그동안 직접 따라가야 한다
+    if (morphing || altitudeState.animating || spreadState.animating || halo.version !== dragState.version) {
       halo.version = dragState.version;
       built.haloPos.needsUpdate = true;
     }

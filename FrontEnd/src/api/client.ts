@@ -22,7 +22,7 @@ const MIN_REFRESH_DELAY_MS = 5_000;
 /** setTimeout 은 32비트 지연을 넘기면 즉시 실행되므로 상한을 둔다 */
 const MAX_REFRESH_DELAY_MS = 24 * 60 * 60_000;
 
-/** JWT payload 의 exp(초)를 꺼낸다. mock 토큰(mock.<id>.<ts>)처럼 JWT 가 아니면 null. */
+/** JWT payload 의 exp(초)를 꺼낸다. JWT 형식이 아니거나 exp 가 없으면 null (그때는 만료 전 선제 갱신을 하지 않는다). */
 function readExp(token: string): number | null {
   const parts = token.split(".");
   if (parts.length !== 3) return null;

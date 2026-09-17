@@ -19,6 +19,7 @@ public class UserService {
 
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
+    private final EmailVerificationStore emailVerificationStore;
 
     /** 내 정보 조회. 토큰의 사용자 번호로 찾으며, 탈퇴했으면 토큰이 유효해도 거부한다. */
     @Transactional(readOnly = true)
@@ -62,7 +63,8 @@ public class UserService {
     }
 
     /**
-     * 회원가입 순서: 이메일 소문자 정규화 → 중복 검사 → 비밀번호 암호화 → 저장.
+     * 회원가입 순서: 이메일 소문자 정규화 → 중복 검사 → 이메일 인증 여부 확인 → 비밀번호 암호화 → 저장.
+     * 인증은 가입 전에 코드 발송·확인 API로 마쳐야 하며(30분 유효), 가입이 끝나면 인증 표시를 지운다.
      * 중복 검사를 통과해도 극히 드물게 동시 가입이 겹칠 수 있는데,
      * 그때는 DB의 유니크 인덱스가 최종 방어선이 된다.
      */
@@ -76,8 +78,15 @@ public class UserService {
         if (userRepository.existsByNickname(request.nickname())) {
             throw new BusinessException(UserErrorCode.NICKNAME_DUPLICATED);
         }
+        if (!emailVerificationStore.isVerified(email)) {
+            throw new BusinessException(UserErrorCode.EMAIL_NOT_VERIFIED);
+        }
 
         User user = User.create(email, passwordEncoder.encode(request.password()), request.nickname());
-        return UserResponse.from(userRepository.save(user));
+        user.verifyEmail(); // 인증을 거친 가입이므로 인증 시각을 기록한다
+        UserResponse response = UserResponse.from(userRepository.save(user));
+
+        emailVerificationStore.deleteVerified(email); // 같은 인증으로 두 번 가입하지 못하게
+        return response;
     }
 }

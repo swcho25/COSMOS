@@ -1,11 +1,13 @@
 import { useEffect, useMemo } from "react";
 import type { Industry } from "@/api/types";
-import { INDUSTRY_GROUP_ORDER, industryColor, industryGroup } from "@/lib/meta";
+import { industryColor } from "@/lib/meta";
 import { useGalaxy } from "@/store/galaxy";
 import { Icon, useClickOutside } from "@/components/ui";
 
 interface Props {
   industries: Industry[];
+  /** 산업 목록 요청이 아직 진행 중인지 — 빈 배열이 '없음' 인지 '로딩' 인지 가른다 */
+  loading?: boolean;
   /** 전체 우주 기업 수 — "전체" 항목의 숫자 */
   total: number | undefined;
   value: string | null;
@@ -13,38 +15,37 @@ interface Props {
 }
 
 interface Section {
-  title: string;
+  /** null 이면 머리글 없는 평면 목록 (서버가 산업 계층을 주지 않을 때) */
+  title: string | null;
   items: Industry[];
 }
 
 /**
- * 산업을 묶어 섹션으로 나눈다. 서버가 parentIndustryId 를 채워 주면 그 계층(부모 이름 = 섹션)을 쓰고,
- * 아직 평면(목업)이면 lib/meta 의 임시 분류(industryGroup)로 묶는다. 섹션 안은 기업 수 내림차순.
+ * 산업을 섹션으로 나눈다. 서버가 parentIndustryId 를 채워 주면 그 계층(부모 이름 = 섹션)을 쓰고,
+ * 계층이 없으면 임의로 묶지 않고 기업 수 내림차순의 평면 목록 하나로 보여 준다 — 프론트가 자체 분류를 만들지 않는다.
  */
 function groupIndustries(all: Industry[], visible: Industry[]): Section[] {
+  const byCount = (a: Industry, b: Industry) => b.companyCount - a.companyCount || a.name.localeCompare(b.name);
   const nameOf = new Map(all.map((i) => [i.industryId, i.name]));
   const useParents = visible.some((i) => i.parentIndustryId !== null && nameOf.has(i.parentIndustryId));
+  if (!useParents) return visible.length ? [{ title: null, items: visible.slice().sort(byCount) }] : [];
   const buckets = new Map<string, Industry[]>();
   visible.forEach((i) => {
-    // 계층이 있을 때 부모가 없는 산업(최상위)은 자기 이름의 섹션에 스스로 들어간다 — 부모에 직접 속한 기업도 고를 수 있게
-    const title = useParents ? (i.parentIndustryId ? nameOf.get(i.parentIndustryId) ?? "기타" : i.name) : industryGroup(i.name);
+    // 부모가 없는 산업(최상위)은 자기 이름의 섹션에 스스로 들어간다 — 부모에 직접 속한 기업도 고를 수 있게
+    const title = i.parentIndustryId ? nameOf.get(i.parentIndustryId) ?? i.name : i.name;
     if (!buckets.has(title)) buckets.set(title, []);
     buckets.get(title)!.push(i);
   });
-  const rank = (t: string) => {
-    const k = INDUSTRY_GROUP_ORDER.indexOf(t);
-    return k < 0 ? 99 : k;
-  };
   return [...buckets.entries()]
-    .sort((a, b) => rank(a[0]) - rank(b[0]) || b[1].length - a[1].length || a[0].localeCompare(b[0]))
-    .map(([title, items]) => ({ title, items: items.slice().sort((a, b) => b.companyCount - a.companyCount || a.name.localeCompare(b.name)) }));
+    .sort((a, b) => b[1].length - a[1].length || a[0].localeCompare(b[0]))
+    .map(([title, items]) => ({ title, items: items.slice().sort(byCount) }));
 }
 
 /**
  * 상단 산업 필터 — 19개 칩이 세 줄로 씬을 덮던 자리를 요약 칩 하나로 접고, 누르면 묶음별 선택판이 열린다.
  * 접혀 있어도 현재 필터(산업명·기업 수·색)는 요약 칩에 남는다. 단일 선택이라 고르면 바로 닫히고, 바깥 클릭·ESC(GalaxyPage)로도 닫힌다.
  */
-export default function IndustryPicker({ industries, total, value, onChange }: Props) {
+export default function IndustryPicker({ industries, loading = false, total, value, onChange }: Props) {
   const open = useGalaxy((s) => s.industryOpen);
   const setOpen = useGalaxy((s) => s.setIndustryOpen);
   const ref = useClickOutside<HTMLDivElement>(() => setOpen(false), open);
@@ -86,8 +87,8 @@ export default function IndustryPicker({ industries, total, value, onChange }: P
             </button>
           </div>
           {sections.map((sec) => (
-            <div key={sec.title} className="industry-sec">
-              <div className="lab">{sec.title}</div>
+            <div key={sec.title ?? "__flat"} className="industry-sec">
+              {sec.title && <div className="lab">{sec.title}</div>}
               <div className="industry-sec-items">
                 {sec.items.map((i) => (
                   <button
@@ -105,7 +106,7 @@ export default function IndustryPicker({ industries, total, value, onChange }: P
               </div>
             </div>
           ))}
-          {!sections.length && <div className="hint">산업 정보를 불러오는 중입니다.</div>}
+          {!sections.length && <div className="hint">{loading ? "산업 정보를 불러오는 중입니다." : "등록된 산업이 아직 없습니다. 기업·산업 데이터가 적재되면 여기서 걸러 볼 수 있습니다."}</div>}
         </div>
       )}
     </div>

@@ -2,7 +2,38 @@ import type { CosmosApi } from "./contract";
 import { qs, request, tokenStore } from "./client";
 import type * as T from "./types";
 
-/** 실 백엔드(/api) 호출 구현. 경로·파라미터는 docs/api-specification.md 를 따른다. */
+/* ------------------------------ 응답 보정 ------------------------------ */
+/**
+ * 명세는 "값이 존재하지 않는 선택 필드는 null" 인데, 백엔드 기업 DTO 일부가 `Objects.toString(x, "")` 로
+ * 빈 문자열을 내려준다(CompanyDetailResponse·CompanySummaryResponse·IndustryResponse.description).
+ * 화면 타입은 명세대로 null 을 기대하므로 경계에서 한 번만 맞춘다. 백엔드가 고쳐지면 그대로 통과한다.
+ */
+const nz = (s: string | null | undefined): string | null => (s == null || s === "" ? null : s);
+/** 대표 산업이 없는 기업은 `{industryId: null, name: null}` 꼴로 올 수 있다 → null 로 접는다 */
+const nzIndustry = (r: Partial<T.IndustryRef> | null | undefined): T.IndustryRef | null =>
+  r && r.industryId && r.name ? { industryId: r.industryId, name: r.name } : null;
+const mapPage = <A, B>(page: T.Page<A>, f: (a: A) => B): T.Page<B> => ({ ...page, items: page.items.map(f) });
+
+const normSummary = (c: T.CompanySummary): T.CompanySummary => ({
+  ...c,
+  nameEn: nz(c.nameEn),
+  stockCode: nz(c.stockCode),
+  primaryIndustry: nzIndustry(c.primaryIndustry),
+});
+const normDetail = (c: T.CompanyDetail): T.CompanyDetail => ({
+  ...c,
+  nameEn: nz(c.nameEn),
+  stockCode: nz(c.stockCode),
+  description: nz(c.description),
+});
+const normIndustry = (i: T.Industry): T.Industry => ({ ...i, description: nz(i.description) });
+const normWatch = (w: T.WatchCompanyItem): T.WatchCompanyItem => ({
+  ...w,
+  stockCode: nz(w.stockCode),
+  primaryIndustry: nzIndustry(w.primaryIndustry),
+});
+
+/** 실 백엔드(/api) 호출 구현. 경로·파라미터·상태 코드는 docs/api-specification.md 를 따른다. */
 export const liveApi: CosmosApi = {
   auth: {
     checkEmail: (email) => request(`/auth/check-email${qs({ email })}`),
@@ -12,13 +43,16 @@ export const liveApi: CosmosApi = {
       tokenStore.set(res.accessToken);
       return res;
     },
+    // retry 를 막지 않는다 — 만료된 access 토큰으로 오면 서버 필터가 컨트롤러 앞에서 401 을 내 refresh 토큰이 폐기되지 않으므로,
+    // client.ts 의 TOKEN_EXPIRED → refresh → 1회 재시도를 타서 실제로 서버 세션을 끝낸다
     logout: async () => {
       try {
-        await request<void>("/auth/logout", { method: "POST", retry: false });
+        await request<void>("/auth/logout", { method: "POST" });
       } finally {
         tokenStore.set(null);
       }
     },
+    // refresh_token 쿠키(Path=/api/auth, HttpOnly)가 자동 첨부된다 — client.ts 가 모든 요청을 credentials: include 로 보낸다
     refresh: async () => {
       const res = await request<T.TokenResponse>("/auth/refresh", { method: "POST", retry: false });
       tokenStore.set(res.accessToken);
@@ -32,17 +66,21 @@ export const liveApi: CosmosApi = {
     scraps: (p) => request(`/users/me/scraps${qs(p)}`),
     addScrap: (newsId) => request(`/users/me/scraps/${newsId}`, { method: "POST" }),
     removeScrap: (newsId) => request(`/users/me/scraps/${newsId}`, { method: "DELETE" }),
-    watchCompanies: (p) => request(`/users/me/watch-companies${qs(p)}`),
+    watchCompanies: async (p) => mapPage(await request<T.Page<T.WatchCompanyItem>>(`/users/me/watch-companies${qs(p)}`), normWatch),
     addWatch: (companyId) => request(`/users/me/watch-companies/${companyId}`, { method: "POST" }),
     removeWatch: (companyId) => request(`/users/me/watch-companies/${companyId}`, { method: "DELETE" }),
   },
   companies: {
-    list: (p) => request(`/companies${qs(p)}`),
-    detail: (id) => request(`/companies/${id}`),
+    list: async (p) => mapPage(await request<T.Page<T.CompanySummary>>(`/companies${qs(p)}`), normSummary),
+    detail: async (id) => normDetail(await request<T.CompanyDetail>(`/companies/${id}`)),
     metrics: (id, window) => request(`/companies/${id}/metrics${qs({ window })}`),
     metricsHistory: (id, params) => request(`/companies/${id}/metrics/history${qs(params)}`),
+    // interval 은 MVP 에서 1D 만 지원한다 (명세 Query Params)
     stockPrices: (id, period) => request(`/companies/${id}/stock-prices${qs({ period, interval: "1D" })}`),
-    industries: () => request("/industries"),
+    industries: async () => {
+      const res = await request<{ items: T.Industry[] }>("/industries");
+      return { items: res.items.map(normIndustry) };
+    },
   },
   news: {
     list: (p) => request(`/news${qs(p)}`),

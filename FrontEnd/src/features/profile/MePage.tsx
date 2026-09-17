@@ -10,7 +10,7 @@ import "./profile.css";
 
 /**
  * 내 페이지 — 프로필 메뉴 진입점. 내 정보 · 관심 기업 · 스크랩.
- * 뉴스·공시 비율은 서버에 저장하지 않는 화면 설정이라 여기가 아니라 은하의 관계 필터 카드(LegendCard)에 있다.
+ * 뉴스·공시 비율은 서버에 저장하지 않는 화면 설정이라 여기가 아니라 은하 하단 조절 도크(ControlDock)의 고급 영역에 있다.
  */
 export default function MePage() {
   const status = useSession((s) => s.status);
@@ -104,11 +104,11 @@ function WatchCard() {
         {!watch.isLoading && !items.length && <Empty>은하에서 기업을 선택하고 ★ 관심 등록을 눌러보세요.</Empty>}
         {items.map((w) => (
           <div key={w.companyId} className="me-item">
-            <CompanyAvatar name={w.name} stockCode={w.stockCode} industry={w.primaryIndustry.name} size={40} />
+            <CompanyAvatar name={w.name} stockCode={w.stockCode} industry={w.primaryIndustry?.name} size={40} />
             <button type="button" className="grow" style={{ textAlign: "left" }} onClick={() => navigate(`/?company=${w.companyId}`)}>
               <b>{w.name}</b>
               <span className="meta num">
-                {[w.stockCode, w.primaryIndustry.name, `${fmtRelative(w.watchedAt)} 등록`].filter(Boolean).join(" · ")}
+                {[w.stockCode, w.primaryIndustry?.name, `${fmtRelative(w.watchedAt)} 등록`].filter(Boolean).join(" · ")}
               </span>
             </button>
             <button type="button" className="btn btn-g btn-xs" onClick={() => toggle.mutate({ companyId: w.companyId, watched: true })} aria-label="관심 해제">
@@ -139,7 +139,7 @@ function ScrapCard() {
             <div className="grow">
               <div style={{ fontSize: 15, fontWeight: 600, lineHeight: 1.45 }}>{s.title}</div>
               <div className="meta num mt-8">
-                {s.publisher} · {fmtDateTime(s.publishedAt)} · {fmtRelative(s.scrappedAt)} 저장
+                {[s.publisher, s.publishedAt ? fmtDateTime(s.publishedAt) : null, `${fmtRelative(s.scrappedAt)} 저장`].filter(Boolean).join(" · ")}
               </div>
             </div>
             <a className="btn btn-g btn-xs" href={s.originalUrl} target="_blank" rel="noreferrer" aria-label="원문 보기">

@@ -1,6 +1,5 @@
 import { useMemo, useState } from "react";
 import type { CompanyComment, MetricWindow, PricePeriod, Sentiment } from "@/api/types";
-import { API_MODE } from "@/api";
 import { CompanyAvatar, Empty, Icon, IndustryBadge, SentimentBadge, Skeleton } from "@/components/ui";
 import PriceChart, { Sparkbars } from "@/components/PriceChart";
 import { fmtCompact, fmtCompactPrice, fmtDateTime, fmtNumber, fmtPct, fmtPctFrom01, fmtPrice, fmtRelative, fmtTradingDate } from "@/lib/format";
@@ -19,6 +18,7 @@ import {
   useStockPrices,
   useToggleScrap,
   useToggleWatch,
+  useWatchedSet,
   useWriteComment,
 } from "@/lib/queries";
 import { useGalaxy, type PanelTab } from "@/store/galaxy";
@@ -52,7 +52,10 @@ export default function CompanyPanel({ companyId, model = null, onWarp, onClose,
   const openAuth = useUi((s) => s.openAuth);
   const toast = useUi((s) => s.toast);
   const toggleWatch = useToggleWatch();
+  const watchedSet = useWatchedSet();
   const c = company.data;
+  // 백엔드 기업 상세의 watched 가 아직 항상 false 라 내 관심 목록과 합쳐 판단한다 (queries.useWatchedSet)
+  const watched = Boolean(c?.watched) || watchedSet.has(companyId);
 
   return (
     <aside className="card panel" aria-label="기업 인텔리전스">
@@ -90,19 +93,19 @@ export default function CompanyPanel({ companyId, model = null, onWarp, onClose,
             <IndustryBadge name={c.industries.find((i) => i.primary)?.name ?? "-"} />
             <button
               type="button"
-              className={`chip chip-sm ${c.watched ? "on" : ""}`}
+              className={`chip chip-sm ${watched ? "on" : ""}`}
               disabled={toggleWatch.isPending}
               onClick={() => {
                 if (!authed) return openAuth("login");
                 toggleWatch.mutate(
-                  { companyId, watched: c.watched },
+                  { companyId, watched: watched },
                   { onSuccess: (now) => toast(now ? "관심 기업에 추가했습니다." : "관심 기업에서 해제했습니다.", "success"), onError: () => toast("처리하지 못했습니다.", "error") },
                 );
               }}
-              aria-pressed={c.watched}
+              aria-pressed={watched}
             >
-              <Icon.Star filled={c.watched} />
-              {c.watched ? "관심 기업" : "관심 등록"}
+              <Icon.Star filled={watched} />
+              {watched ? "관심 기업" : "관심 등록"}
             </button>
           </div>
         )}
@@ -321,7 +324,6 @@ function PriceTab({ companyId, market, marketCap, listedShares }: { companyId: s
           </div>
         </div>
       </div>
-      {API_MODE === "mock" && <div className="meta mt-16">프로토타입 시계열 · 실제 시세 API 연동 전</div>}
     </>
   );
 }

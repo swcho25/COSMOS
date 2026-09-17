@@ -1,11 +1,11 @@
 import type { SceneEdge, SceneModel } from "./graph";
-import { industryGroup, RELATIONSHIP_META } from "./meta";
+import { RELATIONSHIP_META, UNCLASSIFIED_INDUSTRY } from "./meta";
 
 /**
  * 뜻밖의 관계 — "이 서비스로 생각지도 못한 관계를 알게 된다" 를 화면이 직접 하게 만드는 점수.
  * 그래프 스냅샷의 필드(유형·점수·양끝 기업의 산업·시장·연결 수·배치 좌표)만으로 계산하므로 추가 요청이 없다.
  * 사람이 "뜻밖" 이라고 느끼는 이유를 다섯 가지로 나눠 각각 0~1 로 재고, 가중합을 관계 점수로 살짝 눌러 정렬한다:
- *  - industry  두 기업의 산업이 다르다 (대분류까지 다르면 더)             — 자동차 ↔ 게임
+ *  - industry  두 기업의 산업이 다르다 (둘 다 산업이 있을 때만)          — 자동차 ↔ 게임
  *  - market    상장 시장이 다르다                                          — KOSPI ↔ NASDAQ
  *  - frenemy   같은 두 기업 사이에 경쟁 관계와 협력·공급·투자 관계가 함께 있다 — 적이자 동료
  *  - quiet     둘 다 허브가 아니다 (연결 수 하위) — 허브를 따라가면 절대 못 보는 연결
@@ -114,10 +114,10 @@ export function surpriseFor(model: SceneModel, edge: SceneEdge): Surprise {
     reasons.push({ key, label, detail, weight: Math.min(1, strength) * W[key] });
   };
 
-  // 산업 — 다르면 1, 대분류까지 다르면 1.5 배로 친다 (가중치 안에서 상한)
-  if (a.industry && b.industry && a.industry !== b.industry) {
-    const crossGroup = industryGroup(a.industry) !== industryGroup(b.industry);
-    push("industry", crossGroup ? 1 : 0.65, "산업이 다름", `${a.industry} ↔ ${b.industry}`);
+  // 산업 — 다르면 1. '미분류' 는 산업을 모르는 것이라 다르다고도 같다고도 치지 않는다
+  const knownIndustries = a.industry !== UNCLASSIFIED_INDUSTRY && b.industry !== UNCLASSIFIED_INDUSTRY;
+  if (knownIndustries && a.industry && b.industry && a.industry !== b.industry) {
+    push("industry", 1, "산업이 다름", `${a.industry} ↔ ${b.industry}`);
   }
   // 시장
   if (a.market && b.market && a.market !== b.market) push("market", 1, "시장이 다름", `${a.market} ↔ ${b.market}`);
@@ -133,7 +133,7 @@ export function surpriseFor(model: SceneModel, edge: SceneEdge): Surprise {
   const quiet = (0.5 - Math.max(pa, pb)) / 0.5;
   if (quiet > 0) push("quiet", quiet, "둘 다 허브가 아님", `연결 ${a.degree}개 · ${b.degree}개 — 허브를 따라가면 보이지 않는 연결`);
   // 이 산업 조합·유형이 그래프에 하나뿐
-  if ((ctx.comboCount.get(comboKey(a.industry, b.industry, edge.type)) ?? 0) <= 1 && a.industry !== b.industry) {
+  if (knownIndustries && (ctx.comboCount.get(comboKey(a.industry, b.industry, edge.type)) ?? 0) <= 1 && a.industry !== b.industry) {
     push("rare", 1, "이런 조합은 하나뿐", `${a.industry}와 ${b.industry} 사이 ${RELATIONSHIP_META[edge.type]?.label ?? edge.type} 관계는 이것이 유일`);
   }
   // 점수 대비 멀리 — 같은 점수대 중앙값의 1.6 배부터 뜻밖, 2.6 배면 최대

@@ -1,6 +1,5 @@
 import { useCallback, useState } from "react";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
-import { API_MODE } from "@/api";
 import { HELP_UI } from "@/lib/guide";
 import { useScraps, useWatchlist } from "@/lib/queries";
 import { useSession } from "@/store/session";
@@ -35,11 +34,6 @@ export default function Header() {
       <NavLink to="/" className="logo" aria-label="COSMOS 홈">
         <img src="/cosmos-logo.png" alt="" />
         <span>COSMOS</span>
-        {API_MODE === "mock" && (
-          <span className="mode-badge" title="백엔드 없이 브라우저 안에서 생성한 목업 데이터입니다">
-            MOCK
-          </span>
-        )}
       </NavLink>
       <nav aria-label="주요 메뉴">
         {NAV.map((n) => (

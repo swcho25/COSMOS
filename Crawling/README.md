@@ -5,6 +5,7 @@
 | 폴더 | 포함 기능 | 실행 안내 |
 |---|---|---|
 | `news/` | 국내 뉴스·Yahoo Finance·네이버 API 코스피 100종목 수집, URL 중복 색인, Kafka 전달, HDFS Parquet Writer | [뉴스 README](news/README.md) |
+| `prices/` | 코스피·나스닥 각 100종목 최대 기간 일봉 수집, 차트 JSON·Parquet, 장 마감 후 HDFS 게시·PostgreSQL 적재 | [주가 README](prices/README.md) |
 | `disclosures/dart/` | OpenDART 수집·재개, 원본 ZIP 처리, HDFS 스냅샷 생성·검증·업로드 | [DART README](disclosures/dart/README.md) |
 | `disclosures/sec/` | Nasdaq-100 SEC EDGAR 배치·증분 수집, 5분 주기 재조회, HDFS 업로드·검증 | [SEC README](disclosures/sec/README.md) |
 
