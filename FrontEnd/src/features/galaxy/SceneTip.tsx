@@ -43,7 +43,7 @@ function impactLabelOf(v: ImpactDirection | null | undefined) {
 /**
  * 씬 툴팁(DOM) — 빔 호버는 3단으로 점진 노출한다: 0ms 관계 종류 설명(로컬) → 150ms 양쪽 기업·점수·영향·신뢰
  * (useRelationship) → 300ms 대표 근거 문장(useTopEvidence). 이유가 수치보다 먼저 와야 "왜 이어졌는지" 를
- * 숫자보다 먼저 읽게 된다. 뜻밖(surpriseFor)이면 배지·이유 요약을 맨 위에 더한다.
+ * 숫자보다 먼저 읽게 된다. Special Link(surpriseFor)면 배지·이유 요약을 맨 위에 더한다.
  * 노드 호버: 이름·산업·역할 요약. 위치는 React 상태가 아니라 포인터 ref + rAF 로 옮겨 포인터 이동마다
  * 리렌더하지 않는다. 워프 중에는 그리지 않는다.
  * 관계 상세는 RelationshipPanel 과 같은 useRelationship 키라, 툴팁이 뜬 뒤 빔을 누르면 패널이 스켈레톤 없이 렌더된다.
@@ -84,7 +84,7 @@ export default function SceneTip({ model, pointer }: Props) {
         const h = d.offsetHeight || 80;
         let x = px + OFF_X + TIP_W > rect.width ? px - OFF_X - TIP_W : px + OFF_X;
         let y = py + OFF_Y + h > rect.height ? py - OFF_Y - h : py + OFF_Y;
-        // 뜻밖의 관계 카드의 행을 호버해 뜬 툴팁은 카드를 가리지 않게 카드 오른쪽에 나란히 세운다 (행이 미리보기, 툴팁이 근거)
+        // Special Link 카드의 행을 호버해 뜬 툴팁은 카드를 가리지 않게 카드 오른쪽에 나란히 세운다 (행이 미리보기, 툴팁이 근거)
         const rail = host.querySelector<HTMLElement>(".hud-surprise .surprise-card");
         if (rail) {
           const r = rail.getBoundingClientRect();
@@ -141,7 +141,7 @@ export default function SceneTip({ model, pointer }: Props) {
       {/* 1행(0ms, 로컬) — 이유가 숫자보다 먼저 온다 */}
       <div className="ev-desc">{meta.description}</div>
 
-      {/* 유형·영향(·뜻밖) 배지 줄 — 1행 아래로 */}
+      {/* 유형·영향(·Special Link) 배지 줄 — 1행 아래로 */}
       <div className="row between">
         <div className="row wrap" style={{ gap: 6 }}>
           {isSurprise && (

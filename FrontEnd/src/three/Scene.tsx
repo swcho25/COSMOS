@@ -400,7 +400,7 @@ function Content({ galaxy, system, next = null, warpRef }: ContentProps) {
     () => (model ? computeEmphasis(model, { hoveredId: focusNode, hoveredEdgeId, selectedEdgeId, minScore, activeTypes: activeTypes as Set<string>, budget: edgeBudget, path, roleFilter }) : null),
     [model, focusNode, hoveredEdgeId, selectedEdgeId, minScore, activeTypes, edgeBudget, path, roleFilter],
   );
-  // 뜻밖 간선 집합 — 선 위 글자(EdgeLabels)에 ✦ 를 붙인다. 모델당 한 번만 스캔한다
+  // Special Link 간선 집합 — 선 위 글자(EdgeLabels)에 ✦ 를 붙인다. 모델당 한 번만 스캔한다
   const surprise = useMemo(() => (model ? surpriseSet(model) : new Set<string>()), [model]);
 
   useEffect(() => {

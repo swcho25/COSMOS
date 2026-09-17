@@ -18,7 +18,7 @@ interface Props {
   relationshipId: string;
   onClose: () => void;
   onPickCompany: (id: string) => void;
-  /** 뜻밖 판정(surpriseFor)에 필요 — 없으면 "왜 뜻밖인가" 블록은 그리지 않는다 */
+  /** Special Link 판정(surpriseFor)에 필요 — 없으면 "왜 특별한가" 블록은 그리지 않는다 */
   model?: SceneModel | null;
 }
 
@@ -54,7 +54,7 @@ async function copyEvidenceSentence(e: RelationshipEvidence) {
   useUi.getState().toast(EVIDENCE_UI.copied, "success");
 }
 
-/** 관계선 선택 시: 자동 추출 고지·(뜻밖이면) 이유·양쪽 기업·유형·점수·영향 방향 + 근거 뉴스 타임라인 */
+/** 관계선 선택 시: 자동 추출 고지·(Special Link 면) 이유·양쪽 기업·유형·점수·영향 방향 + 근거 뉴스 타임라인 */
 export default function RelationshipPanel({ relationshipId, onClose, onPickCompany, model }: Props) {
   const window = useGalaxy((s) => s.window);
   const setWindow = useGalaxy((s) => s.setWindow);

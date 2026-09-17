@@ -1348,13 +1348,13 @@
 }
 
 /* ------------------------------ HUD 사이의 자리 다툼 ------------------------------ */
-/* 기업 중심 뷰의 1홉 요약 스트립(top 74px) 아래로 뜻밖의 관계 카드를 내린다 */
+/* 기업 중심 뷰의 1홉 요약 스트립(top 74px) 아래로 Special Link 카드를 내린다 */
 .galaxy:has(.hud-hop) .hud-surprise {
   top: 130px;
 }
 
 @media (max-width: 900px) {
-  /* 모바일에서는 1홉 요약 스트립이 top 126px 로 내려오므로 뜻밖의 관계 꼬리표도 그 아래로 */
+  /* 모바일에서는 1홉 요약 스트립이 top 126px 로 내려오므로 Special Link 꼬리표도 그 아래로 */
   .galaxy:has(.hud-hop) .hud-surprise {
     top: 172px;
   }
