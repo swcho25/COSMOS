@@ -164,6 +164,22 @@ export function Skeleton({ h = 14, w = "100%", style }: { h?: number; w?: number
 export function Empty({ children }: { children: ReactNode }) {
   return <div className="empty">{children}</div>;
 }
+/**
+ * 목록·상세 쿼리가 네트워크·서버 오류로 실패했을 때의 공통 안내.
+ * <Empty>(필터 조건에 맞는 결과가 없음)와 시각적으로 구분해, 오류를 "결과 없음"으로 오인하지 않게 한다.
+ */
+export function ErrorNotice({ message = "데이터를 불러오지 못했습니다.", onRetry }: { message?: string; onRetry?: () => void }) {
+  return (
+    <div className="empty error-notice">
+      <div>{message}</div>
+      {onRetry && (
+        <button type="button" className="btn btn-g btn-sm mt-8" onClick={onRetry}>
+          <Icon.Refresh /> 다시 시도
+        </button>
+      )}
+    </div>
+  );
+}
 /** onClick 을 주면 이 수치가 어떻게 나왔는지 보여주는 근거 화면 등을 열 수 있도록 button 으로 렌더링한다. */
 export function Kpi({ label, value, unit, tone, children, onClick }: { label: string; value: ReactNode; unit?: string; tone?: string; children?: ReactNode; onClick?: () => void }) {
   const body = (
