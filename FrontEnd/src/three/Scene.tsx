@@ -57,8 +57,19 @@ function distScale(kind: "galaxy" | "system", preset: CameraPresetId, aspect: nu
   return kind === "galaxy" ? 0.56 : 1.0;
 }
 
-/** 정렬 단계에서 한 화면에 담는 격자 비율 — 1 이면 격자 전체, 0.55 면 절반쯤이라 행성이 그만큼 크게 보인다 */
-const SORTED_VIEW = 0.55;
+/**
+ * 정렬 단계에서 한 화면에 담는 격자 비율 — 1 이면 격자 전체다. 0.55(절반)로 당겼더니 격자가 잘려 "가지런한 전체" 가
+ * 보이지 않는다는 지적이 있어 격자 전체 + 여백(1.18)으로 되돌렸다. 딱 1 로 두면 30° 가까운 화각의 원근 때문에
+ * 앞쪽 줄이 화면 밖으로 밀린다. 시선은 이 시야 안에서만 기업 쪽으로 옮기므로(clampIn),
+ * 격자가 통째로 들어오는 지금은 자연히 한가운데에 머문다 — 더 당기면 그만큼 고른 기업 쪽으로 따라간다.
+ */
+const SORTED_VIEW = 1.18;
+
+/** 격자 안에서 시선이 갈 수 있는 범위로 묶는다 — 시야가 격자보다 크면 한가운데(0)로 모인다 */
+function clampIn(v: number, half: number, view: number) {
+  const room = Math.max(0, half - view);
+  return Math.min(room, Math.max(-room, v));
+}
 
 /** 모델의 바깥 반지름이 화면에 들어오도록 카메라 자세를 만든다 (fov 52 기준) */
 function poseFor(model: SceneModel | null, kind: "galaxy" | "system", aspect = 1.6, preset: CameraPresetId = "orbit"): Pose {
@@ -76,7 +87,11 @@ function poseFor(model: SceneModel | null, kind: "galaxy" | "system", aspect = 1
     const { halfW, halfH } = sortedExtent(model);
     const a = Math.max(0.2, aspect);
     r = (a >= 1 ? Math.max(halfH, halfW / a) : Math.max(halfW, halfH * a)) * SORTED_VIEW;
-    focus = sortedFocusPos(model, alt.selectedId);
+    // 이 거리에서 화면에 담기는 반쪽 크기 — 시선을 이만큼 안쪽으로 묶어 두면 격자가 늘 화면을 채운다
+    const viewW = a >= 1 ? r * a : r;
+    const viewH = a >= 1 ? r : r / a;
+    const [fx, , fz] = sortedFocusPos(model, alt.selectedId);
+    focus = [clampIn(fx, halfW, viewW), 0, clampIn(fz, halfH, viewH)];
   } else {
     model.nodes.forEach((n) => {
       // 은하도 이제 납작한 원반이라 두 뷰 모두 바닥면(x·z) 기준으로 바깥 반지름을 잡는다
