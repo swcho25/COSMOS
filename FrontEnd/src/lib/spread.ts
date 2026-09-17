@@ -105,6 +105,22 @@ function gridFor(model: SceneModel): Float32Array {
 }
 
 /**
+ * 정렬 격자에서 카메라가 볼 자리 — 고른 기업이 있으면 그 기업의 칸, 없으면 첫 칸(행성이 가장 큰 기업)이다.
+ * 격자는 크기 내림차순이라 첫 칸이 곧 "가장 큰 기업" 이고, 화면 왼쪽 위 모서리에 놓인다.
+ */
+export function sortedFocusPos(model: SceneModel, companyId: string | null | undefined): [number, number, number] {
+  const n = model.nodes.length;
+  if (n === 0) return [0, 0, 0];
+  const grid = gridFor(model);
+  let i = companyId ? model.nodes.findIndex((nd) => nd.id === companyId) : -1;
+  if (i < 0) {
+    i = 0;
+    for (let k = 1; k < n; k += 1) if (model.nodes[k].size > model.nodes[i].size) i = k;
+  }
+  return [grid[i * 3], grid[i * 3 + 1], grid[i * 3 + 2]];
+}
+
+/**
  * 슬라이더 값 t 에서 모든 노드의 목표 좌표를 out 에 쓴다.
  * base 는 t=0 의 좌표(node.pos 에 주가 고도 y 를 더한 것) — 고도가 켜져 있어도 0 으로 돌아오면 정확히 그 자리다.
  */

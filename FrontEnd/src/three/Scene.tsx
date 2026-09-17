@@ -6,7 +6,7 @@ import * as THREE from "three";
 import type { SceneEdge, SceneModel, Vec3 } from "@/lib/graph";
 import type { CameraPresetId } from "@/lib/guide";
 import { hoverPath } from "@/lib/path";
-import { sortedExtent, spreadRadiusScale, spreadStage } from "@/lib/spread";
+import { sortedExtent, sortedFocusPos, spreadRadiusScale, spreadStage } from "@/lib/spread";
 import { surpriseSet } from "@/lib/surprise";
 import { hashString } from "@/lib/rng";
 import { neighborRoles } from "@/lib/roles";
@@ -57,6 +57,9 @@ function distScale(kind: "galaxy" | "system", preset: CameraPresetId, aspect: nu
   return kind === "galaxy" ? 0.56 : 1.0;
 }
 
+/** 정렬 단계에서 한 화면에 담는 격자 비율 — 1 이면 격자 전체, 0.55 면 절반쯤이라 행성이 그만큼 크게 보인다 */
+const SORTED_VIEW = 0.55;
+
 /** 모델의 바깥 반지름이 화면에 들어오도록 카메라 자세를 만든다 (fov 52 기준) */
 function poseFor(model: SceneModel | null, kind: "galaxy" | "system", aspect = 1.6, preset: CameraPresetId = "orbit"): Pose {
   if (!model || !model.nodes.length) return FALLBACK_POSE[kind];
@@ -65,12 +68,15 @@ function poseFor(model: SceneModel | null, kind: "galaxy" | "system", aspect = 1
   const alt = useGalaxy.getState();
   const useAltitude = kind === "galaxy" && alt.altitudeOn;
   // 정렬 단계는 은하가 아니라 격자를 본다 — 은하 반지름으로 잡으면 격자가 화면 한가운데 작게 남아 행성이 콩알만 해진다.
-  // 화면 반쪽 크기는 종횡비 a 에서 (r·a, r) [a ≥ 1] 또는 (r, r/a) [a < 1] 이므로 그 역으로 필요한 r 을 구한다
+  // 화면 반쪽 크기는 종횡비 a 에서 (r·a, r) [a ≥ 1] 또는 (r, r/a) [a < 1] 이므로 그 역으로 필요한 r 을 구한다.
+  // 격자 전체가 아니라 그 절반쯤(SORTED_VIEW)을 보고, 시선은 고른 기업(없으면 가장 큰 기업)의 칸에 둔다 — 순위의 어디를 보고 있는지가 분명해진다
+  let focus: [number, number, number] | null = null;
   const sorted = kind === "galaxy" && spreadStage(alt.spread) === "sorted";
   if (sorted) {
     const { halfW, halfH } = sortedExtent(model);
     const a = Math.max(0.2, aspect);
-    r = (a >= 1 ? Math.max(halfH, halfW / a) : Math.max(halfW, halfH * a)) * 1.06;
+    r = (a >= 1 ? Math.max(halfH, halfW / a) : Math.max(halfW, halfH * a)) * SORTED_VIEW;
+    focus = sortedFocusPos(model, alt.selectedId);
   } else {
     model.nodes.forEach((n) => {
       // 은하도 이제 납작한 원반이라 두 뷰 모두 바닥면(x·z) 기준으로 바깥 반지름을 잡는다
@@ -87,7 +93,8 @@ function poseFor(model: SceneModel | null, kind: "galaxy" | "system", aspect = 1
   const dist = (r / fit) * distScale(kind, preset, aspect);
   // 궤도 프리셋의 은하는 약 30° 위에서 비스듬히 — 원반이 타원으로 보이면서 핵의 허브가 다른 행성에 가리지 않는다
   const elev = PRESET_ELEV[kind][preset];
-  return { pos: [0, dist * elev, dist * Math.sqrt(1 - elev * elev)], tgt: [0, kind === "galaxy" ? 0 : -2, 0] };
+  const tgt: [number, number, number] = focus ?? [0, kind === "galaxy" ? 0 : -2, 0];
+  return { pos: [tgt[0], tgt[1] + dist * elev, tgt[2] + dist * Math.sqrt(1 - elev * elev)], tgt };
 }
 /**
  * 워프 타이밍 (초, warpStartedAt 기준) — morph.ts 의 표와 같은 것을 여기서 실행한다.
@@ -135,6 +142,8 @@ function Director({ warpRef, galaxy, system, next }: { warpRef: MutableRefObject
     spreadAbove: false,
     /** 펼치기가 정렬 단계(격자)에 들어와 있는지 — 프레이밍 기준이 은하 반지름 ↔ 격자로 바뀌는 경계 */
     spreadSorted: false,
+    /** 정렬 격자에서 지금 시선을 둔 기업 (빈 문자열 = 가장 큰 기업) */
+    spreadFocus: "",
     presetBeforeSpread: null as CameraPresetId | null,
   }).current;
 
@@ -273,8 +282,11 @@ function Director({ warpRef, galaxy, system, next }: { warpRef: MutableRefObject
       // 정렬 단계는 프레이밍 기준이 은하 반지름에서 격자로 바뀐다 — 경계를 넘을 때 한 번 다시 맞춰 준다
       // (프리셋 전환은 0.5 에서 일어나므로 그 뒤 슬라이더를 더 미는 이 구간에는 다시 맞출 계기가 없다)
       const onGrid = kind === "galaxy" && spreadStage(s.spread) === "sorted";
-      if (onGrid !== rig.spreadSorted) {
+      // 정렬 중에는 고른 기업이 바뀔 때도 그 칸으로 시선을 옮긴다 (정렬 상태에서 행성을 눌렀을 때 포함)
+      const gridFocus = onGrid ? (s.selectedId ?? "") : "";
+      if (onGrid !== rig.spreadSorted || gridFocus !== rig.spreadFocus) {
         rig.spreadSorted = onGrid;
+        rig.spreadFocus = gridFocus;
         if (model && introDone.current) startAnim(poseFor(model, kind, aspect, onGrid ? "top" : s.cameraPreset), 1.0);
       }
       // 카메라 프리셋을 골랐다 (같은 것을 다시 눌러도 횟수가 오른다) — 진행 중 연출이 있어도 그 자리에서 새 자세로 이어 간다
@@ -394,7 +406,8 @@ function Content({ galaxy, system, next = null, warpRef }: ContentProps) {
     <>
       <Director warpRef={warpRef} galaxy={galaxy} system={system} next={next} />
       {/* W A S D 로 옮길 수 있는 궤도 중심의 한계 — 지금 보는 모델의 바깥 반지름에 여유를 둔다 */}
-      <OrbitKeys bound={model ? model.extent.maxR * 1.4 : undefined} />
+      {/* 팬 경계는 은하 바깥 반지름과 정렬 격자 중 큰 쪽 — 정렬 단계에서 격자 구석의 기업까지 W A S D 로 갈 수 있어야 한다 */}
+      <OrbitKeys bound={model ? Math.max(model.extent.maxR * 1.4, model.kind === "galaxy" ? Math.hypot(sortedExtent(model).halfW, sortedExtent(model).halfH) : 0) : undefined} />
       {/* 극각 하한 0.03rad(약 1.7도): 카메라가 정점(y 축)에 정확히 올라서면 lookAt(up=+y)이 무너져 시선이 돈다 — 드래그와 방향키(OrbitKeys)가 같은 한계를 읽는다 */}
       <OrbitControls makeDefault enablePan={false} enableDamping dampingFactor={0.07} rotateSpeed={0.45} zoomSpeed={0.7} minDistance={22} maxDistance={900} minPolarAngle={0.03} maxPolarAngle={Math.PI * 0.62} />
       <fog attach="fog" args={[LAB.bg, 520, 1600]} />
