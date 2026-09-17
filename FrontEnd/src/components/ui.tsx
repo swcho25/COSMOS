@@ -125,9 +125,8 @@ export function ScoreBar({ score, color }: { score: number; color?: string }) {
 /* ------------------------------ 관계 유형 범례 ------------------------------ */
 /**
  * 간선의 방향을 선 모양으로 나타낸다: 방향 있음 = 실선 + 화살, 방향 없음 = 점선.
- * 빔 색은 영향 방향이 정하므로(긍정 파랑·부정 빨강·중립 보라) 실제 간선을 가리킬 때는 color 로 그 색을 넘긴다.
- * 특정 간선이 아닌 자리(유형 범례)는 기본값인 중립 보라로 둬서 색이 방향을 잘못 주장하지 않게 한다.
- * 유형색은 빔이 아니라 기업을 호버했을 때 이웃 행성의 링·칩 태그에 나타나므로, 범례 칩 앞의 색 점이 그 대응을 알려 준다
+ * 빔 색은 관계 유형이 정하므로(협력 파랑·경쟁 빨강·공급/투자 보라 계열, lib/meta) 실제 간선을 가리킬 때는 color 로 그 색을 넘긴다.
+ * 특정 간선을 가리키지 않는 자리만 기본값(중립 보라)을 쓴다.
  * PathStrip(최단 경로 스트립)도 같은 글리프로 홉 사이 방향을 나타내므로 export 한다.
  */
 export function EdgeGlyph({ directed, color = LAB.beamNeutral }: { directed: boolean; color?: string }) {
@@ -146,9 +145,9 @@ export function TypeLegend({ active, onToggle }: { active?: Set<RelationshipType
         const m = relationshipMeta(t);
         const on = active ? active.has(t) : true;
         return (
-          <button key={t} type="button" className={`chip chip-sm ${on ? "on" : ""}`} onClick={() => onToggle?.(t)} title={`${m.description} · ${m.directed ? "방향 있음 (펄스가 한쪽으로 흐름)" : "방향 없음 (점선)"} · 기업을 호버하면 이 색 링으로 표시`} style={{ opacity: on ? 1 : 0.55 }}>
+          <button key={t} type="button" className={`chip chip-sm ${on ? "on" : ""}`} onClick={() => onToggle?.(t)} title={`${m.description} · ${m.directed ? "방향 있음 (펄스가 한쪽으로 흐름)" : "방향 없음 (점선)"} · 씬의 관계선도 이 색입니다`} style={{ opacity: on ? 1 : 0.55 }}>
             <i className="dot" style={{ background: m.color }} />
-            <EdgeGlyph directed={m.directed} />
+            <EdgeGlyph directed={m.directed} color={m.color} />
             {m.label}
           </button>
         );

@@ -161,7 +161,7 @@ function SurpriseRow({
           <button type="button" className={`surprise-co ${centerId === a.id ? "is-center" : ""}`} onClick={pick(a.id)} title={`${a.name} · 관계망으로`}>
             {a.name}
           </button>
-          <EdgeGlyph directed={edge.directed} color={beamColorFor(edge.impact)} />
+          <EdgeGlyph directed={edge.directed} color={beamColorFor(edge.type)} />
           <button type="button" className={`surprise-co ${centerId === b.id ? "is-center" : ""}`} onClick={pick(b.id)} title={`${b.name} · 관계망으로`}>
             {b.name}
           </button>

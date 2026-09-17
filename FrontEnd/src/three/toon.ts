@@ -1,5 +1,6 @@
 import * as THREE from "three";
-import type { ImpactDirection } from "@/api/types";
+import type { RelationshipType } from "@/api/types";
+import { relationshipMeta } from "@/lib/meta";
 
 /**
  * 장난감 우주 스타일 — 팔레트와 셀 셰이딩 유틸 (아트 디렉션 랩에서 확정, 은하 본편과 공유).
@@ -19,8 +20,7 @@ export const LAB = {
    * 톤매핑이 없어 셰이더가 쓴 값이 그대로 화면 sRGB 가 되므로 셋 다 채도를 높게 유지하고,
    * 특히 파랑은 네이비 배경(#0b1030)에 묻히지 않도록 명도를 충분히 올려 잡았다.
    */
-  beamPositive: "#4f8dff",
-  beamNegative: "#ff4d6d",
+  /** 중립 톤 — 특정 관계를 가리키지 않는 자리(범례 글리프 기본값 등)에서 쓴다. 관계 유형 색은 lib/meta 가 정한다 */
   beamNeutral: "#a06bff",
   accent: "#6d8cff",
   planets: {
@@ -31,13 +31,14 @@ export const LAB = {
 } as const;
 
 /**
- * 영향 방향 → 관계 빔 색. 빔·화살촉·경로 스트립 글리프가 모두 이 한 곳을 보게 해서 색 규칙이 갈라지지 않게 한다.
- * 정의되지 않은 방향이나 값 누락은 중립 보라로 떨어뜨린다 — 색이 비거나 긍정·부정으로 오독되면 안 된다.
+ * 관계 유형 → 빔 색. 빔·화살촉·경로 스트립 글리프가 모두 이 한 곳을 보게 해서 색 규칙이 갈라지지 않게 한다.
+ * 색 자체는 lib/meta 의 관계 유형 팔레트가 단일 소스다 — 선과 칩·태그가 같은 유형에 같은 색을 쓰게 하려는 것이다.
+ * (예전에는 영향 방향(긍정·부정·중립)을 색으로 썼지만, 백엔드가 impactDirection 을 아직 채우지 않아 모든 선이
+ *  중립 보라 한 색으로 보였다. 지금은 협력 파랑·경쟁 빨강·공급/투자 보라 계열로, 데이터가 있는 축을 색에 준다.)
+ * 정의되지 않은 유형은 relationshipMeta 의 기본 회색으로 떨어진다.
  */
-export function beamColorFor(impact: ImpactDirection | null | undefined): string {
-  if (impact === "POSITIVE") return LAB.beamPositive;
-  if (impact === "NEGATIVE") return LAB.beamNegative;
-  return LAB.beamNeutral;
+export function beamColorFor(type: RelationshipType | null | undefined): string {
+  return relationshipMeta(type ?? "").color;
 }
 
 export interface PlanetPalette {

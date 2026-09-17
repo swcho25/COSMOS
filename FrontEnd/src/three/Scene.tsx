@@ -46,15 +46,15 @@ const PRESET_ELEV: Record<"galaxy" | "system", Record<CameraPresetId, number>> =
 };
 /**
  * 프리셋별 거리 배율 (r / fit 기준). 궤도는 원반이 세로로 눌려 보여 바깥 반지름보다 가까이서도 들어온다 —
- * 첫 화면에서 행성이 너무 멀어 보인다는 지적에 0.72 → 0.56 으로 당겼다(간격을 넓히며 커진 원반만큼 되물러나지 않도록
- * 배율로 상쇄한 값이다 — 바깥 팔 끝 몇 개는 화면 밖으로 나간다).
+ * 첫 화면이 멀어 보인다는 지적에 0.72 → 0.56 으로 당겼다가, 이번엔 너무 가깝다고 해 0.66 으로 조금 물렸다
+ * (간격을 넓히며 커진 원반만큼 되물러나지 않도록 상쇄한 값이라 여전히 예전보다는 가깝다).
  * 위에서는 눌림이 없어 1 이 필요하고, 정면에서는 세로가 아니라 가로가 먼저 잘리므로 종횡비만큼 가까워질 수 있다
  * (세로로 긴 화면은 fit 이 이미 종횡비를 반영한다)
  */
 function distScale(kind: "galaxy" | "system", preset: CameraPresetId, aspect: number) {
   if (preset === "top") return kind === "galaxy" ? 1.02 : 1.1;
   if (preset === "front") return aspect >= 1 ? 1.1 / aspect : 1.1;
-  return kind === "galaxy" ? 0.56 : 1.0;
+  return kind === "galaxy" ? 0.66 : 1.0;
 }
 
 /**

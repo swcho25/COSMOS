@@ -48,7 +48,7 @@ export default function PathStrip({ model }: Props) {
                   {edge && (
                     <span className="path-edge" title={`${relationshipMeta(edge.type).label} · ${fmtScore(edge.score)}점`}>
                       {/* 글리프 색은 씬의 빔과 같은 규칙 — 경로를 보다가 3D 로 눈을 옮겨도 같은 색이 같은 관계를 가리킨다 */}
-                      <EdgeGlyph directed={edge.directed} color={beamColorFor(edge.impact)} />
+                      <EdgeGlyph directed={edge.directed} color={beamColorFor(edge.type)} />
                       <b style={{ color: relationshipMeta(edge.type).color }}>{relationshipMeta(edge.type).label}</b>
                       <span className="num">{fmtScore(edge.score)}</span>
                     </span>

@@ -203,7 +203,7 @@ export default function RelationLines({ edges, emphasis, model, onHover, onSelec
       phases[ei] = (ei * 0.6180339887) % 1;
       // 이 셰이더는 톤매핑도 출력 색공간 변환도 거치지 않는다 — 넘긴 값이 곧 화면 sRGB 라서
       // 선형화(THREE.Color 기본 변환)를 거치면 파랑·보라가 함께 어두운 청색으로 몰려 구분이 사라진다
-      C.setStyle(beamColorFor(e.impact), THREE.NoColorSpace);
+      C.setStyle(beamColorFor(e.type), THREE.NoColorSpace);
       rgb[ei * 3] = C.r;
       rgb[ei * 3 + 1] = C.g;
       rgb[ei * 3 + 2] = C.b;
