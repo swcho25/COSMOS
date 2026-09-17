@@ -475,7 +475,15 @@ refresh token은 httpOnly 쿠키(`Set-Cookie`)로 전달
 <td>NICKNAME_DUPLICATED</td>
 <td>닉네임 중복</td>
 </tr>
+<tr>
+<td>403</td>
+<td>EMAIL_NOT_VERIFIED</td>
+<td>이메일 인증을 마치지 않았거나 인증 완료 후 30분이 지남 (코드 발송·확인부터 다시)</td>
+</tr>
 </table>
+#### Notes
+- 가입 전에 `POST /api/auth/email/send-code` → `POST /api/auth/email/verify-code`로 이메일 인증을 마쳐야 한다.
+- 가입이 성공하면 인증 완료 상태는 사라지고, `users.email_verified_at`에 인증 시각이 기록된다.
 
 ### users | 사용자
 
