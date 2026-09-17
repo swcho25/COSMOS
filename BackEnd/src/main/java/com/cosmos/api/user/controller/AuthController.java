@@ -3,11 +3,14 @@ package com.cosmos.api.user.controller;
 import com.cosmos.api.global.security.AuthUser;
 import com.cosmos.api.global.security.RefreshTokenCookie;
 import com.cosmos.api.user.dto.AvailabilityResponse;
+import com.cosmos.api.user.dto.EmailSendCodeRequest;
+import com.cosmos.api.user.dto.EmailSendCodeResponse;
 import com.cosmos.api.user.dto.LoginRequest;
 import com.cosmos.api.user.dto.SignupRequest;
 import com.cosmos.api.user.dto.TokenResponse;
 import com.cosmos.api.user.dto.UserResponse;
 import com.cosmos.api.user.service.AuthService;
+import com.cosmos.api.user.service.EmailVerificationService;
 import com.cosmos.api.user.service.UserService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Email;
@@ -35,6 +38,7 @@ public class AuthController {
 
     private final UserService userService;
     private final AuthService authService;
+    private final EmailVerificationService emailVerificationService;
     private final RefreshTokenCookie refreshTokenCookie;
 
     /** 로그인. Access Token은 본문으로, Refresh Token은 httpOnly 쿠키(Set-Cookie)로 내려준다. */
@@ -64,6 +68,15 @@ public class AuthController {
             @CookieValue(name = RefreshTokenCookie.NAME, required = false) String refreshToken
     ) {
         return new TokenResponse(authService.reissueAccessToken(refreshToken));
+    }
+
+    /**
+     * 가입 전 이메일 인증 코드 발송. 6자리 코드를 메일로 보내고 5분간 유효하다.
+     * 이미 가입된 이메일 409, 60초 안 재요청 429.
+     */
+    @PostMapping("/email/send-code")
+    public EmailSendCodeResponse sendEmailCode(@Valid @RequestBody EmailSendCodeRequest request) {
+        return emailVerificationService.sendCode(request.email());
     }
 
     /** 회원가입. 성공하면 201과 만들어진 회원 정보(userId, email, nickname)를 돌려준다. */
