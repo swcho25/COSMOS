@@ -10,6 +10,7 @@ import com.cosmos.api.user.entity.User;
 import com.cosmos.api.user.repository.UserRepository;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import com.cosmos.api.user.service.EmailVerificationStore;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
@@ -31,6 +32,7 @@ class AuthControllerTest {
 
     @Autowired
     MockMvc mockMvc;
+@Autowired    EmailVerificationStore emailVerificationStore; // 가입 전 이메일 인증을 마친 것으로 표시하기 위해
 
     @Autowired
     ObjectMapper objectMapper;
@@ -41,6 +43,7 @@ class AuthControllerTest {
     // 테스트 공통: 회원가입 요청을 보내고 결과를 돌려준다
     private ResultActions signup(String email, String password, String nickname) throws Exception {
         SignupRequest request = new SignupRequest(email, password, nickname);
+        emailVerificationStore.markVerified(email.toLowerCase()); // 인증 단계를 거친 것으로 처리
         return mockMvc.perform(post("/api/auth/signup")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(objectMapper.writeValueAsString(request)));

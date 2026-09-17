@@ -8,6 +8,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.cosmos.api.user.dto.SignupRequest;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import com.cosmos.api.user.service.EmailVerificationStore;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
@@ -28,12 +29,14 @@ class DuplicateCheckControllerTest {
 
     @Autowired
     MockMvc mockMvc;
+@Autowired    EmailVerificationStore emailVerificationStore; // 가입 전 이메일 인증을 마친 것으로 표시하기 위해
 
     @Autowired
     ObjectMapper objectMapper;
 
     // 테스트 준비용: 회원 한 명을 미리 가입시켜 둔다
     private void signup(String email, String nickname) throws Exception {
+        emailVerificationStore.markVerified(email.toLowerCase()); // 인증 단계를 거친 것으로 처리
         mockMvc.perform(post("/api/auth/signup")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(new SignupRequest(email, "password1", nickname))))

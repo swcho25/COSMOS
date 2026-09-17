@@ -101,6 +101,7 @@ class EmailSendCodeControllerTest {
     @Test
     @DisplayName("이미 가입된 이메일이면 409이고 메일을 보내지 않는다")
     void send_code_duplicated_email() throws Exception {
+        store.markVerified(EMAIL); // 인증 단계를 거친 것으로 처리
         mockMvc.perform(post("/api/auth/signup")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(
