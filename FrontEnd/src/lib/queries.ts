@@ -188,8 +188,15 @@ export function useCompanyComments(companyId: string | null) {
     enabled: Boolean(companyId),
   });
 }
-export function useLatestComments(size = 8) {
-  return useQuery({ queryKey: ["comments", "latest", size], queryFn: () => api.community.latest({ size }), staleTime: 60_000 });
+/** 커뮤니티 페이지(전체 기업 댓글 최신순 피드) — 다른 목록과 동일하게 커서 기반 무한 스크롤로 받는다. */
+export function useLatestComments(size = 20) {
+  return useInfiniteQuery({
+    queryKey: ["comments", "latest", size],
+    queryFn: ({ pageParam }) => api.community.latest({ cursor: pageParam, size }),
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (last) => last.nextCursor ?? undefined,
+    staleTime: 60_000,
+  });
 }
 
 /* ------------------------------ 내 정보 ------------------------------ */
