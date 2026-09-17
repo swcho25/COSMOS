@@ -181,11 +181,21 @@ Tailscale 사용이 허용되지 않으면 직접 구축한 WireGuard를 대안�
 
 다음 트리는 클러스터 전체에 하나만 존재하는 HDFS 네임스페이스다. 각 Worker의 로컬 파일시스템에 동일한 폴더 트리를 만들지 않는다.
 
+뉴스 원문은 과거 Backfill 데이터와 실시간 수집 데이터를 다음 경로로 구분해 보관한다.
+
+```text
+뉴스 원문
+├── 과거 Backfill
+│   └── /datasets/news/snapshots/20260908-prepared/news
+└── 실시간
+    └── /data-lake/raw/realtime/news/topic=news.raw/partition=*/start=*/
+```
+
 ```text
 /data-lake
 ├── raw
-│   ├── news
-│   │   └── ingestion_type=realtime
+│   ├── realtime
+│   │   └── news
 │   ├── disclosures
 │   └── stocks
 ├── cleaned
@@ -254,11 +264,11 @@ NameNode는 HDFS 디스크 상태를 기준으로 블록 위치를 선택한다.
 예시:
 
 ```text
-/data-lake/raw/news/
-  ingestion_type=realtime/
-  event_date=2026-09-12/
-  hour=13/
-  part-00000.jsonl.gz
+/data-lake/raw/realtime/news/
+  topic=news.raw/
+  partition=0/
+  start=00000000000000000000/
+  part-00000.parquet
 
 /data-lake/cleaned/news/
   event_date=2026-09-12/
