@@ -143,14 +143,24 @@ const CHIP_GAP = 4;
 /**
  * 칩 목표 화면 높이(px)와 월드 높이 클램프 — 코앞에서도 너무 작아지지 않고 멀리서도 행성을 통째로 덮지 않게.
  * 20px·상한 4 일 때는 은하 기본 자세에서 칩이 13px 안팎, 글자는 7px 남짓이라 읽히지 않았다. 26px 로 키우고 상한을 10 으로 올렸다가,
- * 이름이 호버에서만 나오게 바뀐 뒤 글자를 한 단계 더 키우려고 30px 로 올렸다 (글자 ≈ 17px → 20px, 굵기는 그대로).
+ * 이름이 호버에서만 나오게 바뀐 뒤 글자를 키우려고 30px 로, 기본 화면에서 로고가 더 잘 읽히도록 다시 34px 로 올렸다
+ * (글자 ≈ 17px → 23px, 굵기는 그대로).
  * 상한이 걸리는 구간(기본 자세 카메라 거리 ≈ 265~310 에서 계산): 캔버스 세로 790px 이상이면 허브 칩이 모두 26px, 720px 에서는 23.8~26px,
  * 650px 에서는 21.5~25.2px. 글자 높이는 이름 아틀라스 행(ROW 44 중 글자 36)에 따라 칩 높이의 약 0.65 배 ≈ 17px 이다.
  * 하한은 코앞(궤도 최소 거리 22)에서 칩이 화면 45~65px 로 커지는 정도 — 더 올리면 긴 이름이 화면 1/3 을 덮는다
  */
-const CHIP_PX = 30;
+const CHIP_PX = 34;
 const CHIP_MIN = 1.3;
 const CHIP_MAX = 10.0;
+/**
+ * 화면 중앙에서 멀어질수록 칩을 옅게 — 초점에 있는 기업이 진하게 읽히고 가장자리는 배경으로 물러난다.
+ * q 는 화면 중앙에서의 거리(가로·세로 반폭 기준, 모서리가 ≈ 1.41). q ≤ CHIP_SOLID_Q 면 그대로,
+ * CHIP_FADE_Q 에서 CHIP_EDGE_ALPHA 까지 떨어진다. 호버·강조로 고정된 칩은 어디에 있든 이 감쇠를 받지 않는다.
+ * 화면 밖으로 완전히 나간 칩은 여기서 뺀다 — 어차피 안 보이는데 겹침 판정에서 다른 칩을 밀어내면 안 된다.
+ */
+const CHIP_SOLID_Q = 0.34;
+const CHIP_FADE_Q = 1.05;
+const CHIP_EDGE_ALPHA = 0.45;
 /** 항성 점광 레이어 — 랩과 동일 */
 const LIT = 1;
 /** 피킹에서 무시하는 배지·칩 알파 — 이 아래는 보이지 않는데 포인터를 가로채면 안 된다 */
@@ -531,9 +541,18 @@ export default function CompanyNodes({ model, emphasis, hoveredId, onHover, onCl
           scratch.rect[o + 1] = bottom - h * pxw;
           scratch.rect[o + 2] = px + (aspect - 0.5) * h * pxw;
           scratch.rect[o + 3] = bottom;
-          // 정수부 = 우선순위, 소수부 = 크기(≤ 3.5) — 같은 우선순위면 큰 행성이 앞선다
-          scratch.prio[i] = prioOf(node) * 10 + node.size;
-          CHIP_ORDER.push(i);
+          // 화면 밖으로 완전히 나갔으면 그리지도, 겹침 판정에 넣지도 않는다
+          if (scratch.rect[o + 2] < 0 || scratch.rect[o] > W || scratch.rect[o + 3] < 0 || scratch.rect[o + 1] > H) ct = 0;
+          else {
+            // 중앙에서 멀어질수록 옅게 (고정된 칩은 그대로)
+            if (!pinned && !isCenter) {
+              const q = Math.hypot((px - W * 0.5) / (W * 0.5), (py - H * 0.5) / (H * 0.5));
+              ct *= 1 - (1 - CHIP_EDGE_ALPHA) * THREE.MathUtils.smoothstep(q, CHIP_SOLID_Q, CHIP_FADE_Q);
+            }
+            // 정수부 = 우선순위, 소수부 = 크기(≤ 3.5) — 같은 우선순위면 큰 행성이 앞선다
+            scratch.prio[i] = prioOf(node) * 10 + node.size;
+            CHIP_ORDER.push(i);
+          }
         }
       }
       scratch.target[i] = ct;

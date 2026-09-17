@@ -71,6 +71,13 @@ export default function ControlDock() {
     const snapped = snapValue(v);
     if (snapped !== v) commitSpread(snapped);
   }
+  /**
+   * 마우스로 슬라이더를 놓으면 포커스를 떼어 준다 — 포커스가 남아 있으면 방향키가 씬이 아니라 이 슬라이더로 가서
+   * "슬라이더를 만진 뒤 우주를 한 번 클릭해야" 카메라가 움직였다. 키보드(Tab)로 온 경우에는 그대로 둔다.
+   */
+  function releaseFocus(e: ReactPointerEvent<HTMLInputElement>) {
+    e.currentTarget.blur();
+  }
   function handleReset() {
     resetControls();
     useWeight.getState().reset();
@@ -95,7 +102,10 @@ export default function ControlDock() {
                 step={1}
                 value={spreadPct}
                 onChange={(e) => commitSpread(Number(e.target.value))}
-                onPointerUp={releaseSpread}
+                onPointerUp={(e) => {
+                  releaseSpread(e);
+                  releaseFocus(e);
+                }}
                 onKeyUp={releaseSpread}
                 title={DOCK_UI.spreadTitle}
               />
@@ -130,12 +140,12 @@ export default function ControlDock() {
                 <span className="lab num dock-mix-val" title={DOCK_UI.mixTitle}>
                   뉴스 <b>{newsWeightPct}</b> · 공시 <b>{100 - newsWeightPct}</b>
                 </span>
-                <input type="range" min={0} max={100} step={1} value={newsWeightPct} onChange={(e) => setNewsWeight(Number(e.target.value) / 100)} title={DOCK_UI.mixTitle} aria-label={DOCK_UI.mix} />
+                <input type="range" min={0} max={100} step={1} value={newsWeightPct} onChange={(e) => setNewsWeight(Number(e.target.value) / 100)} onPointerUp={releaseFocus} title={DOCK_UI.mixTitle} aria-label={DOCK_UI.mix} />
               </div>
 
               <div className="dock-row dock-minscore">
                 <span className="lab">{DOCK_UI.minScore}</span>
-                <input type="range" min={0} max={90} step={5} value={minScore} onChange={(e) => setMinScore(Number(e.target.value))} />
+                <input type="range" min={0} max={90} step={5} value={minScore} onChange={(e) => setMinScore(Number(e.target.value))} onPointerUp={releaseFocus} />
                 <span className="meta num">{minScore}</span>
               </div>
 

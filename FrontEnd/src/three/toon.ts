@@ -117,12 +117,13 @@ export function fbm(x: number, y: number, z: number) {
  * 인덱스를 풀어 면마다 다른 색을 줄 수 있게 하고, 흔들림은 위치 기반이라 이음새가 생기지 않는다.
  */
 /**
- * 행성 반지름 = node.size × 이 계수 (월드 단위). 1.3 이던 것을 "행성이 모래알만 하다" 는 지적에 따라 키웠다.
+ * 행성 반지름 = node.size × 이 계수 (월드 단위). 1.3 → 2.2 → 3.0 으로, "행성이 모래알만 하다" 는 지적에 따라 키웠다.
  * 레이아웃이 지키는 최소 간격은 (a.size + b.size) × 4.6 + 7 이므로, 가장 큰 두 행성이 붙어 서도 반지름 합이
- * 간격의 40% 안쪽이다(계수 4.6 을 넘기면 그때부터 닿는다).
+ * 간격의 55% 안쪽이다(계수 4.6 을 넘기면 그때부터 닿는다). 정렬 격자의 칸 크기(lib/spread CELL_PER_SIZE)도
+ * 이 값에서 끌어다 쓰므로 여기만 고치면 세 단계(은하·평면·정렬)가 같이 따라온다.
  * 간선 화살표·역할 링·투어 앵커·모프 고스트가 모두 행성 표면을 기준으로 놓이므로 이 값 하나만 보고 계산한다.
  */
-export const PLANET_RADIUS_K = 2.2;
+export const PLANET_RADIUS_K = 3.0;
 
 export function planetGeometry(radius: number, palette: PlanetPalette, seed: number, detail = 2, landRatio = 0.45) {
   // IcosahedronGeometry 는 이미 인덱스가 없다 — toNonIndexed 를 다시 부르면 three 가 경고를 찍는다

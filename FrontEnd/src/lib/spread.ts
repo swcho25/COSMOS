@@ -1,3 +1,4 @@
+import { PLANET_RADIUS_K } from "@/three/toon";
 import type { SceneModel } from "./graph";
 
 /**
@@ -14,10 +15,14 @@ export type SpreadStage = "galaxy" | "flat" | "sorted";
 export const SPREAD_FLAT = 0.5;
 /** 평면 단계에서 반지름을 벌리는 배율 — 카메라 프레이밍(Scene.poseFor)이 같은 배율만큼 물러난다 */
 export const FLAT_SCALE = 1.12;
-/** 격자의 가로/세로 셀 수 비 — 화면 종횡비(대개 1.6 안팎)에 맞춘다 */
+/** 격자의 가로/세로 칸 수 비 — 화면 종횡비(대개 1.6 안팎)에 맞춰, 격자가 화면을 고르게 채우게 한다 */
 const GRID_ASPECT = 1.6;
-/** 셀 한 칸은 가장 큰 행성 지름의 이만큼 — 이웃과 겹치지 않는다 */
-const CELL_PER_SIZE = 2.6;
+/**
+ * 칸 한 칸의 크기 = 가장 큰 node.size × 이 값. 가장 큰 행성의 지름(size × PLANET_RADIUS_K × 2)에 25% 여백을 둔 값이라,
+ * 행성 크기를 키워도 격자에서 이웃과 겹치지 않는다. 카메라가 이 격자에 맞춰 들어오므로(three/Scene poseFor)
+ * 여백을 줄이면 행성이 화면에서 더 커지고, 늘리면 사이가 넉넉해진다 — 둘의 균형점이다.
+ */
+const CELL_PER_SIZE = PLANET_RADIUS_K * 2 * 1.25;
 
 export function spreadStage(t: number): SpreadStage {
   if (t < 0.25) return "galaxy";
@@ -44,10 +49,36 @@ export function spreadRadiusScale(t: number) {
 
 /* ---- 정렬 격자 (모델당 한 번) ------------------------------------------ */
 const GRID = new WeakMap<SceneModel, Float32Array>();
+const EXTENT = new WeakMap<SceneModel, SortedExtent>();
+
+/** 정렬 격자의 절반 크기 (월드 단위) — 카메라가 은하 반지름이 아니라 이 격자에 맞춰 들어온다 (three/Scene poseFor) */
+export interface SortedExtent {
+  halfW: number;
+  halfH: number;
+}
+
+/** 칸 수·칸 크기 — 격자는 은하 반지름이 아니라 행성 크기가 정한다. 그래야 정렬해도 행성이 콩알만 해지지 않는다 */
+function gridShape(model: SceneModel) {
+  const n = model.nodes.length;
+  const maxSize = model.nodes.reduce((m, nd) => Math.max(m, nd.size), 0.5);
+  const cell = maxSize * CELL_PER_SIZE;
+  const cols = Math.max(1, Math.ceil(Math.sqrt(Math.max(1, n) * GRID_ASPECT)));
+  const rows = Math.ceil(Math.max(1, n) / cols);
+  return { cols, rows, cell };
+}
+
+/** 정렬 격자가 차지하는 절반 크기. 카메라 프레이밍이 이 값을 쓴다 */
+export function sortedExtent(model: SceneModel): SortedExtent {
+  let e = EXTENT.get(model);
+  if (e) return e;
+  const { cols, rows, cell } = gridShape(model);
+  e = { halfW: (cols * cell) / 2, halfH: (rows * cell) / 2 };
+  EXTENT.set(model, e);
+  return e;
+}
 
 /**
  * 크기 내림차순 격자 좌표 (노드 i 의 x·y·z 가 i*3..). y 는 0.
- * 격자 폭은 은하 바깥 반지름(2R) 안에 맞춘다 — 위에서 보는 카메라 프리셋이 그 반지름을 기준으로 프레이밍하기 때문.
  * 첫 행(가장 큰 행성)은 -z 쪽, 위에서 보는 시점에서 화면 위다.
  */
 function gridFor(model: SceneModel): Float32Array {
@@ -60,21 +91,14 @@ function gridFor(model: SceneModel): Float32Array {
     return grid;
   }
   const order = model.nodes.map((_, i) => i).sort((a, b) => model.nodes[b].size - model.nodes[a].size || (model.nodes[a].id < model.nodes[b].id ? -1 : 1));
-  const R = Math.max(20, model.extent.maxR);
-  const maxSize = model.nodes.reduce((m, nd) => Math.max(m, nd.size), 0.5);
-  const minCell = maxSize * CELL_PER_SIZE;
-  let cols = Math.ceil(Math.sqrt(n * GRID_ASPECT));
-  cols = Math.max(1, Math.min(cols, Math.floor((2 * R) / minCell) || 1));
-  const rows = Math.ceil(n / cols);
-  const cell = Math.max(minCell, (2 * R) / cols);
-  const w = cols * cell;
-  const h = rows * cell;
+  const { cols, cell } = gridShape(model);
+  const { halfW, halfH } = sortedExtent(model);
   order.forEach((i, k) => {
     const c = k % cols;
     const r = Math.floor(k / cols);
-    grid![i * 3] = -w / 2 + cell * (c + 0.5);
+    grid![i * 3] = -halfW + cell * (c + 0.5);
     grid![i * 3 + 1] = 0;
-    grid![i * 3 + 2] = -h / 2 + cell * (r + 0.5);
+    grid![i * 3 + 2] = -halfH + cell * (r + 0.5);
   });
   GRID.set(model, grid);
   return grid;

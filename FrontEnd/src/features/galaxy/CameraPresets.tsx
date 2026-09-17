@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { CAMERA_PRESETS, CAMERA_UI, type CameraPresetId } from "@/lib/guide";
+import { CAMERA_PRESETS, CAMERA_UI, NAV_HINT, NAV_HINT_TITLE, type CameraPresetId } from "@/lib/guide";
 import { useGalaxy } from "@/store/galaxy";
 import { Icon } from "@/components/ui";
 
@@ -30,8 +30,12 @@ export default function CameraPresets() {
           </button>
         ))}
       </div>
-      <div className="cam-hint meta" aria-live="polite">
-        {current.hint}
+      <div className="cam-hint meta">
+        <span aria-live="polite">{current.hint}</span>
+        {/* 드래그·휠 말고도 키로 움직일 수 있다는 것을 늘 보이게 둔다 — 조작법 표(? 허브)까지 열지 않아도 알 수 있게 */}
+        <span className="cam-keys" title={NAV_HINT_TITLE}>
+          {NAV_HINT}
+        </span>
       </div>
     </div>
   );

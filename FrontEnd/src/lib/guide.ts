@@ -124,6 +124,9 @@ export const CAMERA_PRESETS: { id: CameraPresetId; label: string; hint: string }
   { id: "top", label: "위에서", hint: "어느 기업이 가까운지 비교" },
   { id: "front", label: "정면에서", hint: "주가 등락 높이를 비교" },
 ];
+/** 카메라 프리셋 아래 한 줄로 늘 보여 주는 조작 힌트 — 조작법 표(CONTROL_HINTS)의 휠·W A S D·방향키 항목과 같은 내용 */
+export const NAV_HINT = "휠 확대·축소 · W A S D 이동 · ← → ↑ ↓ 회전";
+export const NAV_HINT_TITLE = "마우스 휠로 확대·축소, W A S D 로 시선을 옮기고, 방향키로 돌려 봅니다 (Shift 로 빠르게). 슬라이더를 만진 뒤에도 바로 먹습니다";
 export const CAMERA_UI = {
   groupLabel: "카메라 시점",
   /** 버튼 title 뒤에 붙는 설명 — 같은 프리셋을 다시 누르면 드래그로 흐트러진 시점이 되돌아온다 */
