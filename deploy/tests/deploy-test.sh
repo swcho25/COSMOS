@@ -27,6 +27,15 @@ fi
 if [[ "$1" == image && "$2" == rm ]]; then
     exit 0
 fi
+if [[ "$1" == ps ]]; then
+    [[ -z "${FAKE_BACKEND_ID:-}" ]] || printf '%s\n' "$FAKE_BACKEND_ID"
+    exit 0
+fi
+if [[ "$1" == inspect ]]; then
+    [[ -n "${FAKE_BACKEND_ENV_FILE:-}" ]] || exit 1
+    cat "$FAKE_BACKEND_ENV_FILE"
+    exit 0
+fi
 if [[ "$1" != compose ]]; then
     echo 'Unexpected docker command in test' >&2
     exit 90
@@ -188,6 +197,48 @@ run_case first-failure health-failure candidate no
 [[ ! -f "$COSMOS_STATE_DIR/current" ]] || fail 'first failed deployment created current marker'
 grep -q 'No previous application release exists' "$fixture/first-failure/output" || fail 'missing release outcome not reported'
 echo 'PASS: first failed release is not promoted'
+
+recovery_dir="$fixture/environment-recovery"
+mkdir -p "$recovery_dir/state"
+export COSMOS_STATE_DIR="$recovery_dir/state"
+unset COSMOS_ENV_FILE
+export COSMOS_SMOKE_URL=https://test.invalid
+export COSMOS_RDB_LOADER_COMPOSE_OVERRIDE="$recovery_dir/rdb-loader.override.yml"
+export FAKE_SCENARIO=success
+export FAKE_CALLS="$recovery_dir/calls"
+export FAKE_ACTIVE="$recovery_dir/active"
+export FAKE_BACKEND_ID=running-backend
+export FAKE_BACKEND_ENV_FILE="$recovery_dir/backend.env"
+export FAKE_IMAGES="cosmos-backend candidate
+cosmos-frontend candidate"
+cat > "$FAKE_BACKEND_ENV_FILE" <<'ENV'
+DB_PASSWORD=existing-db-password
+REDIS_PASSWORD=existing-redis-password
+JWT_SECRET=existing-jwt-secret
+CORS_ALLOWED_ORIGINS=https://test.invalid
+ENV
+: > "$FAKE_CALLS"
+if bash "$fixture/repo/deploy/scripts/deploy.sh" candidate > "$recovery_dir/output" 2>&1; then
+    status=0
+else
+    status=$?
+fi
+[[ "$status" == 0 ]] || fail 'deployment did not recover the missing default environment file'
+[[ "$(stat -c '%a' "$COSMOS_STATE_DIR/app.env")" == 600 ]] || fail 'recovered environment file permissions are not 0600'
+grep -q '^DB_PASSWORD=existing-db-password$' "$COSMOS_STATE_DIR/app.env" || fail 'database password was not recovered'
+grep -q '^REDIS_PASSWORD=existing-redis-password$' "$COSMOS_STATE_DIR/app.env" || fail 'Redis password was not recovered'
+grep -q '^JWT_SECRET=existing-jwt-secret$' "$COSMOS_STATE_DIR/app.env" || fail 'JWT secret was not recovered'
+grep -q '^PUBLIC_URL=https://test.invalid$' "$COSMOS_STATE_DIR/app.env" || fail 'public URL was not recovered'
+! grep -q 'existing-.*password\|existing-jwt-secret' "$recovery_dir/output" || fail 'recovered secrets were written to deployment output'
+echo 'PASS: missing default environment is recovered from the running backend'
+
+export COSMOS_ENV_FILE="$recovery_dir/explicit-missing.env"
+if bash "$fixture/repo/deploy/scripts/deploy.sh" candidate > "$recovery_dir/explicit-output" 2>&1; then
+    fail 'missing explicit environment override unexpectedly recovered from a container'
+fi
+grep -q "Missing environment file: $COSMOS_ENV_FILE" "$recovery_dir/explicit-output" || fail 'missing explicit environment override was not reported'
+echo 'PASS: an explicit missing environment override remains a hard failure'
+unset FAKE_BACKEND_ID FAKE_BACKEND_ENV_FILE
 
 run_case invalid-tag success '../escape' yes
 [[ "$status" == 2 ]] || fail 'invalid tag did not return validation error'
