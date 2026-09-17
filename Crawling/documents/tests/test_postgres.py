@@ -419,7 +419,7 @@ class PostgreSQLTests(unittest.TestCase):
         row = self.connection.execute("SELECT report_name, report_code, filing_date::text, correction_status FROM disclosure").fetchone()
         self.assertEqual(row, ("New report", "10-K/A", "2026-09-16", "CORRECTED"))
 
-    def test_changed_analyzed_body_requires_reanalysis_and_rolls_back_whole_batch(self):
+    def test_changed_raw_body_requires_reanalysis_and_rolls_back_whole_batch(self):
         self.load([news()], commit=True)
         protected_states = [("ANALYZED", None, None), ("COLLECTED", "model-7", None),
                             ("COLLECTED", None, "hdfs://fixture/clean/1")]
@@ -433,6 +433,42 @@ class PostgreSQLTests(unittest.TestCase):
                 self.assertEqual(self.count("source_document"), 1)
                 self.assertEqual(self.count("document_load_batch"), 1)
                 self.assertEqual(self.connection.execute("SELECT content_hash FROM source_document").fetchone()[0], "b" * 64)
+
+    def test_newer_analyzed_revision_atomically_replaces_body_and_company_set(self):
+        self.load([analyzed_news(company_refs=[dict(KR)])], commit=True)
+        self.connection.execute("""UPDATE source_document SET hdfs_clean_uri='hdfs://fixture/clean/old'
+                                   WHERE document_type='NEWS'""")
+        self.connection.execute("""UPDATE company_document SET relevance_score=0.8,
+                                   sentiment='POSITIVE', impact_score=0.6""")
+        revised = analyzed_news(
+            title="Revised analyzed body", content_hash="e" * 64,
+            hdfs_raw_uri="hdfs://fixture/data/news/revised.parquet",
+            collected_at="2026-09-16T02:00:00+00:00",
+            analyzed_at="2026-09-16T03:00:00+00:00",
+            company_refs=[dict(US)],
+            company_links=[{**US, "confidence": 0.95}],
+        )
+        result = self.load([revised], commit=True, batch_id="analyzed-revision")
+        stored = self.connection.execute("""SELECT title, content_hash, hdfs_raw_uri, hdfs_clean_uri,
+                                            status, analysis_version FROM source_document""").fetchone()
+        self.assertEqual(stored, ("Revised analyzed body", "e" * 64,
+                                  "hdfs://fixture/data/news/revised.parquet", None,
+                                  "ANALYZED", "news-company-mentions-1.0"))
+        links = self.connection.execute("""SELECT company_id, confidence::text, relevance_score,
+                                           sentiment, impact_score FROM company_document""").fetchall()
+        self.assertEqual(links, [(self.us_id, "0.950000", None, None, None)])
+        self.assertEqual((result["company_links_added"], result["company_links_deleted"]), (1, 1))
+
+    def test_older_analysis_cannot_replace_a_newer_analyzed_revision(self):
+        self.load([analyzed_news(analyzed_at="2026-09-16T05:00:00+00:00")], commit=True)
+        revised = analyzed_news(
+            content_hash="e" * 64, collected_at="2026-09-16T06:00:00+00:00",
+            analyzed_at="2026-09-16T04:00:00+00:00",
+        )
+        with self.assertRaisesRegex(LoadError, "older analysis"):
+            self.load([revised], commit=True, batch_id="stale-analyzed-revision")
+        self.assertEqual(self.connection.execute(
+            "SELECT content_hash FROM source_document").fetchone()[0], "b" * 64)
 
     def test_changed_collected_news_body_preserves_document_mentions_and_receipt(self):
         self.load([news()], commit=True)

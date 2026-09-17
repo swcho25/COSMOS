@@ -35,6 +35,26 @@ test("falls back to Readability for semantic article HTML", () => {
   assert.ok(article.charCount >= 500);
 });
 
+test("publisher selector excludes dynamic recommendations from a NewsPim article", () => {
+  const body = Array.from({ length: 8 }, (_, index) =>
+    `<p>${index + 1}번째 뉴스핌 기사 본문입니다. 반도체 기업의 생산 계획과 노사 협상 내용을 설명하는 문장입니다.</p>`,
+  ).join("");
+  const recommendations = `<section class="recommendations">${"시시각각 바뀌는 추천 기사 내용입니다. ".repeat(80)}</section>`;
+  const html = `<!doctype html><html><head><title>뉴스핌 테스트</title></head><body>
+    <article class="bodynews"><div id="news-contents">
+      <section class="contents" itemprop="articleBody">${body}</section>
+      ${recommendations}
+    </div></article>
+  </body></html>`;
+
+  const article = extractNewsArticleFromHtml(html, "https://www.newspim.com/news/view/1", {
+    publisherSelectors: ["article.bodynews section.contents[itemprop='articleBody']"],
+  });
+  assert.equal(article.method, "publisher-selector");
+  assert.match(article.textContent, /반도체 기업의 생산 계획/);
+  assert.doesNotMatch(article.textContent, /추천 기사/);
+});
+
 test("extracts Naver's dic_area article body and preserves line breaks", () => {
   const paragraphs = Array.from({ length: 10 }, (_, index) =>
     `${index + 1}번째 네이버 뉴스 본문 문단입니다. 반도체 공급망과 기업 생산 계획을 설명하는 충분히 긴 테스트 문장입니다.`,
