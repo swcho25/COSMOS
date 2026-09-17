@@ -18,6 +18,13 @@ export const CHIP_H = 1.35;
 export const CHIP_STEM = 0.35;
 /** 캡슐 바탕색 — 블룸 임계(0.88) 아래로 어둡게 유지한다 */
 export const CHIP_PILL = "#141a3a";
+/**
+ * 기업명 글자 영역의 높이 — 칩 높이(1) 대비. 이름 아틀라스 행(ROW 44, em 36)을 이 높이에 세로로 꽉 채우므로
+ * 화면 글자 크기는 CHIP_PX × 이 값 × 36/44 다. 0.8 이던 때는 CHIP_PX 40 에서 글자 em ≈ 26px 로 "너무 크다" 는 지적이 있어
+ * 0.68 로 내렸다 (≈ 22px — CHIP_PX 가 34 이던 시절의 글자 크기). 로고 원(반지름 0.42)은 그대로라 로고는 줄지 않는다.
+ * CompanyNodes 의 칩 폭 계산(aspect)도 이 값을 쓴다 — 두 곳이 어긋나면 글자가 눌리거나 캡슐 오른쪽에 빈 폭이 남는다
+ */
+export const CHIP_NAME_H = 0.68;
 
 export const chipVertex = /* glsl */ `
   attribute vec3 aColor;
@@ -117,10 +124,10 @@ export const chipFragment = /* glsl */ `
     // 이름 폭과 어긋난 프레임에서 글자가 가로로 찌그러진다. 폭이 모자라면 눌러 넣는 대신 그만큼만 드러낸다
     float nameX = 1.0 + roleW + (roleW > 0.0 ? 0.15 : 0.0);
     float nameW = vAspect - 0.3 - nameX;
-    float nameFull = (vName.z / max(vName.w, 1e-6)) * 0.8;
+    float nameFull = (vName.z / max(vName.w, 1e-6)) * ${CHIP_NAME_H.toFixed(2)};
     if (vName.w > 0.0 && vNameOn > 0.01 && nameW > 0.02 && nameFull > 0.0 && vQ.x >= nameX && vQ.x <= nameX + nameW) {
       float nu = (vQ.x - nameX) / nameFull;
-      float ny = (vQ.y - 0.1) / 0.8;
+      float ny = (vQ.y - ${((1 - CHIP_NAME_H) / 2).toFixed(2)}) / ${CHIP_NAME_H.toFixed(2)};
       if (nu <= 1.0 && ny >= 0.0 && ny <= 1.0) {
         vec4 tx = texture2D(uNames, vec2(vName.x + nu * vName.z, vName.y + (1.0 - ny) * vName.w));
         col = mix(col, tx.rgb, tx.a * vNameOn);
