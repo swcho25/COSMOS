@@ -615,7 +615,7 @@ class InvestingKospiCollector(InvestingNasdaqCollector):
             return "out_of_range"
         extracted = self._extracted(article)
         if extracted is not None and not any(
-            item["market"] == "KOSPI" for item in extracted["companies"]
+            item["market"] == "KRX" for item in extracted["companies"]
         ):
             return "irrelevant"
         return None
@@ -637,7 +637,7 @@ class InvestingKospiCollector(InvestingNasdaqCollector):
         extracted = self._extracted(article)
         if extracted is None:
             return metadata
-        companies = [item for item in extracted["companies"] if item["market"] == "KOSPI"]
+        companies = [item for item in extracted["companies"] if item["market"] == "KRX"]
         metadata.update({
             "kospi100_companies": [{
                 "company_id": item["company_id"], "name": item["name"],

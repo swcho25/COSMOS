@@ -67,10 +67,24 @@ cat > "$fixture/bin/curl" <<'CURL'
 #!/usr/bin/env bash
 set -eu
 printf 'curl %s %s\n' "$IMAGE_TAG" "$*" >> "$FAKE_CALLS"
-if [[ "$FAKE_SCENARIO" != success && "$IMAGE_TAG" == candidate ]]; then
-    exit 22
+if [[ "$IMAGE_TAG" == candidate ]]; then
+    case "$FAKE_SCENARIO" in
+        success|gzip-failure|http2-failure) ;;
+        *) exit 22 ;;
+    esac
 fi
-printf '{"status":"UP"}\n'
+case " $* " in
+    *' --write-out %{http_version} '*)
+        [[ "$FAKE_SCENARIO" != http2-failure ]] && printf '2' || printf '1.1'
+        ;;
+    *' --dump-header - '*)
+        printf 'HTTP/2 200\r\nContent-Type: application/javascript\r\n'
+        [[ "$FAKE_SCENARIO" != gzip-failure ]] && printf 'Content-Encoding: gzip\r\n'
+        printf '\r\n'
+        ;;
+    *'/actuator/health '*|*'/healthz '*) printf '{"status":"UP"}\n' ;;
+    *) printf '<script type="module" src="/assets/index-test.js"></script>\n' ;;
+esac
 CURL
 
 # Healthcheck retries are deterministic and immediate in these tests.
@@ -167,6 +181,18 @@ grep -q 'Restored application release previous' "$fixture/health-failure/output"
 grep -q 'docker image rm cosmos-backend:candidate' "$FAKE_CALLS" || fail 'failed candidate image was not removed after rollback'
 ! grep -q 'docker image rm cosmos-frontend:older' "$FAKE_CALLS" || fail 'rollback fallback image was removed'
 echo 'PASS: health failure restores and retains previous release'
+
+run_case gzip-failure gzip-failure candidate yes
+[[ "$status" != 0 ]] || fail 'release without gzip returned success'
+[[ "$(cat "$COSMOS_STATE_DIR/current")" == previous ]] || fail 'gzip failure changed current'
+[[ "$(cat "$FAKE_ACTIVE")" == previous ]] || fail 'gzip failure did not restore previous'
+echo 'PASS: missing asset gzip blocks promotion and restores the previous release'
+
+run_case http2-failure http2-failure candidate yes
+[[ "$status" != 0 ]] || fail 'release without HTTP/2 returned success'
+[[ "$(cat "$COSMOS_STATE_DIR/current")" == previous ]] || fail 'HTTP/2 failure changed current'
+[[ "$(cat "$FAKE_ACTIVE")" == previous ]] || fail 'HTTP/2 failure did not restore previous'
+echo 'PASS: missing HTTP/2 blocks promotion and restores the previous release'
 
 run_case start-failure start-failure candidate yes
 [[ "$status" == 17 ]] || fail 'candidate start error status was lost'

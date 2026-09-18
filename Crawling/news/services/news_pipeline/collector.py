@@ -16,6 +16,7 @@ from pathlib import Path
 from .common import Outbox, atomic_json, kafka_producer, make_event, utcnow
 from .investing import InvestingKospiCollector, InvestingNasdaqCollector
 from .overseas import OverseasCollector
+from .yahoo_kospi import YahooKospiCollector
 
 LOG = logging.getLogger("cosmos-news-collector")
 STOP = False
@@ -143,7 +144,10 @@ def main():
     parser.add_argument("--topic", default="news.raw")
     parser.add_argument("--node", default="node")
     parser.add_argument("--domestic-script", default=str(Path(__file__).with_name("domestic.bundle.mjs")))
-    parser.add_argument("--jobs", default="latest,investing,domestic,backfill")
+    parser.add_argument(
+        "--jobs",
+        default="latest,investing,investing-kospi,yahoo-kospi,domestic,backfill",
+    )
     parser.add_argument("--limit", type=int, default=8)
     parser.add_argument("--backfill-limit", type=int, default=100)
     parser.add_argument("--company-registry", default=str(
@@ -156,6 +160,9 @@ def main():
     parser.add_argument("--kospi-config", default=str(
         Path(__file__).resolve().parents[2] / "config/kospi100.json"
     ))
+    parser.add_argument("--yahoo-kospi-limit", type=int, default=3)
+    parser.add_argument("--yahoo-kospi-delay", type=float, default=4.5)
+    parser.add_argument("--yahoo-kospi-cooldown-seconds", type=int, default=1800)
     parser.add_argument("--once", action="store_true")
     parser.add_argument("--idle-seconds", type=int, default=30)
     args = parser.parse_args()
@@ -165,6 +172,8 @@ def main():
         parser.error("backfill-limit must be 1..500")
     if not 1 <= args.investing_limit <= 20:
         parser.error("investing-limit must be 1..20")
+    if not 1 <= args.yahoo_kospi_limit <= 20:
+        parser.error("yahoo-kospi-limit must be 1..20")
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     state_dir = Path(args.state_dir)
     state_dir.mkdir(parents=True, exist_ok=True)
@@ -197,10 +206,18 @@ def main():
         max_page=args.investing_max_page,
         stop_requested=lambda: STOP,
     )
+    yahoo_kospi = YahooKospiCollector(
+        overseas.overseas, str(state_dir / "overseas"), outbox,
+        companies_config=args.kospi_config,
+        company_extractor=overseas.company_extractor,
+        request_delay=args.yahoo_kospi_delay,
+        cooldown_seconds=args.yahoo_kospi_cooldown_seconds,
+        stop_requested=lambda: STOP,
+    )
     domestic = DomesticCollector(state_dir, outbox, args.node, args.domestic_script)
     producer = kafka_producer(args.bootstrap)
     jobs = args.jobs.split(",")
-    if any(job not in {"latest", "investing", "investing-kospi", "domestic", "backfill", "publish"} for job in jobs):
+    if any(job not in {"latest", "investing", "investing-kospi", "yahoo-kospi", "domestic", "backfill", "publish"} for job in jobs):
         parser.error("unknown job")
     status = {"started_at": utcnow(), "cycles": 0, "jobs": {}}
     try:
@@ -225,6 +242,8 @@ def main():
                         result = investing.collect(limit=args.investing_limit)
                     elif job == "investing-kospi":
                         result = investing_kospi.collect(limit=args.investing_limit)
+                    elif job == "yahoo-kospi":
+                        result = yahoo_kospi.collect(limit=args.yahoo_kospi_limit)
                     elif job == "backfill":
                         result = overseas.collect_backfill(limit=args.backfill_limit)
                     elif job == "domestic":
@@ -250,6 +269,7 @@ def main():
                     break
                 time.sleep(1)
     finally:
+        yahoo_kospi.close()
         investing_kospi.close()
         investing.close()
         outbox.close()
