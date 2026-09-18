@@ -5,7 +5,7 @@
 ## 실행 구성
 
 ```text
-국내 수집기 / Yahoo 수집기 / Investing.com Nasdaq-100 수집기
+국내 수집기 / Yahoo 수집기 / Investing.com Nasdaq-100 및 KOSPI-100 수집기
  → 영속 URL 큐 + SQLite outbox
  → Kafka news.raw (3 partitions, replication 1)
  → cosmos-news-hdfs-writer
@@ -25,6 +25,7 @@
 
 - Yahoo Finance: 최신 3일 반복 탐색과 2026-09-09 이후 초기 공백 탐색을 구분한다. 별도로 2016–2026 연도별 큐를 순환하며 과거 목록을 다시 탐색한다. 아카이브의 모든 후보 본문을 확인한 뒤 `datePublished >= 2016-01-01`이고 나스닥100 기업이 제목·본문에 명시적으로 언급된 기사만 저장한다. 매칭 결과는 `metadata.nasdaq100_companies`에 보존하며, URL이 기존 HDFS 색인에 있으면 같은 기사를 다시 다운로드하지 않는다.
 - Investing.com: Nasdaq-100 구성 종목별 뉴스 페이지를 순환한다. 세 번 중 한 번은 최신 1페이지를 재확인하고 두 번은 종목별 과거 페이지 커서를 진행한다. 상태는 `state/overseas/investing-nasdaq100.db`에 보존한다. 429 응답 시 기본 30분 동안 Investing.com 요청만 중지한다.
+- Investing.com 한국어: `investing-kospi` 작업은 고정 KOSPI-100 목록의 기업명 검색 결과에서 종목코드를 대조해 정확한 종목 뉴스 페이지를 찾는다. 최신/과거 순환 상태는 `state/overseas/investing-kospi100.db`에 별도로 보존한다. 기사 본문의 `datePublished`가 2016-01-01 이전이면 제외하고, URL은 다른 모든 수집원과 동일한 outbox에서 전역 중복 제거한다. 사이트가 마지막 페이지에서 같은 결과를 반복하면 해당 종목의 backfill을 완료 처리한다.
 - 국내 고정 원천: 한국정경신문, 메디컬투데이, 서울경제, 뉴스핌, 뉴스토마토의 공개 사이트맵/목록.
 - HelloT: 기존 설정의 기사 번호 10000–114676 범위를 이어서 탐색한다. 이 번호보다 높은 최신 기사까지 수집하는 설정은 아니다.
 - 기존 RDS에서만 관리한 동적 언론사 목록과 전체 10년 백필 상태는 회수하지 못했다. 위 고정 원천 이외의 수집 범위까지 복원했다고 해석하지 않는다.

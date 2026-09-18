@@ -14,7 +14,7 @@ import uuid
 from pathlib import Path
 
 from .common import Outbox, atomic_json, kafka_producer, make_event, utcnow
-from .investing import InvestingNasdaqCollector
+from .investing import InvestingKospiCollector, InvestingNasdaqCollector
 from .overseas import OverseasCollector
 
 LOG = logging.getLogger("cosmos-news-collector")
@@ -153,6 +153,9 @@ def main():
     parser.add_argument("--investing-delay", type=float, default=7.0)
     parser.add_argument("--investing-cooldown-seconds", type=int, default=1800)
     parser.add_argument("--investing-max-page", type=int, default=1000)
+    parser.add_argument("--kospi-config", default=str(
+        Path(__file__).resolve().parents[2] / "config/kospi100.json"
+    ))
     parser.add_argument("--once", action="store_true")
     parser.add_argument("--idle-seconds", type=int, default=30)
     args = parser.parse_args()
@@ -185,10 +188,19 @@ def main():
         max_page=args.investing_max_page,
         stop_requested=lambda: STOP,
     )
+    investing_kospi = InvestingKospiCollector(
+        overseas.overseas, str(state_dir / "overseas"), outbox,
+        companies_config=args.kospi_config,
+        company_extractor=overseas.company_extractor,
+        request_delay=args.investing_delay,
+        cooldown_seconds=args.investing_cooldown_seconds,
+        max_page=args.investing_max_page,
+        stop_requested=lambda: STOP,
+    )
     domestic = DomesticCollector(state_dir, outbox, args.node, args.domestic_script)
     producer = kafka_producer(args.bootstrap)
     jobs = args.jobs.split(",")
-    if any(job not in {"latest", "investing", "domestic", "backfill", "publish"} for job in jobs):
+    if any(job not in {"latest", "investing", "investing-kospi", "domestic", "backfill", "publish"} for job in jobs):
         parser.error("unknown job")
     status = {"started_at": utcnow(), "cycles": 0, "jobs": {}}
     try:
@@ -211,6 +223,8 @@ def main():
                         result = overseas.collect_latest(limit=args.limit)
                     elif job == "investing":
                         result = investing.collect(limit=args.investing_limit)
+                    elif job == "investing-kospi":
+                        result = investing_kospi.collect(limit=args.investing_limit)
                     elif job == "backfill":
                         result = overseas.collect_backfill(limit=args.backfill_limit)
                     elif job == "domestic":
@@ -236,6 +250,7 @@ def main():
                     break
                 time.sleep(1)
     finally:
+        investing_kospi.close()
         investing.close()
         outbox.close()
         lock.close()
