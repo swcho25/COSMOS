@@ -212,6 +212,29 @@ class CollectorTests(unittest.TestCase):
         self.assertEqual(metadata["nasdaq100_companies"][0]["ticker"], "AAPL")
         self.assertEqual(metadata["nasdaq100_companies"][0]["mention_count"], 2)
 
+    def test_yahoo_sitemap_article_accepts_krx_company_for_historical_backfill(self):
+        extractor = SimpleNamespace(extract=lambda article: {
+            "companies": [{
+                "market": "KRX", "company_id": "DART_00126380",
+                "name": "삼성전자", "ticker": "005930", "tickers": ["005930"],
+                "explicit_tickers": [], "resolved_level": "company", "n_mentions": 2,
+            }],
+            "universe_version": "krx-test", "registry_sha256": "abc",
+            "extractor_version": "dictionary-linker-v1",
+            "membership_policy": "snapshot_universe_not_historical_membership",
+        })
+        collector = overseas.OverseasCollector(
+            "unused", self.temp.name, self.outbox, company_extractor=extractor,
+            target_companies_only=True,
+        )
+        self.default_candidates = [candidate(1)]
+        result = collector.collect_latest(limit=1)
+
+        self.assertEqual(result["enqueued"], 1)
+        metadata = self.outbox.events[0]["metadata"]
+        self.assertEqual(metadata["nasdaq100_companies"], [])
+        self.assertEqual(metadata["kospi100_companies"][0]["ticker"], "005930")
+
     def test_targeted_mode_checks_full_body_then_discards_unmatched_article(self):
         extractor = SimpleNamespace(extract=lambda article: {
             "companies": ([{

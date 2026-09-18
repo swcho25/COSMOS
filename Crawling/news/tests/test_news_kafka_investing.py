@@ -86,7 +86,7 @@ class FakeExtractor:
     def extract(self, article):
         return {
             "companies": [{
-                "company_id": "KOSPI_000000", "name": "회사 0", "market": "KOSPI",
+                "company_id": "KOSPI_000000", "name": "회사 0", "market": "KRX",
                 "ticker": "000000", "tickers": ["000000"],
                 "explicit_tickers": [], "resolved_level": "company", "n_mentions": 1,
             }],

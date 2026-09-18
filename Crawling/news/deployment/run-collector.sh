@@ -9,7 +9,7 @@ exec "${script_dir}/run-news-python.sh" -m services.news_pipeline.collector \
   --domestic-script "${NEWS_APP_ROOT}/services/news_pipeline/domestic.bundle.mjs" \
   --bootstrap "${KAFKA_BOOTSTRAP_SERVERS:-127.0.0.1:9092}" \
   --topic "${NEWS_TOPIC:-news.raw}" \
-  --jobs "${NEWS_JOBS:-latest,investing,investing-kospi,domestic,backfill}" \
+  --jobs "${NEWS_JOBS:-latest,investing,investing-kospi,yahoo-kospi,domestic,backfill}" \
   --limit "${NEWS_LIMIT:-8}" \
   --backfill-limit "${NEWS_BACKFILL_LIMIT:-100}" \
   --company-registry "${NEWS_COMPANY_REGISTRY:-${NEWS_APP_ROOT}/data/company_extraction/registry.json}" \
@@ -17,4 +17,7 @@ exec "${script_dir}/run-news-python.sh" -m services.news_pipeline.collector \
   --investing-limit "${INVESTING_LIMIT:-3}" \
   --investing-delay "${INVESTING_DELAY:-7}" \
   --investing-cooldown-seconds "${INVESTING_COOLDOWN_SECONDS:-1800}" \
-  --investing-max-page "${INVESTING_MAX_PAGE:-1000}" "$@"
+  --investing-max-page "${INVESTING_MAX_PAGE:-1000}" \
+  --yahoo-kospi-limit "${YAHOO_KOSPI_LIMIT:-3}" \
+  --yahoo-kospi-delay "${YAHOO_KOSPI_DELAY:-4.5}" \
+  --yahoo-kospi-cooldown-seconds "${YAHOO_KOSPI_COOLDOWN_SECONDS:-1800}" "$@"
