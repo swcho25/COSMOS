@@ -35,7 +35,7 @@ export default function Header() {
   return (
     <header className="hd">
       <NavLink to="/" className="logo" aria-label="COSMOS 홈">
-        <img src="/cosmos-logo.png" alt="" />
+        <img src="/cosmos-logo.png" alt="" width={167} height={128} />
         <span>COSMOS</span>
       </NavLink>
       <nav aria-label="주요 메뉴">

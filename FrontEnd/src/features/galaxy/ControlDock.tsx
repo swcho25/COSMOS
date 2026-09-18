@@ -145,7 +145,7 @@ export default function ControlDock() {
 
               <div className="dock-row dock-minscore">
                 <span className="lab">{DOCK_UI.minScore}</span>
-                <input type="range" min={0} max={90} step={5} value={minScore} onChange={(e) => setMinScore(Number(e.target.value))} onPointerUp={releaseFocus} />
+                <input type="range" min={0} max={90} step={5} value={minScore} onChange={(e) => setMinScore(Number(e.target.value))} onPointerUp={releaseFocus} aria-label={DOCK_UI.minScore} />
                 <span className="meta num">{minScore}</span>
               </div>
 
