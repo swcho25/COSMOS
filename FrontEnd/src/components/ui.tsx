@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
 import type { ImpactDirection, Market, RelationshipType, Sentiment } from "@/api/types";
 import { IMPACT_META, RELATIONSHIP_ORDER, SENTIMENT_META, SENTIMENT_PENDING, UNCLASSIFIED_INDUSTRY, industryColor, relationshipMeta } from "@/lib/meta";
 import { initials } from "@/lib/format";
@@ -208,6 +208,26 @@ export function Kpi({ label, value, unit, tone, children, onClick }: { label: st
     );
   }
   return <div className="card kpi">{body}</div>;
+}
+
+/* ------------------------------ 다이얼로그 포커스 순환 ------------------------------ */
+/**
+ * 다이얼로그(모바일 서랍·바텀시트) 안에서 Tab/Shift+Tab 을 첫·마지막 초점 요소 사이에서 순환시킨다 — 스크림 뒤의 HUD 로 포커스가 새면
+ * 래퍼의 ESC 핸들러가 닿지 않아 닫을 길이 없어진다. 컨테이너의 keydown 핸들러에서 부른다
+ */
+export function cycleTabFocus(e: ReactKeyboardEvent<HTMLElement>, container: HTMLElement | null) {
+  if (e.key !== "Tab" || !container) return;
+  const items = container.querySelectorAll<HTMLElement>('button:not([disabled]), a[href], input:not([disabled]), [tabindex]:not([tabindex="-1"])');
+  if (items.length === 0) return;
+  const first = items[0];
+  const last = items[items.length - 1];
+  if (e.shiftKey && document.activeElement === first) {
+    e.preventDefault();
+    last.focus();
+  } else if (!e.shiftKey && document.activeElement === last) {
+    e.preventDefault();
+    first.focus();
+  }
 }
 
 /* ------------------------------ 외부 클릭 감지 ------------------------------ */

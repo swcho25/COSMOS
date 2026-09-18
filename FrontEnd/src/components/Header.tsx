@@ -6,7 +6,7 @@ import { useScraps, useWatchlist } from "@/lib/queries";
 import { useNarrowViewport } from "@/lib/viewport";
 import { useSession } from "@/store/session";
 import { useUi } from "@/store/ui";
-import { Icon, useClickOutside } from "./ui";
+import { cycleTabFocus, Icon, useClickOutside } from "./ui";
 
 const NAV = [
   { to: "/", label: "전체 은하", end: true },
@@ -175,18 +175,7 @@ function MobileMenu({ status, user, pathname, nWatch, nScrap, openAuth, toggleHe
       close();
       return;
     }
-    if (e.key !== "Tab") return;
-    const focusables = e.currentTarget.querySelectorAll<HTMLElement>("button:not([disabled]), a[href]");
-    if (focusables.length === 0) return;
-    const first = focusables[0];
-    const last = focusables[focusables.length - 1];
-    if (e.shiftKey && document.activeElement === first) {
-      e.preventDefault();
-      last.focus();
-    } else if (!e.shiftKey && document.activeElement === last) {
-      e.preventDefault();
-      first.focus();
-    }
+    cycleTabFocus(e, e.currentTarget);
   }
 
   return (
