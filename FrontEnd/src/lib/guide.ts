@@ -162,6 +162,8 @@ export const PREVIEW_UI = {
   warp: "관계망 보기",
   warpTitle: "이 기업을 중심으로 관계망을 다시 배치합니다 (행성 더블클릭과 같음)",
   steps: "연결 단계",
+  stepsCollapse: "연결 단계 접기 — 아래 뉴스·주가·게시판을 더 넓게 봅니다",
+  stepsExpand: "연결 단계 펼치기",
   hops: (h1: number, h2: number) => `1홉 ${h1} · 2홉 ${h2}`,
   noLinks: "지금 필터 안에서는 이어진 기업이 없습니다.",
   pickTitle: "이 기업을 미리보기로",
