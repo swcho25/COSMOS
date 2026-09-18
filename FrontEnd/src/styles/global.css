@@ -692,11 +692,14 @@ button:disabled {
     opacity: 1;
   }
 }
-/* 서랍 안의 nav 는 헤더 탭(.hd nav)의 가로 배치를 물려받지 않는다 */
+/* 서랍 안의 nav 는 헤더 탭(.hd nav)의 가로 배치를 물려받지 않는다 — 특히 justify-self: center 는 Chromium 이 블록 요소에도 적용해
+   nav 가 내용 폭(≈107px)으로 줄어 가운데에 몰렸다(2026-09-18). 늘려서 서랍 폭을 다 쓴다 */
 .nav-drawer .drawer-group {
   display: grid;
   gap: 2px;
   padding: 4px 0;
+  width: 100%;
+  justify-self: stretch;
 }
 .nav-drawer .divider {
   margin-top: 4px;
@@ -723,10 +726,11 @@ button:disabled {
   background: rgba(255, 255, 255, 0.05);
   color: var(--text);
 }
+/* 선택된 탭은 배경색으로만 — 헤더 탭의 밑줄(.hd nav a.on 의 box-shadow)이 여기까지 오지 않게 명시적으로 지운다 */
 .nav-drawer .item.on {
   color: var(--text);
   background: rgba(109, 140, 255, 0.12);
-  box-shadow: inset 3px 0 0 0 var(--primary);
+  box-shadow: none;
 }
 .nav-drawer .item.dim {
   color: var(--text-3);
