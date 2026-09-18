@@ -1,4 +1,4 @@
-import { PLANET_RADIUS_K } from "@/three/toon";
+import { PLANET_RADIUS_K } from "@/three/palette";
 import type { SceneModel } from "./graph";
 
 /**

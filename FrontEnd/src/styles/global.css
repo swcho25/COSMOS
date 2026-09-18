@@ -412,6 +412,15 @@ button:disabled {
 .empty.error-notice {
   color: var(--neg-fg);
 }
+/* App.tsx 의 <Suspense> 폴백 — 지연 로드한 페이지 청크가 오는 동안 헤더 아래 중앙에 한 줄 */
+.route-fallback {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: calc(100vh - var(--header-h));
+  color: var(--text-4);
+  font-size: 13px;
+}
 .skeleton {
   background: linear-gradient(90deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.09), rgba(255, 255, 255, 0.04));
   background-size: 200% 100%;

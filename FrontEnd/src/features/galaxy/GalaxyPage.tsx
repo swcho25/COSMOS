@@ -1,14 +1,14 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ApiError } from "@/api";
 import { useSearchParams } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
-import Scene from "@/three/Scene";
 import { capScale, layoutGalaxy, layoutMyGalaxy, layoutSystemCached, type CompanyLookup } from "@/lib/graph";
 import { fmtDateTime } from "@/lib/format";
 import { companyGraphQuery, useCompanyGraph, useIndustries, useLatestGraph, useSessionKey, useToggleWatch, useWatchlist } from "@/lib/queries";
 import { useGalaxy, type GalaxyScope } from "@/store/galaxy";
 import { useSession } from "@/store/session";
 import { useUi } from "@/store/ui";
+import { useSceneReady } from "@/three/sceneReady";
 import { Icon } from "@/components/ui";
 import CameraPresets from "./CameraPresets";
 import CompanyPanel from "./CompanyPanel";
@@ -22,8 +22,12 @@ import RelationshipPanel from "./RelationshipPanel";
 import SceneTip, { type PointerPos } from "./SceneTip";
 import SearchPalette from "./SearchPalette";
 import SurpriseRail from "./SurpriseRail";
-import Tour from "./Tour";
+import Tour, { isTourDone } from "./Tour";
 import "./galaxy.css";
+
+// 씬(three 청크 1.2MB)은 HUD 뒤에 받는다 — 정적으로 묶었을 때는 헤더·카드의 첫 페인트가 three 평가가 끝날 때까지 밀렸다 (2026-09-18 Lighthouse LCP 1.8s).
+// 청크 자체는 vite.config 의 preloadSceneChunks 가 HTML 에서 미리 받게 하므로 다운로드가 늦어지지는 않는다
+const Scene = lazy(() => import("@/three/Scene"));
 
 /** 호버 200ms 프리페치 — 워프 커밋(0.6s) 전에 목적지 배치가 준비되도록 미리 받아 둔다.
     hoveredId 구독을 이 조각에 가둬 호버마다 HUD 전체가 리렌더되지 않게 한다 */
@@ -100,6 +104,8 @@ export default function GalaxyPage() {
 
   /* 첫 방문 투어 자동 시작 — 딥링크(?company=)나 내 은하(?scope=mine)로 들어온 진입은 그 화면이 먼저다. 마운트 시점에 한 번 정한다 */
   const [autoTour] = useState(() => !params.get("company") && params.get("scope") !== "mine");
+  /** 첫 방문 투어가 자동으로 뜰 조건 — Tour.tsx 의 자동 시작 조건과 같다. 그 인트로 딤(72% 어둡게)이 씬을 덮으므로 워밍업 오버레이를 따로 붙잡을 필요가 없다 */
+  const [tourWillCover] = useState(() => autoTour && !isTourDone());
   const helpOpen = useUi((s) => s.helpOpen);
 
   /* URL ?company= 와 포커스 동기화 — 진입 시 딥링크를 먼저 소비한 뒤에만 URL 을 상태에 맞춘다 */
@@ -245,6 +251,12 @@ export default function GalaxyPage() {
   const stale = nextRefreshAt ? now > Date.parse(nextRefreshAt) : false;
   const scopeLoading = mineScope ? universe.isLoading || watchlist.isLoading : latest.isLoading;
   const loading = scopeLoading || (Boolean(focusId) && focusGraph.isLoading && !systemModel);
+  // 모델은 왔지만 씬이 첫 프레임을 매끄럽게 낼 준비(셰이더 컴파일·텍스처 업로드 — Scene.tsx Director 의 워밍업)가 안 됐으면 로딩 화면을 조금 더 붙잡는다.
+  // 예전에는 데이터 도착 즉시 걷혀 그 컴파일 멈춤(120~370ms)이 인트로 비행 첫 장면의 끊김으로 그대로 보였다
+  // 첫 방문에는 투어 인트로가 모델 도착과 함께 떠서 그 뒤를 덮는다 — 이때 오버레이까지 붙잡으면 인트로 문구(이 화면의 LCP 요소)만 늦어진다
+  const sceneReady = useSceneReady();
+  const warming = Boolean(galaxyModel) && !sceneReady && !(tourWillCover && scope === "all" && !focusId);
+  const showLoading = loading || warming;
   const scopeError = mineScope ? universe.isError : latest.isError;
   // 공개된 스냅샷이 아직 없는 것(404 GRAPH_SNAPSHOT_NOT_FOUND)은 장애가 아니다 — 분석 결과가 게시되기 전 상태를 그대로 알린다
   const scopeErr = mineScope ? universe.error : latest.error;
@@ -266,7 +278,9 @@ export default function GalaxyPage() {
       }}
     >
       <div className="stage">
-        <Scene galaxy={galaxyModel} system={systemModel} next={nextModel} />
+        <Suspense fallback={null}>
+          <Scene galaxy={galaxyModel} system={systemModel} next={nextModel} />
+        </Suspense>
       </div>
       <HoverPrefetch focusId={focusId} />
       {/* 빔·기업 호버 툴팁 — 포인터를 따라가는 DOM, 클릭은 통과시킨다 */}
@@ -276,14 +290,13 @@ export default function GalaxyPage() {
       <HelpHotkey />
       {helpOpen && <HelpHub />}
 
-      {loading && (
-        <div className="stage-loading" aria-live="polite">
-          <span className="kick">news × relationship graph</span>
-          <b>COSMOS</b>
-          <i />
-          <span>{focusId ? "기업 관계망을 불러오는 중" : mineScope ? "내 은하를 불러오는 중" : "최신 스냅샷을 불러오는 중"}</span>
-        </div>
-      )}
+      {/* 로딩 — 언마운트하지 않고 .off 로 접어 0.35s 페이드아웃한다: index.html 의 정적 로더 → 이 오버레이 → 씬 순으로 끊김 없이 이어진다 */}
+      <div className={`stage-loading${showLoading ? "" : " off"}`} aria-live="polite" aria-hidden={!showLoading}>
+        <span className="kick">news × relationship graph</span>
+        <b>COSMOS</b>
+        <i />
+        <span>{!showLoading ? "" : focusId ? "기업 관계망을 불러오는 중" : mineScope ? "내 은하를 불러오는 중" : "최신 스냅샷을 불러오는 중"}</span>
+      </div>
       {scopeError && (
         <div className="stage-loading" style={{ pointerEvents: "auto" }}>
           <b>{noSnapshot ? "아직 공개된 관계 그래프가 없습니다" : "연결 실패"}</b>
