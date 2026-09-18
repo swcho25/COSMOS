@@ -170,29 +170,35 @@ class OverseasCollector:
         })
 
     @staticmethod
-    def _nasdaq_companies(extracted: dict | None) -> list[dict]:
+    def _market_companies(extracted: dict | None, market: str) -> list[dict]:
         return [company for company in (extracted or {}).get("companies", [])
-                if company["market"] == "NASDAQ"]
+                if company["market"] == market]
+
+    @staticmethod
+    def _company_rows(companies: list[dict]) -> list[dict]:
+        return [{
+            "company_id": company["company_id"],
+            "name": company["name"],
+            "ticker": company["ticker"],
+            "tickers": company["tickers"],
+            "explicit_tickers": company["explicit_tickers"],
+            "resolved_level": company["resolved_level"],
+            "mention_count": company["n_mentions"],
+        } for company in companies]
 
     def _company_metadata(self, article) -> dict:
-        """Attach explicit Nasdaq-100 evidence to a Yahoo article."""
+        """Attach explicit Nasdaq-100 and KOSPI-100 evidence to a Yahoo article."""
         if self.company_extractor is None:
             return {}
         extracted = self._extract_companies(
             news_id=article.url, title=article.title, body=article.content,
             published_at=article.published_at,
         )
-        companies = self._nasdaq_companies(extracted)
+        nasdaq = self._market_companies(extracted, "NASDAQ")
+        kospi = self._market_companies(extracted, "KRX")
         return {
-            "nasdaq100_companies": [{
-                "company_id": company["company_id"],
-                "name": company["name"],
-                "ticker": company["ticker"],
-                "tickers": company["tickers"],
-                "explicit_tickers": company["explicit_tickers"],
-                "resolved_level": company["resolved_level"],
-                "mention_count": company["n_mentions"],
-            } for company in companies],
+            "nasdaq100_companies": self._company_rows(nasdaq),
+            "kospi100_companies": self._company_rows(kospi),
             "universe_version": extracted["universe_version"],
             "registry_sha256": extracted["registry_sha256"],
             "company_extractor_version": extracted["extractor_version"],
@@ -277,7 +283,8 @@ class OverseasCollector:
                         continue
                     metadata = self._company_metadata(article)
                     if (self.target_companies_only
-                            and not metadata.get("nasdaq100_companies")):
+                            and not metadata.get("nasdaq100_companies")
+                            and not metadata.get("kospi100_companies")):
                         queue.mark_done(candidate.url)
                         result["irrelevant"] += 1
                         continue
