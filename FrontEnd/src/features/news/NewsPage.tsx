@@ -29,6 +29,14 @@ export default function NewsPage() {
   const [industryId, setIndustryId] = useState<string | null>(null);
   const [sentiment, setSentiment] = useState<Sentiment | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  /* 목록에서 뉴스를 고르면 — 1100px 이하(목록 아래에 분석이 세로로 쌓이는 레이아웃)에서는 선택 뉴스 카드(.map-card)로 바로 내려간다.
+     넓은 화면은 두 컬럼이 나란히 보여 스크롤할 것이 없다. 스크롤 여백은 news.css 의 scroll-margin-top(헤더 높이) */
+  const pickNews = (id: string) => {
+    setSelectedId(id);
+    if (!window.matchMedia("(max-width: 1100px)").matches) return;
+    // .map-card 는 늘 그려져 있어 렌더를 기다릴 필요가 없다 (rAF 에 미루면 숨겨진 탭에서는 실행되지 않는다)
+    document.querySelector(".map-card")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
   const [keywordInput, setKeywordInput] = useState("");
   const [keyword, setKeyword] = useState("");
   const [kpiModal, setKpiModal] = useState<KpiEvidenceKind | null>(null);
@@ -210,7 +218,7 @@ export default function NewsPage() {
             {!feed.isLoading && feed.isError && !items.length && <ErrorNotice message="뉴스를 불러오지 못했습니다." onRetry={() => feed.refetch()} />}
             {!feed.isLoading && !feed.isError && !items.length && <Empty>조건에 맞는 뉴스가 없습니다.</Empty>}
             {items.map((n) => (
-              <article key={n.newsId} className={`news-card ${n.newsId === activeId ? "on" : ""}`} onClick={() => setSelectedId(n.newsId)} role="button" tabIndex={0} onKeyDown={(e) => e.key === "Enter" && setSelectedId(n.newsId)}>
+              <article key={n.newsId} className={`news-card ${n.newsId === activeId ? "on" : ""}`} onClick={() => pickNews(n.newsId)} role="button" tabIndex={0} onKeyDown={(e) => e.key === "Enter" && pickNews(n.newsId)}>
                 <div className="row between">
                   <div className="row" style={{ gap: 8 }}>
                     <SentimentBadge value={n.sentiment} />

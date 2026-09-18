@@ -104,6 +104,8 @@
 .map-card {
   margin-top: 14px;
   overflow: hidden;
+  /* 목록에서 뉴스를 고르면 여기로 스크롤한다(NewsPage.pickNews) — 고정 헤더 아래에 카드 머리가 오도록 */
+  scroll-margin-top: calc(var(--header-h) + 12px);
 }
 .map-head {
   padding: 18px 20px 0;
@@ -165,7 +167,8 @@
  */
 .rel2d-group {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  /* 320px 폰에서도 열 하나가 컨테이너보다 넓어지지 않게 */
+  grid-template-columns: repeat(auto-fill, minmax(min(260px, 100%), 1fr));
   column-gap: 20px;
 }
 .rel2d-group + .rel2d-group {
@@ -380,12 +383,43 @@
   }
 }
 @media (max-width: 1100px) {
+  /* 한 컬럼. 1fr 의 자동 최소 폭은 내용의 min-content 라 — 선택 뉴스 머리의 버튼 세 개(줄바꿈 없음)가 컬럼을 화면보다 넓게 밀어
+     모바일에서 페이지가 가로로 스크롤됐다(2026-09-18). minmax(0, 1fr) + min-width 0 으로 컬럼을 화면 폭에 묶는다 */
   .news-page {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .news-rail,
+  .news-analysis-col,
+  .map-card {
+    min-width: 0;
   }
   .news-rail {
     position: static;
     max-height: none;
+  }
+  /* 목록 카드 머리줄 — 매체·시각이 길면 말줄임 (한 줄 유지) */
+  .news-rail .news-card .meta {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  /* 선택 뉴스 머리 — 제목·매체·요약이 전체 폭을 쓰고, 스크랩 · 산업·관계 분포 · 원문 보기 버튼은 그 아래 한 줄(모자라면 줄바꿈).
+     한 줄에 두면 버튼 줄이 먼저 자리를 차지해 제목이 60px 폭에서 글자 단위로 꺾였다 */
+  .map-head {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+    padding: 16px 16px 0;
+  }
+  .map-head > .row {
+    flex-wrap: wrap;
+  }
+  .map-head .ttl {
+    font-size: 16px;
+  }
+  .map-stage {
+    padding: 12px;
   }
   .news-rail .list {
     max-height: 60vh;
@@ -405,5 +439,20 @@
   }
   .rank-list .sc b {
     font-size: 15px;
+  }
+}
+/* 폰 폭(600px 이하) — 영향도 목록 한 줄에서 막대·점수 칸을 더 줄여 기업명("SK하이닉스" 등 5~6자)이 잘리지 않게 한다 */
+@media (max-width: 600px) {
+  .rank-bar-wrap {
+    width: 56px;
+  }
+  .rank-list .sc {
+    width: 44px;
+  }
+  .rank-list .sc b {
+    font-size: 14px;
+  }
+  .rank-row {
+    gap: 8px;
   }
 }
