@@ -9,6 +9,8 @@ import { useGalaxy } from "@/store/galaxy";
 interface Props {
   /** 기업 중심 뷰 모델 (중심이 focusId 인 것) */
   model: SceneModel | null;
+  /** 모바일 상단 묶음(.hud-top-focus)의 한 줄로 들어갈 때 — 자리를 잡는 .hud 없이 스트립만, 가로 스크롤 */
+  inline?: boolean;
 }
 
 /**
@@ -16,7 +18,7 @@ interface Props {
  * 칩을 누르면 그 역할의 이웃·빔만 남고(roleFilter), 다시 누르거나 ESC 로 복원된다.
  * 개수는 필터·예산과 무관한 전체 incident 기준이고, 유형 필터에서 꺼진 역할은 흐리게 표시한다.
  */
-export default function HopSummary({ model }: Props) {
+export default function HopSummary({ model, inline = false }: Props) {
   const focusId = useGalaxy((s) => s.focusId);
   const phase = useGalaxy((s) => s.phase);
   const roleFilter = useGalaxy((s) => s.roleFilter);
@@ -30,28 +32,32 @@ export default function HopSummary({ model }: Props) {
   const total = counts.reduce((s, c) => s + c.count, 0);
   const avg = counts.reduce((s, c) => s + c.avg * c.count, 0) / Math.max(1, total);
 
+  const strip = (
+    <div className={`hop-strip${inline ? " hop-strip-inline" : ""}`} aria-label={inline ? "1홉 관계 요약" : undefined}>
+      {counts.map((c) => {
+        const type = ROLE_META[c.role].type;
+        const off = !activeTypes.has(type);
+        return (
+          <RoleBadge
+            key={c.role}
+            role={c.role}
+            count={c.count}
+            on={roleFilter === c.role}
+            dimmed={off}
+            title={off ? `${relationshipMeta(type).label} 유형이 필터에서 꺼져 있습니다` : `${ROLE_META[c.role].label} ${c.count}곳 · 평균 ${fmtScore(Math.round(c.avg))}점 · 누르면 이 역할만 남깁니다`}
+            onClick={() => setRoleFilter(c.role)}
+          />
+        );
+      })}
+      <span className="hop-total meta num">
+        전체 {total} · 평균 {fmtScore(Math.round(avg))}점
+      </span>
+    </div>
+  );
+  if (inline) return strip;
   return (
     <div className="hud hud-hop" aria-label="1홉 관계 요약">
-      <div className="hop-strip">
-        {counts.map((c) => {
-          const type = ROLE_META[c.role].type;
-          const off = !activeTypes.has(type);
-          return (
-            <RoleBadge
-              key={c.role}
-              role={c.role}
-              count={c.count}
-              on={roleFilter === c.role}
-              dimmed={off}
-              title={off ? `${relationshipMeta(type).label} 유형이 필터에서 꺼져 있습니다` : `${ROLE_META[c.role].label} ${c.count}곳 · 평균 ${fmtScore(Math.round(c.avg))}점 · 누르면 이 역할만 남깁니다`}
-              onClick={() => setRoleFilter(c.role)}
-            />
-          );
-        })}
-        <span className="hop-total meta num">
-          전체 {total} · 평균 {fmtScore(Math.round(avg))}점
-        </span>
-      </div>
+      {strip}
     </div>
   );
 }

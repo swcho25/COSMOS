@@ -5,6 +5,9 @@ import { RELATIONSHIP_ORDER } from "@/lib/meta";
 import type { RoleKey } from "@/lib/roles";
 import { isNarrowViewport } from "@/lib/viewport";
 
+/** 모바일에서 행성을 이만큼 누르면 관계망으로 워프한다 — HoldRing 의 채움 애니메이션 길이와 같은 값 */
+export const HOLD_MS = 550;
+
 export type PanelTab = "news" | "price" | "board";
 /** 은하 범위 — "all" 전체 우주, "mine" 관심 기업(+1홉)만 보는 개인 은하 */
 export type GalaxyScope = "all" | "mine";
@@ -20,6 +23,8 @@ interface GalaxyState {
 
   hoveredId: string | null;
   hoveredEdgeId: string | null;
+  /** 모바일 길게 누르기(관계망으로) 진행 표시 — 누른 자리(뷰포트 px)와 기업. CompanyNodes 가 세우고, 손을 떼거나 끌기 시작하면 지운다 */
+  hold: { id: string; x: number; y: number } | null;
   selectedEdgeId: string | null;
   /**
    * 미리보기로 고른 기업 (은하 뷰에서 행성 클릭). 우측 패널에 뉴스·연결 단계가 뜨고, 다른 기업을 호버하면 여기서 가는 경로가 강조된다.
@@ -80,6 +85,7 @@ interface GalaxyState {
   completeWarp(): void;
   backToGalaxy(): void;
   setHovered(id: string | null): void;
+  setHold(h: { id: string; x: number; y: number } | null): void;
   setHoveredEdge(id: string | null): void;
   selectEdge(id: string | null): void;
   clearSelection(): void;
@@ -120,6 +126,7 @@ export const useGalaxy = create<GalaxyState>((set, get) => ({
 
   hoveredId: null,
   hoveredEdgeId: null,
+  hold: null,
   selectedEdgeId: null,
   selectedId: null,
   roleFilter: null,
@@ -186,6 +193,9 @@ export const useGalaxy = create<GalaxyState>((set, get) => ({
 
   setHovered(id) {
     if (get().hoveredId !== id) set({ hoveredId: id });
+  },
+  setHold(h) {
+    set({ hold: h });
   },
   setHoveredEdge(id) {
     if (get().hoveredEdgeId !== id) set({ hoveredEdgeId: id });

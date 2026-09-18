@@ -969,14 +969,43 @@
   .hud-status {
     display: none;
   }
-  .hud-crumb {
-    left: 16px;
-    top: 74px;
+  /* 기업 중심 뷰 상단 묶음(.hud-top-focus, GalaxyPage 가 900px 이하에서 그린다) — 은하 뷰의 두 줄과 같은 여백·간격.
+     첫 줄: [← 전체 은하 › 기업명](남는 폭, 이름은 말줄임) [🔍 44]. 둘째 줄: 시점 · Special Link. 셋째 줄: 1홉 역할 칩 가로 스크롤 */
+  .crumb-main {
+    flex: 1 1 auto;
+    min-width: 0;
+    height: 44px;
+    padding: 0 14px;
   }
-  .hud-hop {
-    left: 16px;
-    top: 126px;
-    max-width: calc(100vw - 32px);
+  .crumb-main button {
+    flex: none;
+    white-space: nowrap;
+  }
+  .crumb-main b {
+    flex: 1 1 auto;
+    min-width: 0;
+    max-width: none;
+  }
+  .crumb-search {
+    flex: none;
+    width: 44px;
+    height: 44px;
+    padding: 0;
+    justify-content: center;
+    color: var(--text-2);
+  }
+  .hop-strip-inline {
+    width: 100%;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .hop-strip-inline::-webkit-scrollbar {
+    display: none;
+  }
+  .hop-strip-inline .role-badge,
+  .hop-strip-inline .hop-total {
+    flex: none;
   }
   .scene-tip {
     display: none;
@@ -1440,10 +1469,36 @@
   top: 130px;
 }
 
-@media (max-width: 900px) {
-  /* 모바일에서는 1홉 요약 스트립이 top 126px 로 내려오므로 Special Link 꼬리표도 그 아래로 */
-  .galaxy:has(.hud-hop) .hud-surprise {
-    top: 172px;
+/* 길게 누르기 진행 원(HoldRing) — 손가락 자리(뷰포트 px)에 56px 원. 트랙 위로 채움 선이 HOLD_MS 동안 한 바퀴 돈다 */
+.hold-ring {
+  position: fixed;
+  z-index: 30;
+  width: 56px;
+  height: 56px;
+  margin: -28px 0 0 -28px;
+  pointer-events: none;
+}
+.hold-ring svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  transform: rotate(-90deg);
+}
+.hold-ring .track {
+  fill: rgba(109, 140, 255, 0.14);
+  stroke: rgba(255, 255, 255, 0.2);
+  stroke-width: 3;
+}
+.hold-ring .fill {
+  fill: none;
+  stroke: var(--primary-2);
+  stroke-width: 3;
+  stroke-linecap: round;
+  animation: hold-fill var(--hold-ms, 550ms) linear forwards;
+}
+@keyframes hold-fill {
+  to {
+    stroke-dashoffset: 0;
   }
 }
 

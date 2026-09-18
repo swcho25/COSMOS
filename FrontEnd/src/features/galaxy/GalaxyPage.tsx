@@ -15,6 +15,7 @@ import CameraPresets from "./CameraPresets";
 import CompanyPanel from "./CompanyPanel";
 import ControlDock from "./ControlDock";
 import HelpHub, { HelpHotkey } from "./HelpHub";
+import HoldRing from "./HoldRing";
 import HopSummary from "./HopSummary";
 import IndustryPicker from "./IndustryPicker";
 import { PanelFrame } from "./MobileSheet";
@@ -286,8 +287,8 @@ export default function GalaxyPage() {
       }}
     />
   );
-  /* 은하 뷰 모바일(내 은하 제외)에서는 Special Link 꼬리표를 상단 둘째 줄 안에 그리므로 단독 레일은 그리지 않는다 */
-  const surpriseInline = narrow && !focusId && !mineScope;
+  /* 모바일에서는 Special Link 꼬리표를 상단 묶음의 둘째 줄 안에 그린다(은하 뷰 · 기업 중심 뷰) — 내 은하의 은하 뷰만 관심 기업 막대가 그 줄을 쓰므로 단독 레일로 남긴다 */
+  const surpriseInline = narrow && (focusId !== null || !mineScope);
 
   return (
     <div
@@ -305,6 +306,8 @@ export default function GalaxyPage() {
       <HoverPrefetch focusId={focusId} />
       {/* 빔·기업 호버 툴팁 — 포인터를 따라가는 DOM, 클릭은 통과시킨다 */}
       <SceneTip model={focusId ? systemModel : galaxyModel} pointer={pointer} />
+      {/* 모바일 길게 누르기 진행 원 — 손가락 자리에 차오르고 다 차면 관계망으로 */}
+      <HoldRing />
       {/* 첫 방문 4단 스포트라이트 투어 (은하 뷰 전용) 와 `?` 도움말 허브 — 문구는 둘 다 lib/guide 한 곳 */}
       <Tour model={galaxyModel} autoStart={autoTour} />
       <HelpHotkey />
@@ -384,8 +387,8 @@ export default function GalaxyPage() {
       </div>
       )}
 
-      {/* 좌상단: 기업 중심 뷰 브레드크럼 */}
-      {focusId && (
+      {/* 좌상단: 기업 중심 뷰 브레드크럼 (넓은 화면) */}
+      {focusId && !narrow && (
         <div className="hud hud-crumb">
           <div className="crumb">
             <button type="button" onClick={() => warpTo(null)} title="은하로 돌아가기 (ESC)">
@@ -401,8 +404,30 @@ export default function GalaxyPage() {
           <CameraPresets />
         </div>
       )}
-      {/* 브레드크럼 아래: 중심 기업의 1홉 역할 요약 (칩을 누르면 그 역할만 남긴다) */}
-      <HopSummary model={systemModel} />
+      {/* 모바일 기업 중심 뷰 — 은하 뷰의 두 줄과 같은 결로 묶는다: [← 전체 은하 › 기업명 ···· 🔍] / [시점 · Special Link] / [1홉 역할 칩(가로 스크롤)] */}
+      {focusId && narrow && (
+        <div className="hud hud-top hud-top-focus">
+          <div className="hud-top-line crumb-line">
+            <div className="crumb crumb-main">
+              <button type="button" onClick={() => warpTo(null)} title="은하로 돌아가기">
+                <Icon.Back /> {mineScope ? "내 은하" : "전체 은하"}
+              </button>
+              <span aria-hidden="true">›</span>
+              <b>{focusName}</b>
+            </div>
+            <button type="button" className="crumb crumb-search" onClick={() => setSearchOpen(true)} aria-label="다른 기업 검색" title="다른 기업 검색">
+              <Icon.Search />
+            </button>
+          </div>
+          <div className="hud-top-line">
+            <CameraPresets />
+            <SurpriseRail model={systemModel} onPickCompany={pickCompany} inline />
+          </div>
+          <HopSummary model={systemModel} inline />
+        </div>
+      )}
+      {/* 브레드크럼 아래: 중심 기업의 1홉 역할 요약 (칩을 누르면 그 역할만 남긴다) — 넓은 화면 */}
+      {!(focusId && narrow) && <HopSummary model={systemModel} />}
       {/* 상단 중앙: 최단 경로 스트립 — 기업 중심 뷰는 중심 기준, 은하 뷰는 미리보기로 고른 기업 기준 (자기 모델로 재계산, Canvas 와 결합도 0) */}
       <PathStrip model={focusId ? systemModel : galaxyModel} />
 
