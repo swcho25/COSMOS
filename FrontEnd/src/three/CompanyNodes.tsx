@@ -6,7 +6,8 @@ import { initials } from "@/lib/format";
 import { logoUrl } from "@/lib/logos";
 import { hashString } from "@/lib/rng";
 import { ROLE_META, ROLE_ORDER, roleColor, type RoleKey } from "@/lib/roles";
-import { useGalaxy } from "@/store/galaxy";
+import { useNarrowViewport } from "@/lib/viewport";
+import { HOLD_MS, useGalaxy } from "@/store/galaxy";
 import { altitudeState } from "./altitude";
 import { touch } from "./bufferUtil";
 import { cameraBusy } from "./cameraState";
@@ -71,7 +72,8 @@ const DRAG_SLOP = 6;
  * id 는 포인터를 누른 후보 노드(아직 드래그는 아니다), active 는 슬롭을 넘겨 실제로 끄는 중이다.
  * live 는 그 노드가 속한 버퍼 — 씬이 둘(은하·미니) 겹쳐 있어도 자기 것이 아닌 드래그에는 반응하지 않게 하는 주인 표식이다.
  */
-const DRAG = { id: null as string | null, index: -1, x: 0, y: 0, active: false, cursor: "", live: null as LiveTransform | null };
+/** touchLike: 이 입력이 터치이거나 좁은 화면(모바일 배치)에서 왔는지 — 뒤따르는 click 의 "같은 행성 재탭 = 더블클릭" 판정이 본다 */
+const DRAG = { id: null as string | null, index: -1, x: 0, y: 0, active: false, cursor: "", live: null as LiveTransform | null, touchLike: false };
 /**
  * 드래그 관성 — 행성은 커서를 그대로 따라가지 않는다. 커서 이동의 일부(DRAG_SENS)만 목표점으로 삼고,
  * 스프링(약한 언더댐핑)으로 목표를 향해 미끄러지며, 손을 뗀 뒤에도 남은 관성으로 안착한다.
@@ -90,8 +92,9 @@ const HALO_SYNC = new WeakMap<object, { version: number }>();
  * 그 사이에 들어온 pointermove 한 번이 카메라를 돌려 버린다. 행성을 누른 동안 카메라가 멈추는 건 의도한 동작이다.
  * (렌더 중에 만들어지는 이벤트 핸들러가 모듈 변수를 직접 고치면 react-hooks/immutability 에 걸리므로 touch() 처럼 밖으로 뺐다)
  */
-function armDrag(id: string, index: number, x: number, y: number, live: LiveTransform) {
+function armDrag(id: string, index: number, x: number, y: number, live: LiveTransform, touchLike: boolean) {
   DRAG.id = id;
+  DRAG.touchLike = touchLike;
   DRAG.index = index;
   DRAG.x = x;
   DRAG.y = y;
@@ -100,6 +103,61 @@ function armDrag(id: string, index: number, x: number, y: number, live: LiveTran
   dragState.id = id;
   // 앞선 드래그의 클릭 차단이 남아 있을 일은 없지만(rAF 에서 풀린다), 새 입력이 시작되면 확실히 턴다
   dragState.blockClick = false;
+}
+/**
+ * 길게 누르기(모바일에서 관계망으로) — 후보 기업과 타이머. 손을 떼거나 슬롭을 넘겨 끌기 시작하면 취소하고, 다 채우면 워프한다.
+ * 터치·좁은 화면에서만 무장한다(마우스 데스크톱은 더블클릭). fired 는 워프 직후 손을 뗄 때 따라오는 click 한 번을 삼키기 위한 표시다
+ */
+const HOLD: { id: string | null; timer: ReturnType<typeof setTimeout> | null; fired: boolean; live: LiveTransform | null } = { id: null, timer: null, fired: false, live: null };
+/** 같은 행성을 이 시간 안에 두 번 탭하면 더블클릭으로 본다 — 터치는 click.detail 이 늘지 않고 dblclick 도 오지 않는 브라우저가 많다 */
+const TAP_DOUBLE_MS = 350;
+const LAST_TAP: { id: string | null; t: number } = { id: null, t: 0 };
+function clearHold() {
+  if (HOLD.timer !== null) clearTimeout(HOLD.timer);
+  HOLD.timer = null;
+  if (HOLD.id !== null) {
+    HOLD.id = null;
+    HOLD.live = null;
+    useGalaxy.getState().setHold(null);
+  }
+}
+/**
+ * 길게 누르기 타이머를 건다 — HOLD_MS 동안 취소되지 않으면 끌기 후보를 버리고 fire(워프)를 부른다.
+ * (렌더 중에 만들어지는 핸들러가 모듈 변수를 고치면 react-hooks/immutability 에 걸리므로 armDrag 처럼 밖으로 뺐다)
+ */
+function armHoldTimer(id: string, x: number, y: number, live: LiveTransform, fire: () => void) {
+  clearHold();
+  HOLD.id = id;
+  HOLD.fired = false;
+  HOLD.live = live;
+  useGalaxy.getState().setHold({ id, x, y });
+  HOLD.timer = setTimeout(() => {
+    HOLD.timer = null;
+    if (HOLD.id !== id) return;
+    HOLD.id = null;
+    HOLD.live = null;
+    HOLD.fired = true;
+    useGalaxy.getState().setHold(null);
+    // 잡아 둔 끌기 후보는 버린다 — 워프하는 동안 손가락이 움직여도 행성이 끌리지 않게
+    DRAG.id = null;
+    DRAG.live = null;
+    dragState.id = null;
+    navigator.vibrate?.(12);
+    fire();
+  }, HOLD_MS);
+}
+/** 같은 행성을 TAP_DOUBLE_MS 안에 다시 탭했는지 — 판정과 함께 마지막 탭을 기록한다(더블로 판정되면 기록을 비워 세 번째 탭이 또 더블이 되지 않게) */
+function tapIsDouble(id: string) {
+  // 마우스 데스크톱은 브라우저의 detail 만 믿는다 — OS 더블클릭 간격이 350ms 보다 짧게 설정된 사용자가 따로 두 번 누른 것을 워프로 잡지 않게
+  if (!DRAG.touchLike) {
+    LAST_TAP.id = null;
+    return false;
+  }
+  const now = performance.now();
+  const dbl = LAST_TAP.id === id && now - LAST_TAP.t < TAP_DOUBLE_MS;
+  LAST_TAP.id = dbl ? null : id;
+  LAST_TAP.t = now;
+  return dbl;
 }
 /** 칩 겹침 판정용 후보 순서·채택 목록 — 프레임마다 비우고 채우는 스크래치라 모듈에 둔다 */
 const CHIP_ORDER: number[] = [];
@@ -203,6 +261,8 @@ function filteredRaycast(accept: (instanceId: number, uv: THREE.Vector2) => bool
  * - 행성·칩·배지를 끌면 그 행성을 옮길 수 있다. 옮긴 자리는 live 버퍼에만 남으므로 새로고침하면 레이아웃 좌표로 돌아간다
  */
 export default function CompanyNodes({ model, emphasis, hoveredId, onHover, onClick, showLabels = true, onDoubleClick, roleTags = null }: Props) {
+  // 좁은 화면(모바일 배치)에서는 마우스로도 길게 누르기를 받는다 — 터치 여부만 보면 데스크톱 브라우저의 모바일 에뮬레이션에서 확인할 수 없다
+  const narrow = useNarrowViewport();
   const tags = useRef<THREE.InstancedMesh>(null);
   const chips = useRef<THREE.InstancedMesh>(null);
   const ring = useRef<THREE.Sprite>(null);
@@ -668,11 +728,23 @@ export default function CompanyNodes({ model, emphasis, hoveredId, onHover, onCl
     if (id && id === hoveredId) onHover(null);
   };
   const activate = (e: ThreeEvent<MouseEvent>, id: string) => {
-    // 끌어서 옮긴 직후의 클릭은 선택·워프가 아니다
+    // 끌어서 옮긴 직후(또는 길게 눌러 워프한 직후)의 클릭은 선택·워프가 아니다
     if (dragState.blockClick) return;
-    // 더블클릭은 click 두 번 + dblclick 으로 온다. 두 번째 click(detail 2)에서 먼저 워프하고, dblclick 핸들러는 detail 을 안 주는 입력 장치를 위한 보조다 (warpTo 는 워프 중 재호출을 무시한다)
-    if (e.nativeEvent.detail >= 2 && onDoubleClick) onDoubleClick(id);
+    // 더블클릭은 click 두 번 + dblclick 으로 온다. 두 번째 click(detail 2)에서 먼저 워프하고, dblclick 핸들러는 detail 을 안 주는 입력 장치를 위한 보조다 (warpTo 는 워프 중 재호출을 무시한다).
+    // 터치는 detail 이 1 로 고정되는 브라우저가 많아 같은 행성을 TAP_DOUBLE_MS 안에 다시 탭한 것도 더블클릭으로 본다
+    const doubleTap = tapIsDouble(id);
+    if ((e.nativeEvent.detail >= 2 || doubleTap) && onDoubleClick) onDoubleClick(id);
     else onClick(id);
+  };
+  /**
+   * 길게 누르기 무장 — 터치이거나 좁은 화면(모바일 배치)이면, 행성을 HOLD_MS 동안 움직이지 않고 누르고 있을 때 관계망으로 워프한다.
+   * 진행은 HUD 의 HoldRing 이 store.hold 로 그린다. 끌기 후보(armDrag)와 같은 pointerdown 에서 시작하고, 슬롭을 넘기면 끌기가 이기고 여기는 취소된다
+   */
+  const armHold = (e: ThreeEvent<PointerEvent>, id: string) => {
+    if (!onDoubleClick) return;
+    const ne = e.nativeEvent;
+    if (ne.pointerType !== "touch" && !narrow) return;
+    armHoldTimer(id, ne.clientX, ne.clientY, live, () => onDoubleClick(id));
   };
 
   /**
@@ -686,7 +758,9 @@ export default function CompanyNodes({ model, emphasis, hoveredId, onHover, onCl
     if (e.nativeEvent.button !== 0 || morphState.plan || s.phase === "warp" || cameraBusy.anim) return;
     if (!pickable(id)) return;
     e.stopPropagation();
-    armDrag(id, index, e.nativeEvent.clientX, e.nativeEvent.clientY, live);
+    // 터치이거나 좁은 화면이면 '모바일 손짓'(길게 누르기 · 같은 행성 재탭 = 더블클릭)을 받는다 — 이 pointerdown 의 성격을 뒤따르는 click 도 본다
+    armDrag(id, index, e.nativeEvent.clientX, e.nativeEvent.clientY, live, e.nativeEvent.pointerType === "touch" || narrow);
+    armHold(e, id);
   };
 
   // 드래그 본체 — 캔버스 밖으로 나가도 끝나도록 window 에 건다
@@ -720,6 +794,8 @@ export default function CompanyNodes({ model, emphasis, hoveredId, onHover, onCl
       document.body.style.cursor = "grabbing";
     };
     const onMove = (ev: PointerEvent) => {
+      // 길게 누르기는 손가락이 슬롭을 넘기면 취소 — 그 뒤는 끌기다
+      if (HOLD.id && Math.hypot(ev.clientX - DRAG.x, ev.clientY - DRAG.y) >= DRAG_SLOP) clearHold();
       if (!DRAG.id || DRAG.live !== live) return;
       if (!DRAG.active) {
         if (Math.hypot(ev.clientX - DRAG.x, ev.clientY - DRAG.y) < DRAG_SLOP) return;
@@ -731,6 +807,15 @@ export default function CompanyNodes({ model, emphasis, hoveredId, onHover, onCl
       GLIDE.target.copy(GLIDE.origin).add(DRAG_HIT);
     };
     const onUp = () => {
+      clearHold();
+      if (HOLD.fired) {
+        // 길게 눌러 워프한 뒤 손을 떼면 click 이 한 번 따라온다 — 그 클릭이 미리보기를 열지 않게 삼킨다 (끌기 뒤 처리와 같은 방식)
+        HOLD.fired = false;
+        dragState.blockClick = true;
+        requestAnimationFrame(() => {
+          dragState.blockClick = false;
+        });
+      }
       if (DRAG.live !== live) return;
       if (DRAG.active) {
         document.body.style.cursor = DRAG.cursor;
@@ -756,6 +841,8 @@ export default function CompanyNodes({ model, emphasis, hoveredId, onHover, onCl
       window.removeEventListener("pointerup", onUp);
       window.removeEventListener("pointercancel", onUp);
       window.removeEventListener("blur", onUp);
+      // 누르고 있는 도중 언마운트되면(라우트 이동·세션 리다이렉트) 이 인스턴스가 건 길게 누르기 타이머를 버린다 — 남겨 두면 사라진 트리에서 잡은 기업으로 뒤늦게 warpTo 가 간다
+      if (HOLD.live === live) clearHold();
       // 끄는 도중 언마운트되면(라우트 이동) 커서·컨트롤 잠금만 되돌린다 — 여기서 호버를 건드리면 사라진 트리에 set 이 간다
       if (DRAG.live !== live) return;
       if (DRAG.active) document.body.style.cursor = DRAG.cursor;

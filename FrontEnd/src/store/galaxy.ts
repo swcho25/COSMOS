@@ -3,6 +3,10 @@ import type { AltitudeWindow, MetricWindow, PricePeriod, RelationshipType } from
 import type { CameraPresetId } from "@/lib/guide";
 import { RELATIONSHIP_ORDER } from "@/lib/meta";
 import type { RoleKey } from "@/lib/roles";
+import { isNarrowViewport } from "@/lib/viewport";
+
+/** 모바일에서 행성을 이만큼 누르면 관계망으로 워프한다 — HoldRing 의 채움 애니메이션 길이와 같은 값 */
+export const HOLD_MS = 550;
 
 export type PanelTab = "news" | "price" | "board";
 /** 은하 범위 — "all" 전체 우주, "mine" 관심 기업(+1홉)만 보는 개인 은하 */
@@ -19,6 +23,8 @@ interface GalaxyState {
 
   hoveredId: string | null;
   hoveredEdgeId: string | null;
+  /** 모바일 길게 누르기(관계망으로) 진행 표시 — 누른 자리(뷰포트 px)와 기업. CompanyNodes 가 세우고, 손을 떼거나 끌기 시작하면 지운다 */
+  hold: { id: string; x: number; y: number } | null;
   selectedEdgeId: string | null;
   /**
    * 미리보기로 고른 기업 (은하 뷰에서 행성 클릭). 우측 패널에 뉴스·연결 단계가 뜨고, 다른 기업을 호버하면 여기서 가는 경로가 강조된다.
@@ -56,6 +62,8 @@ interface GalaxyState {
   searchOpen: boolean;
   /** 우측 인텔리전스 패널 펼침 여부 (접으면 오른쪽 가장자리에 꼬리표) */
   panelOpen: boolean;
+  /** 모바일 바텀시트(MobileSheet)가 전체 높이로 펼쳐졌는지 — 기본은 살짝 보기(탭 줄까지). 새 기업·관계를 고르면 되돌린다. 넓은 화면에서는 쓰지 않는다 */
+  sheetExpanded: boolean;
   /** 하단 중앙 조절 도크(펼치기·관계 종류·고급) 펼침 여부 — '^' 버튼으로 연다 */
   dockOpen: boolean;
   /** 도크의 '>' 고급 영역(뉴스·공시 비율·최소 점수·주가 고도) 펼침 여부 */
@@ -77,6 +85,7 @@ interface GalaxyState {
   completeWarp(): void;
   backToGalaxy(): void;
   setHovered(id: string | null): void;
+  setHold(h: { id: string; x: number; y: number } | null): void;
   setHoveredEdge(id: string | null): void;
   selectEdge(id: string | null): void;
   clearSelection(): void;
@@ -101,6 +110,7 @@ interface GalaxyState {
   setPricePeriod(p: PricePeriod): void;
   setSearchOpen(v: boolean): void;
   setPanelOpen(v: boolean): void;
+  setSheetExpanded(v: boolean): void;
   setIndustryOpen(v: boolean): void;
   setCameraPreset(p: CameraPresetId): void;
   toggleEdgeLabels(): void;
@@ -116,6 +126,7 @@ export const useGalaxy = create<GalaxyState>((set, get) => ({
 
   hoveredId: null,
   hoveredEdgeId: null,
+  hold: null,
   selectedEdgeId: null,
   selectedId: null,
   roleFilter: null,
@@ -136,9 +147,12 @@ export const useGalaxy = create<GalaxyState>((set, get) => ({
   pricePeriod: "1M",
   searchOpen: false,
   panelOpen: true,
-  // 도크는 펼친 채로 시작한다 — 조절 수단이 첫 화면에 보여야 한다. 접으면 하단 중앙 '^' 버튼만 남는다
-  dockOpen: true,
-  dockAdvanced: true,
+  sheetExpanded: false,
+  // 도크는 펼친 채로 시작한다 — 조절 수단이 첫 화면에 보여야 한다. 접으면 하단 중앙 '^' 버튼만 남는다.
+  // 모바일(900px 이하, lib/viewport)은 펼친 카드가 씬의 절반을 가리므로 접힌 채로 시작한다 — '^' 로 열 수 있다
+  dockOpen: !isNarrowViewport(),
+  // 고급(뉴스·공시 비율 · 최소 점수 · 주가 고도)도 모바일은 접힌 채로 — 열린 카드가 화면 1/3 을 차지했다. '>' 로 펼친다
+  dockAdvanced: !isNarrowViewport(),
   industryOpen: false,
   cameraPreset: "orbit",
   cameraPresetNonce: 0,
@@ -161,6 +175,7 @@ export const useGalaxy = create<GalaxyState>((set, get) => ({
       selectedId: null,
       roleFilter: null,
       panelOpen: true,
+      sheetExpanded: false,
       industryOpen: false,
       // 펼치기는 은하 뷰의 배치다 — 기업 중심 뷰로 들어가면(또는 돌아오면) 나선 배치에서 시작한다
       spread: 0,
@@ -179,12 +194,15 @@ export const useGalaxy = create<GalaxyState>((set, get) => ({
   setHovered(id) {
     if (get().hoveredId !== id) set({ hoveredId: id });
   },
+  setHold(h) {
+    set({ hold: h });
+  },
   setHoveredEdge(id) {
     if (get().hoveredEdgeId !== id) set({ hoveredEdgeId: id });
   },
   selectEdge(id) {
     // 간선을 고르면 기업 미리보기는 내려간다 — 우측 패널은 한 번에 하나
-    set((s) => ({ selectedEdgeId: s.selectedEdgeId === id ? null : id, selectedId: null, panelOpen: true }));
+    set((s) => ({ selectedEdgeId: s.selectedEdgeId === id ? null : id, selectedId: null, panelOpen: true, sheetExpanded: false }));
   },
   clearSelection() {
     set({ selectedEdgeId: null, selectedId: null, hoveredId: null, hoveredEdgeId: null, roleFilter: null });
@@ -192,7 +210,7 @@ export const useGalaxy = create<GalaxyState>((set, get) => ({
   selectCompany(id) {
     // 워프 중에는 아직 이전 모델이 보이고 집을 수도 있다 — 그때 고른 기업은 착지한 뷰에 없을 수 있다 (warpTo 와 같은 가드)
     if (get().phase === "warp") return;
-    set({ selectedId: id, selectedEdgeId: null, panelOpen: true });
+    set({ selectedId: id, selectedEdgeId: null, panelOpen: true, sheetExpanded: false });
   },
   setRoleFilter(r) {
     set((s) => ({ roleFilter: s.roleFilter === r ? null : r }));
@@ -258,6 +276,9 @@ export const useGalaxy = create<GalaxyState>((set, get) => ({
   },
   setPanelOpen(v) {
     set({ panelOpen: v });
+  },
+  setSheetExpanded(v) {
+    set({ sheetExpanded: v });
   },
   setIndustryOpen(v) {
     set({ industryOpen: v });

@@ -1,33 +1,21 @@
-import { useEffect, useMemo, useState } from "react";
-import { EdgeGlyph, Empty, Icon } from "@/components/ui";
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
+import { cycleTabFocus, EdgeGlyph, Empty, Icon } from "@/components/ui";
 import { fmtScore } from "@/lib/format";
 import type { SceneModel } from "@/lib/graph";
 import { SURPRISE_UI } from "@/lib/guide";
 import { relationshipMeta } from "@/lib/meta";
 import { rankSurprises, type Surprise } from "@/lib/surprise";
+import { useNarrowViewport } from "@/lib/viewport";
 import { useGalaxy } from "@/store/galaxy";
 import { beamColorFor } from "@/three/palette";
 import "./surprise.css";
-
-const NARROW_BREAKPOINT = 900;
-
-/** 900px 미만에서는 카드를 아예 펼치지 않는다 — 접힘 여부는 store(surpriseOpen)가 아니라 뷰포트가 정한다 */
-function useNarrowViewport() {
-  const [narrow, setNarrow] = useState(() => (typeof window !== "undefined" ? window.innerWidth < NARROW_BREAKPOINT : false));
-  useEffect(() => {
-    if (typeof window === "undefined" || !window.matchMedia) return;
-    const mq = window.matchMedia(`(max-width: ${NARROW_BREAKPOINT}px)`);
-    const onChange = (e: MediaQueryListEvent) => setNarrow(e.matches);
-    mq.addEventListener("change", onChange);
-    return () => mq.removeEventListener("change", onChange);
-  }, []);
-  return narrow;
-}
 
 interface Props {
   /** 은하 뷰면 galaxyModel, 기업 관계망이면 systemModel — GalaxyPage 가 phase 에 맞춰 넘긴다 */
   model: SceneModel | null;
   onPickCompany: (id: string) => void;
+  /** 모바일 상단 둘째 줄에 산업 선택판과 나란히 놓일 때 — 자리를 잡는 <aside> 없이 꼬리표 버튼만 그린다(자리는 GalaxyPage 의 .hud-top-line 이 정한다) */
+  inline?: boolean;
 }
 
 /**
@@ -37,7 +25,7 @@ interface Props {
  * 행에 호버·포커스하면 씬의 그 빔이 밝아지고(기존 emphasis 규칙), 누르면 관계 패널이 근거와 함께 연다 —
  * "3클릭 내 근거" 를 1클릭으로 줄이는 지점이다.
  */
-export default function SurpriseRail({ model, onPickCompany }: Props) {
+export default function SurpriseRail({ model, onPickCompany, inline = false }: Props) {
   const phase = useGalaxy((s) => s.phase);
   const surpriseOpen = useGalaxy((s) => s.surpriseOpen);
   const toggleSurprise = useGalaxy((s) => s.toggleSurprise);
@@ -45,6 +33,7 @@ export default function SurpriseRail({ model, onPickCompany }: Props) {
   const activeTypes = useGalaxy((s) => s.activeTypes);
   const selectEdge = useGalaxy((s) => s.selectEdge);
   const setHoveredEdge = useGalaxy((s) => s.setHoveredEdge);
+  // 좁은 화면(900px 이하, lib/viewport)에서는 카드를 왼쪽 레일 대신 바텀시트로 띄운다 — 꼬리표는 제자리(상단 둘째 줄 또는 단독 레일)에 남는다
   const narrow = useNarrowViewport();
 
   const rows = useMemo(() => {
@@ -58,52 +47,86 @@ export default function SurpriseRail({ model, onPickCompany }: Props) {
     });
   }, [model, minScore, activeTypes]);
 
+  /* 모바일 바텀시트 열림은 로컬 상태다 — 데스크톱 레일의 열림(store.surpriseOpen, 기본 true)과 묶으면 폰에서 첫 화면부터 시트가 덮는다.
+     항상 닫힌 채 시작하고, 꼬리표 탭으로 열고 닫는다 */
+  const [sheetOpen, setSheetOpen] = useState(false);
+  /* 시트가 열리면 닫기 버튼으로 포커스를 옮긴다 — 다이얼로그 관례이고, 그래야 ESC·Tab 순환이 시트 안에서 잡힌다 */
+  const sheet = narrow && sheetOpen;
+  const closeBtn = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (sheet) closeBtn.current?.focus();
+  }, [sheet]);
+
   if (phase === "warp" || !model) return null;
 
   const centerId = model.kind === "system" ? model.centerId : null;
-  const open = surpriseOpen && !narrow;
+  const open = narrow ? sheetOpen : surpriseOpen;
+  const toggle = narrow ? () => setSheetOpen((v) => !v) : toggleSurprise;
+  const closeSheet = () => setSheetOpen(false);
 
-  if (!open) {
-    return (
-      <aside className="hud hud-surprise">
-        <button type="button" className="hud-tag" onClick={toggleSurprise} title={SURPRISE_UI.kicker}>
-          <span aria-hidden="true">{SURPRISE_UI.mark}</span> {SURPRISE_UI.kicker} · {SURPRISE_UI.expandTag(rows.length)}
-        </button>
-      </aside>
-    );
-  }
+  const tag = (
+    <button type="button" className={`hud-tag${sheet ? " on" : ""}`} onClick={toggle} title={SURPRISE_UI.kicker} aria-expanded={narrow ? open : undefined}>
+      <span aria-hidden="true">{SURPRISE_UI.mark}</span> {SURPRISE_UI.kicker} · {SURPRISE_UI.expandTag(rows.length)}
+    </button>
+  );
+  if (!open) return inline ? tag : <aside className="hud hud-surprise">{tag}</aside>;
 
   // 제목 줄은 기업 중심 뷰에서만 — 은하 뷰에서는 머리의 'Special Link' 가 곧 이름이라 한 줄 더 둘 이유가 없다
   const centerName = centerId ? model.nodeById.get(centerId)?.name : undefined;
+  /* 모바일에서는 행이나 기업을 고르면 시트를 닫는다 — 관계 패널도 바텀시트, 기업 관계망은 화면 전체라 두 장이 겹치지 않게 */
+  const pickEdge = narrow ? (id: string | null) => (selectEdge(id), closeSheet()) : selectEdge;
+  const pickCompany = narrow ? (id: string) => (onPickCompany(id), closeSheet()) : onPickCompany;
+  /* ESC 는 시트만 닫는다(GalaxyPage 의 전역 ESC 까지 내려가지 않게), Tab 은 시트 안에서 돈다 */
+  function onSheetKey(e: ReactKeyboardEvent<HTMLDivElement>) {
+    if (e.key === "Escape") {
+      e.stopPropagation();
+      closeSheet();
+      return;
+    }
+    cycleTabFocus(e, e.currentTarget);
+  }
 
-  return (
-    <aside className="hud hud-surprise">
-      <div className="card surprise-card">
-        <div className="row between surprise-head">
-          <span className="kick surprise-kick">
-            <span aria-hidden="true">{SURPRISE_UI.mark}</span> {SURPRISE_UI.kicker}
-          </span>
-          <button type="button" className="toggle" onClick={toggleSurprise} aria-label={SURPRISE_UI.collapse} title={SURPRISE_UI.collapse}>
-            <Icon.Close />
-          </button>
-        </div>
-        {centerName && <div className="surprise-title">{SURPRISE_UI.titleFor(centerName)}</div>}
-        {!centerId && <p className="meta surprise-lead">{SURPRISE_UI.lead}</p>}
-        {rows.length === 0 ? (
-          <Empty>{centerId ? SURPRISE_UI.emptyCompany : SURPRISE_UI.empty}</Empty>
-        ) : (
-          <>
-            <div className="stack surprise-rows">
-              {rows.map((s) => (
-                <SurpriseRow key={s.edgeId} model={model} surprise={s} centerId={centerId} onPickCompany={onPickCompany} selectEdge={selectEdge} setHoveredEdge={setHoveredEdge} />
-              ))}
-            </div>
-            <div className="meta surprise-hint">{SURPRISE_UI.hoverHint}</div>
-          </>
-        )}
+  const card = (
+    <div className={`card surprise-card${narrow ? " surprise-sheet" : ""}`} role={narrow ? "dialog" : undefined} aria-modal={narrow ? true : undefined} aria-label={narrow ? SURPRISE_UI.kicker : undefined} onKeyDown={narrow ? onSheetKey : undefined}>
+      <div className="row between surprise-head">
+        <span className="kick surprise-kick">
+          <span aria-hidden="true">{SURPRISE_UI.mark}</span> {SURPRISE_UI.kicker}
+        </span>
+        <button ref={closeBtn} type="button" className="toggle" onClick={toggle} aria-label={SURPRISE_UI.collapse} title={SURPRISE_UI.collapse}>
+          <Icon.Close />
+        </button>
       </div>
-    </aside>
+      {centerName && <div className="surprise-title">{SURPRISE_UI.titleFor(centerName)}</div>}
+      {!centerId && <p className="meta surprise-lead">{SURPRISE_UI.lead}</p>}
+      {rows.length === 0 ? (
+        <Empty>{centerId ? SURPRISE_UI.emptyCompany : SURPRISE_UI.empty}</Empty>
+      ) : (
+        <>
+          <div className="stack surprise-rows">
+            {rows.map((s) => (
+              <SurpriseRow key={s.edgeId} model={model} surprise={s} centerId={centerId} onPickCompany={pickCompany} selectEdge={pickEdge} setHoveredEdge={setHoveredEdge} />
+            ))}
+          </div>
+          {/* 호버 안내는 포인터가 있는 화면에서만 */}
+          {!narrow && <div className="meta surprise-hint">{SURPRISE_UI.hoverHint}</div>}
+        </>
+      )}
+    </div>
   );
+
+  if (narrow) {
+    /* 모바일: 꼬리표는 제자리에 두고, 카드는 스크림과 함께 화면 아래에서 바텀시트로 올라온다 (surprise.css .surprise-sheet) */
+    const body = (
+      <>
+        {tag}
+        <div className="surprise-scrim" onClick={closeSheet} aria-hidden="true" />
+        {card}
+      </>
+    );
+    return inline ? body : <aside className="hud hud-surprise">{body}</aside>;
+  }
+
+  return <aside className="hud hud-surprise">{card}</aside>;
 }
 
 function SurpriseRow({
