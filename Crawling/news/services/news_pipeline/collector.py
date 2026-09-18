@@ -145,6 +145,10 @@ def main():
     parser.add_argument("--domestic-script", default=str(Path(__file__).with_name("domestic.bundle.mjs")))
     parser.add_argument("--jobs", default="latest,investing,domestic,backfill")
     parser.add_argument("--limit", type=int, default=8)
+    parser.add_argument("--backfill-limit", type=int, default=100)
+    parser.add_argument("--company-registry", default=str(
+        Path(__file__).resolve().parents[2] / "data/company_extraction/registry.json"
+    ))
     parser.add_argument("--investing-limit", type=int, default=3)
     parser.add_argument("--investing-delay", type=float, default=7.0)
     parser.add_argument("--investing-cooldown-seconds", type=int, default=1800)
@@ -154,6 +158,8 @@ def main():
     args = parser.parse_args()
     if not 1 <= args.limit <= 100:
         parser.error("limit must be 1..100")
+    if not 1 <= args.backfill_limit <= 500:
+        parser.error("backfill-limit must be 1..500")
     if not 1 <= args.investing_limit <= 20:
         parser.error("investing-limit must be 1..20")
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -169,6 +175,8 @@ def main():
     signal.signal(signal.SIGINT, stop)
     outbox = Outbox(state_dir / "outbox.db")
     overseas = OverseasCollector(args.crawler_root, str(state_dir / "overseas"), outbox,
+                                 registry=args.company_registry,
+                                 target_companies_only=True,
                                  stop_requested=lambda: STOP)
     investing = InvestingNasdaqCollector(
         overseas.overseas, str(state_dir / "overseas"), outbox,
@@ -204,7 +212,7 @@ def main():
                     elif job == "investing":
                         result = investing.collect(limit=args.investing_limit)
                     elif job == "backfill":
-                        result = overseas.collect_backfill(limit=args.limit)
+                        result = overseas.collect_backfill(limit=args.backfill_limit)
                     elif job == "domestic":
                         result = domestic.collect(limit=args.limit)
                     else:

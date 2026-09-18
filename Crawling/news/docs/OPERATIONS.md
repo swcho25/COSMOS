@@ -19,11 +19,11 @@
 | `cosmos-news-collector.service` | 최신 뉴스·국내 원천·연도별 백필을 번갈아 실행하고 outbox를 Kafka에 전달 | CPU 1코어 상당, RAM 최대 1GiB |
 | `cosmos-news-hdfs-writer.service` | HDFS 저장 검증 후 Kafka offset 기록 | CPU 1코어 상당, RAM 최대 1.5GiB |
 
-프로그램은 `/home/ubuntu/news-kafka/app`, Python venv는 `/home/ubuntu/news-kafka/venv`에 있다. Node 22.23.2는 전용 runtime 디렉터리에 두었고 공식 SHA-256을 검증했다. 서비스 등록 후 부팅 시 자동 실행한다. 수집기는 한 프로세스로 호출당 최대 8건을 처리한다. Yahoo는 같은 호스트에 최소 4.5초, Investing.com은 기본 7초 간격을 두며 국내 원천도 기존 robots 정책과 원천별 요청 간격을 지킨다.
+프로그램은 `/home/ubuntu/news-kafka/app`, Python venv는 `/home/ubuntu/news-kafka/venv`에 있다. Node 22.23.2는 전용 runtime 디렉터리에 두었고 공식 SHA-256을 검증했다. 서비스 등록 후 부팅 시 자동 실행한다. 일반 작업은 호출당 최대 8건, Yahoo 과거 백필은 기본 100건을 처리한다. Yahoo는 같은 호스트에 최소 4.5초, Investing.com은 기본 7초 간격을 두며 국내 원천도 기존 robots 정책과 원천별 요청 간격을 지킨다.
 
 ## 복구한 수집 범위
 
-- Yahoo Finance: 최신 3일 반복 탐색과 2026-09-09 이후 초기 공백 탐색을 구분한다. 별도로 2016–2026 연도별 큐를 순환하며 과거 목록을 다시 탐색한다.
+- Yahoo Finance: 최신 3일 반복 탐색과 2026-09-09 이후 초기 공백 탐색을 구분한다. 별도로 2016–2026 연도별 큐를 순환하며 과거 목록을 다시 탐색한다. 아카이브의 모든 후보 본문을 확인한 뒤 `datePublished >= 2016-01-01`이고 나스닥100 기업이 제목·본문에 명시적으로 언급된 기사만 저장한다. 매칭 결과는 `metadata.nasdaq100_companies`에 보존하며, URL이 기존 HDFS 색인에 있으면 같은 기사를 다시 다운로드하지 않는다.
 - Investing.com: Nasdaq-100 구성 종목별 뉴스 페이지를 순환한다. 세 번 중 한 번은 최신 1페이지를 재확인하고 두 번은 종목별 과거 페이지 커서를 진행한다. 상태는 `state/overseas/investing-nasdaq100.db`에 보존한다. 429 응답 시 기본 30분 동안 Investing.com 요청만 중지한다.
 - 국내 고정 원천: 한국정경신문, 메디컬투데이, 서울경제, 뉴스핌, 뉴스토마토의 공개 사이트맵/목록.
 - HelloT: 기존 설정의 기사 번호 10000–114676 범위를 이어서 탐색한다. 이 번호보다 높은 최신 기사까지 수집하는 설정은 아니다.

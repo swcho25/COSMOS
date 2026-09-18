@@ -191,6 +191,68 @@ class CollectorTests(unittest.TestCase):
         self.assertTrue(all(event["region"] == "overseas" for event in self.outbox.events))
         self.assertEqual(self.collector.client.options["request_delay"], 4.5)
 
+    def test_yahoo_article_is_tagged_with_nasdaq100_company_metadata(self):
+        extractor = SimpleNamespace(extract=lambda article: {
+            "companies": [{
+                "market": "NASDAQ", "company_id": "SEC_320193",
+                "name": "Apple Inc.", "ticker": "AAPL", "tickers": ["AAPL"],
+                "explicit_tickers": [], "resolved_level": "security", "n_mentions": 2,
+            }],
+            "universe_version": "ndx-test", "registry_sha256": "abc",
+            "extractor_version": "dictionary-linker-v1",
+            "membership_policy": "snapshot_universe_not_historical_membership",
+        })
+        collector = overseas.OverseasCollector(
+            "unused", self.temp.name, self.outbox, company_extractor=extractor,
+        )
+        self.default_candidates = [candidate(1)]
+        result = collector.collect_latest(limit=1)
+        self.assertEqual(result["enqueued"], 1)
+        metadata = self.outbox.events[0]["metadata"]
+        self.assertEqual(metadata["nasdaq100_companies"][0]["ticker"], "AAPL")
+        self.assertEqual(metadata["nasdaq100_companies"][0]["mention_count"], 2)
+
+    def test_targeted_mode_checks_full_body_then_discards_unmatched_article(self):
+        extractor = SimpleNamespace(extract=lambda article: {
+            "companies": ([{
+                "market": "NASDAQ", "company_id": "SEC_320193", "name": "Apple Inc.",
+                "ticker": "AAPL", "tickers": ["AAPL"], "explicit_tickers": [],
+                "resolved_level": "security", "n_mentions": 1,
+            }] if "Apple" in article["title"] else []),
+            "universe_version": "ndx-test", "registry_sha256": "abc",
+            "extractor_version": "dictionary-linker-v1",
+            "membership_policy": "snapshot_universe_not_historical_membership",
+        })
+        collector = overseas.OverseasCollector(
+            "unused", self.temp.name, self.outbox, company_extractor=extractor,
+            target_companies_only=True,
+        )
+        unmatched = candidate(1)
+        matched = SimpleNamespace(
+            source="yahoo_finance", url=candidate(2).url,
+            title="Apple launches product", organization="Yahoo",
+        )
+        self.default_candidates = [unmatched, matched]
+        result = collector.collect_latest(limit=2)
+        self.assertEqual(result["irrelevant"], 1)
+        self.assertEqual(result["enqueued"], 1)
+        self.assertEqual(result["fetched"], 2)
+        self.assertIn(unmatched.url, collector.client.urls)
+        self.assertIn(matched.url, collector.client.urls)
+
+    def test_detail_page_date_excludes_articles_before_2016(self):
+        self.default_candidates = [candidate(1)]
+        with patch.object(Source, "parse_article", return_value=SimpleNamespace(
+            source="yahoo_finance", url=candidate(1).url, title="Old Apple news",
+            content="A" * 200, organization="Yahoo",
+            published_at="2015-12-31T23:00:00-05:00",
+            crawled_at="2026-09-15T01:00:00+00:00",
+        )):
+            result = self.collector.collect_latest(limit=1)
+        self.assertEqual(result["out_of_range"], 1)
+        self.assertEqual(result["enqueued"], 0)
+        self.assertEqual(self.outbox.events, [])
+
     def test_outbox_failure_releases_whole_claim_without_exhausting_retries(self):
         self.default_candidates = [candidate(i) for i in range(3)]
         self.outbox.fail = True

@@ -11,6 +11,8 @@ exec "${script_dir}/run-news-python.sh" -m services.news_pipeline.collector \
   --topic "${NEWS_TOPIC:-news.raw}" \
   --jobs "${NEWS_JOBS:-latest,investing,domestic,backfill}" \
   --limit "${NEWS_LIMIT:-8}" \
+  --backfill-limit "${NEWS_BACKFILL_LIMIT:-100}" \
+  --company-registry "${NEWS_COMPANY_REGISTRY:-${NEWS_APP_ROOT}/data/company_extraction/registry.json}" \
   --investing-limit "${INVESTING_LIMIT:-3}" \
   --investing-delay "${INVESTING_DELAY:-7}" \
   --investing-cooldown-seconds "${INVESTING_COOLDOWN_SECONDS:-1800}" \
