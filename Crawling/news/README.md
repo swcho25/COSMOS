@@ -1,6 +1,9 @@
 # COSMOS 뉴스 수집 → Kafka → HDFS
 
-국내 고정 매체, Yahoo Finance, 네이버 뉴스 API를 수집하고 로컬 영속 큐·outbox를 거쳐 Kafka `news.raw`에 전달한다. 별도 Writer가 국내/해외를 나눈 Parquet와 검증 manifest를 HDFS에 게시한다. 이 폴더만으로 빌드·테스트·패키징할 수 있으며 기존 AWS RDS나 MySQL 웹 스택은 필요하지 않다.
+국내 고정 매체, Yahoo Finance, Investing.com의 Nasdaq-100 종목별 뉴스,
+네이버 뉴스 API를 수집하고 로컬 영속 큐·outbox를 거쳐 Kafka `news.raw`에 전달한다.
+별도 Writer가 국내/해외를 나눈 Parquet와 검증 manifest를 HDFS에 게시한다.
+이 폴더만으로 빌드·테스트·패키징할 수 있으며 기존 AWS RDS나 MySQL 웹 스택은 필요하지 않다.
 
 ```text
 국내 매체 / Yahoo Finance / 네이버 API 기업명 검색
@@ -34,6 +37,7 @@ PowerShell에서는 venv 생성 후 `.\.venv\Scripts\python.exe`를 `python` 대
 - 네이버 뉴스 API: 프로젝트 코스피 100종목의 기업명 검색, 최신순 주기 조회와 본문 수집을 별도 worker로 지원한다. [설정·주기·검증·운영 안내](docs/NAVER.md).
 - 국내 운영 원천 5개: 한국정경신문, 메디컬투데이, 서울경제, 뉴스핌, 뉴스토마토의 공개 사이트맵·목록.
 - Yahoo Finance: 최근 3일 반복 탐색, 2026-09-09 이후 초기 공백 탐색, 2016–2026 연도별 과거 목록 순환을 별도 큐로 처리한다. 연도 범위를 설정했다고 수집이 완료된 것은 아니다.
+- Investing.com: Nasdaq-100 구성 종목 표에서 종목별 뉴스 URL을 찾고 최신 1페이지와 과거 페이지를 라운드 로빈으로 수집한다. URL은 전역 중복 제거하며 발견 종목은 `metadata.discovery_tickers`에 남긴다. HTTP 429가 발생하면 전체 Investing.com 수집을 기본 30분 중지하고 영속 커서에서 재개한다.
 - HelloT 어댑터도 포함하지만 **기존 기사 번호 10000–114676을 탐색하는 과거 범위**다. 최신 목록 탐색기가 아니며 2026-09-15 확인 당시 일부 오래된 번호는 `article_not_found`로 재시도 중이었다. 국내 최신 원천 5개와 동일한 완료·신선도를 가정하지 않는다.
 - 이전 AWS에만 있던 동적 매체 목록·EFS 커서·미반영 RDS 데이터까지 복구한 것은 아니다. 이미 HDFS에 보존된 URL은 색인 후 건너뛴다.
 - 최신 뉴스도 주기적으로 수집·배치 게시한다. 수집 시각·기사 발행 시각·HDFS 게시 시각은 다르며 모든 매체의 모든 속보를 즉시 반영한다는 보장은 없다.

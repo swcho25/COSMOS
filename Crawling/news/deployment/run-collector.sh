@@ -9,4 +9,9 @@ exec "${script_dir}/run-news-python.sh" -m services.news_pipeline.collector \
   --domestic-script "${NEWS_APP_ROOT}/services/news_pipeline/domestic.bundle.mjs" \
   --bootstrap "${KAFKA_BOOTSTRAP_SERVERS:-127.0.0.1:9092}" \
   --topic "${NEWS_TOPIC:-news.raw}" \
-  --jobs "${NEWS_JOBS:-latest,domestic,backfill}" --limit "${NEWS_LIMIT:-8}" "$@"
+  --jobs "${NEWS_JOBS:-latest,investing,domestic,backfill}" \
+  --limit "${NEWS_LIMIT:-8}" \
+  --investing-limit "${INVESTING_LIMIT:-3}" \
+  --investing-delay "${INVESTING_DELAY:-7}" \
+  --investing-cooldown-seconds "${INVESTING_COOLDOWN_SECONDS:-1800}" \
+  --investing-max-page "${INVESTING_MAX_PAGE:-1000}" "$@"

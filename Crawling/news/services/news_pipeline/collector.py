@@ -14,6 +14,7 @@ import uuid
 from pathlib import Path
 
 from .common import Outbox, atomic_json, kafka_producer, make_event, utcnow
+from .investing import InvestingNasdaqCollector
 from .overseas import OverseasCollector
 
 LOG = logging.getLogger("cosmos-news-collector")
@@ -142,13 +143,19 @@ def main():
     parser.add_argument("--topic", default="news.raw")
     parser.add_argument("--node", default="node")
     parser.add_argument("--domestic-script", default=str(Path(__file__).with_name("domestic.bundle.mjs")))
-    parser.add_argument("--jobs", default="latest,domestic,backfill")
+    parser.add_argument("--jobs", default="latest,investing,domestic,backfill")
     parser.add_argument("--limit", type=int, default=8)
+    parser.add_argument("--investing-limit", type=int, default=3)
+    parser.add_argument("--investing-delay", type=float, default=7.0)
+    parser.add_argument("--investing-cooldown-seconds", type=int, default=1800)
+    parser.add_argument("--investing-max-page", type=int, default=1000)
     parser.add_argument("--once", action="store_true")
     parser.add_argument("--idle-seconds", type=int, default=30)
     args = parser.parse_args()
     if not 1 <= args.limit <= 100:
         parser.error("limit must be 1..100")
+    if not 1 <= args.investing_limit <= 20:
+        parser.error("investing-limit must be 1..20")
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     state_dir = Path(args.state_dir)
     state_dir.mkdir(parents=True, exist_ok=True)
@@ -163,10 +170,17 @@ def main():
     outbox = Outbox(state_dir / "outbox.db")
     overseas = OverseasCollector(args.crawler_root, str(state_dir / "overseas"), outbox,
                                  stop_requested=lambda: STOP)
+    investing = InvestingNasdaqCollector(
+        overseas.overseas, str(state_dir / "overseas"), outbox,
+        request_delay=args.investing_delay,
+        cooldown_seconds=args.investing_cooldown_seconds,
+        max_page=args.investing_max_page,
+        stop_requested=lambda: STOP,
+    )
     domestic = DomesticCollector(state_dir, outbox, args.node, args.domestic_script)
     producer = kafka_producer(args.bootstrap)
     jobs = args.jobs.split(",")
-    if any(job not in {"latest", "domestic", "backfill", "publish"} for job in jobs):
+    if any(job not in {"latest", "investing", "domestic", "backfill", "publish"} for job in jobs):
         parser.error("unknown job")
     status = {"started_at": utcnow(), "cycles": 0, "jobs": {}}
     try:
@@ -180,14 +194,21 @@ def main():
                 status.pop("collection_paused", None)
             failed = False
             for job in current_jobs:
-                if STOP: break
+                if STOP:
+                    break
                 status.update(updated_at=utcnow(), active_job=job)
                 atomic_json(state_dir / "collector-status.json", status)
                 try:
-                    if job == "latest": result = overseas.collect_latest(limit=args.limit)
-                    elif job == "backfill": result = overseas.collect_backfill(limit=args.limit)
-                    elif job == "domestic": result = domestic.collect(limit=args.limit)
-                    else: result = {}
+                    if job == "latest":
+                        result = overseas.collect_latest(limit=args.limit)
+                    elif job == "investing":
+                        result = investing.collect(limit=args.investing_limit)
+                    elif job == "backfill":
+                        result = overseas.collect_backfill(limit=args.limit)
+                    elif job == "domestic":
+                        result = domestic.collect(limit=args.limit)
+                    else:
+                        result = {}
                     result["delivery"] = outbox.publish(producer, args.topic)
                     status["jobs"][job] = {"updated_at": utcnow(), "result": result}
                     LOG.info("job=%s %s", job, json.dumps(result, ensure_ascii=False))
@@ -200,11 +221,14 @@ def main():
             status["cycles"] += 1
             status.update(updated_at=utcnow(), active_job=None)
             atomic_json(state_dir / "collector-status.json", status)
-            if args.once: return 1 if failed else 0
+            if args.once:
+                return 1 if failed else 0
             for _ in range(args.idle_seconds):
-                if STOP: break
+                if STOP:
+                    break
                 time.sleep(1)
     finally:
+        investing.close()
         outbox.close()
         lock.close()
     return 0
