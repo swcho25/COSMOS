@@ -981,6 +981,8 @@
   .scene-tip {
     display: none;
   }
+  /* 바텀시트(MobileSheet) — 두 단계. 살짝 보기(is-peek): 기업 패널은 머리·연결 단계·기업·탭 줄까지(본문 숨김), 관계 패널은 62dvh 안에서 본문 스크롤.
+     전체 펼침(is-full): 위 8px 까지. 손잡이(.sheet-grip)를 끌어 내리면 한 단계 접히고, 올리거나 탭하면 펼쳐진다. 끄는 동안은 transform 을 JS 가 직접 쓴다 */
   .hud-panel {
     left: 0;
     right: 0;
@@ -988,12 +990,67 @@
     bottom: 0;
     width: 100%;
     max-width: none;
-    height: 58vh;
+    display: flex;
+    flex-direction: column;
+    height: auto;
+    max-height: 62vh;
+    max-height: 62dvh;
+    animation: sheet-in 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
+    transition: transform 0.25s cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+  .hud-panel.is-full {
+    top: 8px;
+    max-height: none;
+    /* 전체로 펼치면 상단 한 줄(.hud-top, z 6)보다 위 — 시트 머리가 검색·시점·범위 뒤로 숨지 않게 */
+    z-index: 7;
+  }
+  .hud-panel.is-dragging {
+    transition: none;
+  }
+  /* 살짝 보기의 기업 패널 — 뉴스·주가·게시판 본문은 탭을 눌러 전체로 펼친 뒤에 보인다 */
+  .hud-panel.is-peek .panel-company .panel-body {
+    display: none;
+  }
+  /* 살짝 보기에서 연결 단계를 펼쳐 62dvh 를 넘으면 머리 부분이 스크롤된다 */
+  .hud-panel.is-peek .panel {
+    overflow-y: auto;
+  }
+  /* 손잡이 — 카드와 같은 재질로 위 모서리를 이룬다. 손가락 폭의 끌기 영역 */
+  .sheet-grip {
+    flex: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 26px;
+    border-radius: 20px 20px 0 0;
+    border: 1px solid var(--border);
+    border-bottom: 0;
+    background: #0e1420;
+    touch-action: none;
+    cursor: grab;
+  }
+  .sheet-grip:active {
+    cursor: grabbing;
+  }
+  .sheet-grip i {
+    display: block;
+    width: 38px;
+    height: 4px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.22);
+  }
+  .sheet-grip:hover i,
+  .sheet-grip:focus-visible i {
+    background: rgba(255, 255, 255, 0.4);
   }
   .panel {
-    border-radius: 20px 20px 0 0;
+    flex: 1 1 auto;
+    min-height: 0;
+    height: auto;
+    border-radius: 0;
+    border-top: 0;
     background: #0e1420;
-    animation: sheet-in 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
+    animation: none;
   }
   @keyframes sheet-in {
     from {
@@ -1004,15 +1061,6 @@
       transform: none;
       opacity: 1;
     }
-  }
-  .panel::before {
-    content: "";
-    display: block;
-    width: 38px;
-    height: 4px;
-    border-radius: 999px;
-    background: rgba(255, 255, 255, 0.22);
-    margin: 9px auto 0;
   }
 }
 

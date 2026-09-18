@@ -78,7 +78,7 @@ export default function RelationshipPanel({ relationshipId, onClose, onPickCompa
   const lowConfidence = r?.confidence != null && r.confidence < EVIDENCE_UI.lowConfidenceBelow;
 
   return (
-    <aside className="card panel" aria-label="기업 관계 상세">
+    <aside className="card panel panel-relation" aria-label="기업 관계 상세">
       <div className="panel-head">
         <span className="kick">기업 관계</span>
         <button type="button" className="icon-btn" onClick={onClose} aria-label="닫기">

@@ -17,6 +17,7 @@ import ControlDock from "./ControlDock";
 import HelpHub, { HelpHotkey } from "./HelpHub";
 import HopSummary from "./HopSummary";
 import IndustryPicker from "./IndustryPicker";
+import { PanelFrame } from "./MobileSheet";
 import MyGalaxyBar, { MyGalaxyEmpty } from "./MyGalaxyBar";
 import PathStrip from "./PathStrip";
 import RelationshipPanel from "./RelationshipPanel";
@@ -437,7 +438,8 @@ export default function GalaxyPage() {
       {/* 은하 뷰에서 행성을 클릭하면 워프하지 않고 그 기업의 뉴스·연결 단계를 여기서 먼저 본다 — 더블클릭(또는 패널의 "관계망 보기")이 워프 */}
       {(focusId || selectedEdgeId || selectedId) &&
         (panelOpen ? (
-          <div className="hud hud-panel">
+          /* 모바일은 바텀시트(살짝 보기 → 전체 펼침, 손잡이로 끌어 접기·닫기) — 끌어 내려 닫을 때는 각 패널의 onClose 와 같은 일을 한다 */
+          <PanelFrame narrow={narrow} onDismiss={selectedEdgeId || focusId ? () => setPanelOpen(false) : () => selectCompany(null)}>
             {selectedEdgeId ? (
               <RelationshipPanel relationshipId={selectedEdgeId} onClose={() => setPanelOpen(false)} onPickCompany={pickCompany} model={focusId ? systemModel : galaxyModel} />
             ) : focusId ? (
@@ -453,7 +455,7 @@ export default function GalaxyPage() {
                 />
               )
             )}
-          </div>
+          </PanelFrame>
         ) : (
           <div className="hud hud-panel-tag">
             <button type="button" className="hud-tag vertical" onClick={() => setPanelOpen(true)} title="패널 펼치기">

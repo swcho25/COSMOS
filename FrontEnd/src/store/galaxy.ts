@@ -57,6 +57,8 @@ interface GalaxyState {
   searchOpen: boolean;
   /** 우측 인텔리전스 패널 펼침 여부 (접으면 오른쪽 가장자리에 꼬리표) */
   panelOpen: boolean;
+  /** 모바일 바텀시트(MobileSheet)가 전체 높이로 펼쳐졌는지 — 기본은 살짝 보기(탭 줄까지). 새 기업·관계를 고르면 되돌린다. 넓은 화면에서는 쓰지 않는다 */
+  sheetExpanded: boolean;
   /** 하단 중앙 조절 도크(펼치기·관계 종류·고급) 펼침 여부 — '^' 버튼으로 연다 */
   dockOpen: boolean;
   /** 도크의 '>' 고급 영역(뉴스·공시 비율·최소 점수·주가 고도) 펼침 여부 */
@@ -102,6 +104,7 @@ interface GalaxyState {
   setPricePeriod(p: PricePeriod): void;
   setSearchOpen(v: boolean): void;
   setPanelOpen(v: boolean): void;
+  setSheetExpanded(v: boolean): void;
   setIndustryOpen(v: boolean): void;
   setCameraPreset(p: CameraPresetId): void;
   toggleEdgeLabels(): void;
@@ -137,6 +140,7 @@ export const useGalaxy = create<GalaxyState>((set, get) => ({
   pricePeriod: "1M",
   searchOpen: false,
   panelOpen: true,
+  sheetExpanded: false,
   // 도크는 펼친 채로 시작한다 — 조절 수단이 첫 화면에 보여야 한다. 접으면 하단 중앙 '^' 버튼만 남는다.
   // 모바일(900px 이하, lib/viewport)은 펼친 카드가 씬의 절반을 가리므로 접힌 채로 시작한다 — '^' 로 열 수 있다
   dockOpen: !isNarrowViewport(),
@@ -164,6 +168,7 @@ export const useGalaxy = create<GalaxyState>((set, get) => ({
       selectedId: null,
       roleFilter: null,
       panelOpen: true,
+      sheetExpanded: false,
       industryOpen: false,
       // 펼치기는 은하 뷰의 배치다 — 기업 중심 뷰로 들어가면(또는 돌아오면) 나선 배치에서 시작한다
       spread: 0,
@@ -187,7 +192,7 @@ export const useGalaxy = create<GalaxyState>((set, get) => ({
   },
   selectEdge(id) {
     // 간선을 고르면 기업 미리보기는 내려간다 — 우측 패널은 한 번에 하나
-    set((s) => ({ selectedEdgeId: s.selectedEdgeId === id ? null : id, selectedId: null, panelOpen: true }));
+    set((s) => ({ selectedEdgeId: s.selectedEdgeId === id ? null : id, selectedId: null, panelOpen: true, sheetExpanded: false }));
   },
   clearSelection() {
     set({ selectedEdgeId: null, selectedId: null, hoveredId: null, hoveredEdgeId: null, roleFilter: null });
@@ -195,7 +200,7 @@ export const useGalaxy = create<GalaxyState>((set, get) => ({
   selectCompany(id) {
     // 워프 중에는 아직 이전 모델이 보이고 집을 수도 있다 — 그때 고른 기업은 착지한 뷰에 없을 수 있다 (warpTo 와 같은 가드)
     if (get().phase === "warp") return;
-    set({ selectedId: id, selectedEdgeId: null, panelOpen: true });
+    set({ selectedId: id, selectedEdgeId: null, panelOpen: true, sheetExpanded: false });
   },
   setRoleFilter(r) {
     set((s) => ({ roleFilter: s.roleFilter === r ? null : r }));
@@ -261,6 +266,9 @@ export const useGalaxy = create<GalaxyState>((set, get) => ({
   },
   setPanelOpen(v) {
     set({ panelOpen: v });
+  },
+  setSheetExpanded(v) {
+    set({ sheetExpanded: v });
   },
   setIndustryOpen(v) {
     set({ industryOpen: v });

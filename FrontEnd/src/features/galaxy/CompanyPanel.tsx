@@ -21,6 +21,7 @@ import {
   useWatchedSet,
   useWriteComment,
 } from "@/lib/queries";
+import { useNarrowViewport } from "@/lib/viewport";
 import { useGalaxy, type PanelTab } from "@/store/galaxy";
 import { useSession } from "@/store/session";
 import { useUi } from "@/store/ui";
@@ -46,6 +47,9 @@ export default function CompanyPanel({ companyId, model = null, onWarp, onClose,
   const company = useCompany(companyId);
   const tab = useGalaxy((s) => s.panelTab);
   const setTab = useGalaxy((s) => s.setPanelTab);
+  const setSheetExpanded = useGalaxy((s) => s.setSheetExpanded);
+  // 모바일(900px 이하)에서는 바텀시트 살짝 보기로 열리므로 연결 단계는 접힌 채 시작하고, 탭을 누르면 시트를 전체로 올린다
+  const narrow = useNarrowViewport();
   const window = useGalaxy((s) => s.window);
   const metrics = useCompanyMetrics(companyId, window);
   const authed = useSession((s) => s.status === "authed");
@@ -62,7 +66,7 @@ export default function CompanyPanel({ companyId, model = null, onWarp, onClose,
   const [stepsPin, setStepsPin] = useState<boolean | null>(null);
 
   return (
-    <aside className="card panel" aria-label="기업 인텔리전스">
+    <aside className="card panel panel-company" aria-label="기업 인텔리전스">
       <div className="panel-head">
         <span className="kick">기업 인텔리전스</span>
         <div className="row" style={{ gap: 6 }}>
@@ -76,7 +80,7 @@ export default function CompanyPanel({ companyId, model = null, onWarp, onClose,
           </button>
         </div>
       </div>
-      {model && model.nodeById.has(companyId) && <ConnectionSteps model={model} companyId={companyId} onPick={onPickCompany} open={stepsPin ?? !bodyScrolled} onToggle={setStepsPin} />}
+      {model && model.nodeById.has(companyId) && <ConnectionSteps model={model} companyId={companyId} onPick={onPickCompany} open={stepsPin ?? (narrow ? false : !bodyScrolled)} onToggle={setStepsPin} />}
       <div className="panel-id">
         {c ? <CompanyAvatar name={c.name} stockCode={c.stockCode} market={c.market} industry={c.industries.find((i) => i.primary)?.name} size={56} /> : <Skeleton h={56} w={56} style={{ borderRadius: 14 }} />}
         <div className="grow">
@@ -116,7 +120,7 @@ export default function CompanyPanel({ companyId, model = null, onWarp, onClose,
       </div>
       <div className="tabs" role="tablist">
         {TABS.map((t) => (
-          <button key={t.key} type="button" role="tab" aria-selected={tab === t.key} className={tab === t.key ? "on" : ""} onClick={() => setTab(t.key)}>
+          <button key={t.key} type="button" role="tab" aria-selected={tab === t.key} className={tab === t.key ? "on" : ""} onClick={() => (setTab(t.key), setSheetExpanded(true))}>
             {t.label}
             {t.key === "news" && metrics.data?.newsMentionCount != null && <b className="num">{metrics.data.newsMentionCount}</b>}
           </button>
