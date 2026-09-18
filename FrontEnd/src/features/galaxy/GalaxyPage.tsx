@@ -8,6 +8,7 @@ import { companyGraphQuery, useCompanyGraph, useIndustries, useLatestGraph, useS
 import { useGalaxy, type GalaxyScope } from "@/store/galaxy";
 import { useSession } from "@/store/session";
 import { useUi } from "@/store/ui";
+import { useNarrowViewport } from "@/lib/viewport";
 import { useSceneReady } from "@/three/sceneReady";
 import { Icon } from "@/components/ui";
 import CameraPresets from "./CameraPresets";
@@ -107,6 +108,8 @@ export default function GalaxyPage() {
   /** 첫 방문 투어가 자동으로 뜰 조건 — Tour.tsx 의 자동 시작 조건과 같다. 그 인트로 딤(72% 어둡게)이 씬을 덮으므로 워밍업 오버레이를 따로 붙잡을 필요가 없다 */
   const [tourWillCover] = useState(() => autoTour && !isTourDone());
   const helpOpen = useUi((s) => s.helpOpen);
+  /* 모바일(900px 이하): 상단 줄을 두 줄로 다시 짠다 — 첫 줄 검색 아이콘 · 카메라 시점 · 은하 범위, 둘째 줄 Special Link 꼬리표 · 산업 선택판 */
+  const narrow = useNarrowViewport();
 
   /* URL ?company= 와 포커스 동기화 — 진입 시 딥링크를 먼저 소비한 뒤에만 URL 을 상태에 맞춘다 */
   const pendingDeepLink = useRef(params.get("company"));
@@ -269,6 +272,22 @@ export default function GalaxyPage() {
   const noStars = watchIds.length === 0 || (mine !== null && mine.model.nodes.length === 0);
   const showEmpty = mineScope && status === "authed" && watchlist.data !== undefined && !focusId && noStars;
 
+  /* 산업 선택판 — 넓은 화면은 상단 한 줄의 마지막 항목, 모바일은 둘째 줄에서 Special Link 꼬리표와 나란히 */
+  const industryPicker = (
+    <IndustryPicker
+      industries={industries.data?.items ?? []}
+      loading={industries.isLoading}
+      total={universe.data?.nodes.length}
+      value={industryId}
+      onChange={(id) => {
+        setIndustry(id);
+        if (focusId) warpTo(null);
+      }}
+    />
+  );
+  /* 은하 뷰 모바일(내 은하 제외)에서는 Special Link 꼬리표를 상단 둘째 줄 안에 그리므로 단독 레일은 그리지 않는다 */
+  const surpriseInline = narrow && !focusId && !mineScope;
+
   return (
     <div
       className="galaxy"
@@ -325,7 +344,8 @@ export default function GalaxyPage() {
       {/* 상단 한 줄: 검색 · 은하 범위 · 산업 선택판 (은하 뷰에서만) */}
       {!focusId && (
       <div className="hud hud-top">
-        <button type="button" className="field search-trigger" onClick={() => setSearchOpen(true)}>
+        {/* 모바일에서는 글자를 감추고 돋보기 아이콘만 남는다(galaxy.css) — 라벨은 aria-label 로 유지 */}
+        <button type="button" className="field search-trigger" onClick={() => setSearchOpen(true)} aria-label="기업 검색 (/)" title="기업명 또는 종목코드 검색 (/)">
           <Icon.Search />
           <span>기업명 또는 종목코드를 검색하세요</span>
           <span className="kbd">/</span>
@@ -352,17 +372,13 @@ export default function GalaxyPage() {
             missing={(mine?.missing ?? []).map((id) => ({ companyId: id, name: watchItems.find((w) => w.companyId === id)?.name ?? id }))}
             onPick={pickCompany}
           />
+        ) : surpriseInline ? (
+          <div className="hud-top-line">
+            <SurpriseRail model={galaxyModel} onPickCompany={pickCompany} inline />
+            {industryPicker}
+          </div>
         ) : (
-          <IndustryPicker
-            industries={industries.data?.items ?? []}
-            loading={industries.isLoading}
-            total={universe.data?.nodes.length}
-            value={industryId}
-            onChange={(id) => {
-              setIndustry(id);
-              if (focusId) warpTo(null);
-            }}
-          />
+          industryPicker
         )}
       </div>
       )}
@@ -415,7 +431,7 @@ export default function GalaxyPage() {
           씬 인코딩 설명(자리·굵기·색·점선)은 ? 허브에만 둔다 */}
       <ControlDock />
       {/* 왼쪽: Special Link — 특별한 관계만 골라 보여 주는 이 제품의 핵심 카드. 행 호버 = 씬 강조, 클릭 = 근거 패널 */}
-      <SurpriseRail model={focusId ? systemModel : galaxyModel} onPickCompany={pickCompany} />
+      {!surpriseInline && <SurpriseRail model={focusId ? systemModel : galaxyModel} onPickCompany={pickCompany} />}
 
       {/* 우측 패널 — 닫으면 오른쪽 가장자리 꼬리표로 접힌다 */}
       {/* 은하 뷰에서 행성을 클릭하면 워프하지 않고 그 기업의 뉴스·연결 단계를 여기서 먼저 본다 — 더블클릭(또는 패널의 "관계망 보기")이 워프 */}

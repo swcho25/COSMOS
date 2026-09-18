@@ -14,6 +14,8 @@ interface Props {
   /** 은하 뷰면 galaxyModel, 기업 관계망이면 systemModel — GalaxyPage 가 phase 에 맞춰 넘긴다 */
   model: SceneModel | null;
   onPickCompany: (id: string) => void;
+  /** 모바일 상단 둘째 줄에 산업 선택판과 나란히 놓일 때 — 자리를 잡는 <aside> 없이 꼬리표 버튼만 그린다(자리는 GalaxyPage 의 .hud-top-line 이 정한다) */
+  inline?: boolean;
 }
 
 /**
@@ -23,7 +25,7 @@ interface Props {
  * 행에 호버·포커스하면 씬의 그 빔이 밝아지고(기존 emphasis 규칙), 누르면 관계 패널이 근거와 함께 연다 —
  * "3클릭 내 근거" 를 1클릭으로 줄이는 지점이다.
  */
-export default function SurpriseRail({ model, onPickCompany }: Props) {
+export default function SurpriseRail({ model, onPickCompany, inline = false }: Props) {
   const phase = useGalaxy((s) => s.phase);
   const surpriseOpen = useGalaxy((s) => s.surpriseOpen);
   const toggleSurprise = useGalaxy((s) => s.toggleSurprise);
@@ -51,13 +53,13 @@ export default function SurpriseRail({ model, onPickCompany }: Props) {
   const open = surpriseOpen && !narrow;
 
   if (!open) {
-    return (
-      <aside className="hud hud-surprise">
-        <button type="button" className="hud-tag" onClick={toggleSurprise} title={SURPRISE_UI.kicker}>
-          <span aria-hidden="true">{SURPRISE_UI.mark}</span> {SURPRISE_UI.kicker} · {SURPRISE_UI.expandTag(rows.length)}
-        </button>
-      </aside>
+    const tag = (
+      <button type="button" className="hud-tag" onClick={toggleSurprise} title={SURPRISE_UI.kicker}>
+        <span aria-hidden="true">{SURPRISE_UI.mark}</span> {SURPRISE_UI.kicker} · {SURPRISE_UI.expandTag(rows.length)}
+      </button>
     );
+    if (inline) return tag;
+    return <aside className="hud hud-surprise">{tag}</aside>;
   }
 
   // 제목 줄은 기업 중심 뷰에서만 — 은하 뷰에서는 머리의 'Special Link' 가 곧 이름이라 한 줄 더 둘 이유가 없다

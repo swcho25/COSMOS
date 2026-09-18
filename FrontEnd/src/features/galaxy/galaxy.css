@@ -899,6 +899,35 @@
     padding: 0 16px;
     gap: 10px;
   }
+  /* 첫 줄: 검색은 돋보기 하나로 접는다(누르면 검색 팔레트) — 비운 자리에 카메라 시점 · 은하 범위가 들어온다.
+     375px 기준 44 + 10 + 시점 ≈105 + 10 + 범위 ≈155 = ≈324, 행 폭 343 안에 한 줄 */
+  .search-trigger {
+    flex: none;
+    width: 44px;
+    min-width: 0;
+    height: 44px;
+    padding: 0;
+    justify-content: center;
+    color: var(--text-2);
+  }
+  .search-trigger span {
+    display: none;
+  }
+  /* 둘째 줄: Special Link 꼬리표 · 산업 선택판을 한 줄로 (GalaxyPage 가 900px 이하에서 이 묶음으로 그린다) */
+  .hud-top-line {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    width: 100%;
+    min-width: 0;
+  }
+  .hud-top-line .hud-tag {
+    flex: none;
+  }
+  .hud-top-line .industry-trigger {
+    height: 44px;
+  }
   .my-galaxy-bar {
     flex-wrap: nowrap;
     overflow-x: auto;
@@ -1453,4 +1482,10 @@
 /* 은하 뷰에서 미리보기 패널(우측 390px)이 열리면 상단 한 줄(검색·범위·산업)은 그 왼쪽에서 접힌다 — 기업 중심 뷰에는 상단 줄이 없어 해당 없음 */
 .galaxy:has(.hud-panel) .hud-top {
   padding-right: calc(24px + 390px + 16px);
+}
+@media (max-width: 900px) {
+  /* 모바일 패널은 바텀시트라 상단 줄이 오른쪽으로 비켜 줄 필요가 없다 — 위 규칙을 상쇄 */
+  .galaxy:has(.hud-panel) .hud-top {
+    padding-right: 16px;
+  }
 }
