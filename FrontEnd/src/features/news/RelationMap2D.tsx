@@ -1,6 +1,6 @@
 import type { GraphEdge, LatestGraphNode, NewsRelatedCompany } from "@/api/types";
 import { RELATIONSHIP_ORDER, relationshipMeta } from "@/lib/meta";
-import { CompanyAvatar, Empty, SentimentBadge } from "@/components/ui";
+import { CompanyAvatar, Empty, Icon, SentimentBadge } from "@/components/ui";
 
 interface Props {
   nodes: LatestGraphNode[];
@@ -9,6 +9,8 @@ interface Props {
   related?: NewsRelatedCompany[];
   highlightId?: string | null;
   onPickCompany: (id: string) => void;
+  /** 관계 한 줄 우측의 은하 버튼 — 전체 은하에서 이 두 기업 사이의 같은 간선을 눌렀을 때 뜨는 기업 관계 화면으로 이동한다 */
+  onOpenInGalaxy: (relationshipId: string) => void;
 }
 
 /**
@@ -24,7 +26,7 @@ interface Props {
  * 기업들" 사이의 관계만 담고, 모든 엣지의 두 끝은 항상 이 기업들 중 하나다 — 그래서 더 이상
  * "직접 언급 기업 vs 그 밖의 기업"을 구분할 필요가 없어, 관계 유형별 묶음 하나로만 정리한다.
  */
-export default function RelationMap2D({ nodes, edges, related, highlightId, onPickCompany }: Props) {
+export default function RelationMap2D({ nodes, edges, related, highlightId, onPickCompany, onOpenInGalaxy }: Props) {
   if (!nodes.length) return <Empty>관계 지도를 그릴 기업이 없습니다.</Empty>;
 
   const byId = new Map(nodes.map((n) => [n.companyId, n]));
@@ -93,6 +95,10 @@ export default function RelationMap2D({ nodes, edges, related, highlightId, onPi
                 </span>
                 <button type="button" className={`rel2d-chip ${b.companyId === highlightId ? "on" : ""}`} onClick={() => onPickCompany(b.companyId)}>
                   {b.name}
+                </button>
+                {/* 전체 은하에서 이 간선(같은 relationshipId)을 눌렀을 때 뜨는 기업 관계 화면으로 바로 이동 */}
+                <button type="button" className="rel2d-galaxy-btn" title={`전체 은하에서 ${a.name} · ${b.name} 관계 보기`} onClick={() => onOpenInGalaxy(e.relationshipId)}>
+                  <Icon.Galaxy />
                 </button>
               </div>
             );

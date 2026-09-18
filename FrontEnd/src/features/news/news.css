@@ -208,6 +208,25 @@
   background: rgba(109, 140, 255, 0.12);
   color: var(--primary-2);
 }
+/* 관계 한 줄 우측의 "전체 은하에서 보기" 버튼 — 두 기업 칩·점수 뒤에 붙는 작은 원형 아이콘 버튼.
+   margin-left: auto 로 줄 안에서는 오른쪽 끝에 붙고, 좁은 열에서 줄바꿈되면 새 줄에서 시작한다. */
+.rel2d-galaxy-btn {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: var(--text-3);
+  margin-left: auto;
+}
+.rel2d-galaxy-btn:hover {
+  border-color: rgba(198, 165, 255, 0.5);
+  color: var(--text);
+}
 .map-foot {
   padding: 12px 20px 14px;
   display: flex;

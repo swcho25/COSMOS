@@ -336,7 +336,14 @@ export default function NewsPage() {
             </div> */}
             <div className="map-stage">
               {mapNodes.length ? (
-                <RelationMap2D nodes={mapNodes} edges={mapEdges} related={detail.data?.relatedCompanies} highlightId={companyId} onPickCompany={(id) => setCompany(id)} />
+                <RelationMap2D
+                  nodes={mapNodes}
+                  edges={mapEdges}
+                  related={detail.data?.relatedCompanies}
+                  highlightId={companyId}
+                  onPickCompany={(id) => setCompany(id)}
+                  onOpenInGalaxy={(relationshipId) => navigate(`/?edge=${relationshipId}`)}
+                />
               ) : (
                 <div className="stage-loading">
                   <span className="kick">relation map</span>

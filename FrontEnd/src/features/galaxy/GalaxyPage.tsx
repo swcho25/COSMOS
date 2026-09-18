@@ -102,8 +102,8 @@ export default function GalaxyPage() {
   // 씬 툴팁이 따라갈 포인터 위치 — ref 에만 써서 포인터 이동이 리렌더를 만들지 않는다
   const pointer = useRef<PointerPos>({ x: -1000, y: -1000 });
 
-  /* 첫 방문 투어 자동 시작 — 딥링크(?company=)나 내 은하(?scope=mine)로 들어온 진입은 그 화면이 먼저다. 마운트 시점에 한 번 정한다 */
-  const [autoTour] = useState(() => !params.get("company") && params.get("scope") !== "mine");
+  /* 첫 방문 투어 자동 시작 — 딥링크(?company=·?edge=)나 내 은하(?scope=mine)로 들어온 진입은 그 화면이 먼저다. 마운트 시점에 한 번 정한다 */
+  const [autoTour] = useState(() => !params.get("company") && !params.get("edge") && params.get("scope") !== "mine");
   /** 첫 방문 투어가 자동으로 뜰 조건 — Tour.tsx 의 자동 시작 조건과 같다. 그 인트로 딤(72% 어둡게)이 씬을 덮으므로 워밍업 오버레이를 따로 붙잡을 필요가 없다 */
   const [tourWillCover] = useState(() => autoTour && !isTourDone());
   const helpOpen = useUi((s) => s.helpOpen);
@@ -127,6 +127,30 @@ export default function GalaxyPage() {
     setParams(next, { replace: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [focusId]);
+
+  /* URL ?edge= — 뉴스 페이지 관계 줄의 은하 버튼("전체 은하에서 보기")에서 들어오는 딥링크.
+     RelationshipPanel 은 relationshipId로 서버에서 직접 조회하므로(모델은 "왜 특별한가" 설명에만
+     쓰고 없어도 동작한다) ?company= 와 달리 galaxyModel 을 기다릴 필요가 없다. 간선 선택은 이 화면
+     안에서 URL 과 계속 동기화되는 상태가 아니라서(3D 씬에서 다른 간선을 눌러도 URL은 그대로다),
+     ?company= 처럼 양방향으로 두지 않고 진입 시 한 번만 선택한 뒤 파라미터를 지운다. "전체 은하"에서
+     본 것과 같은 화면이 뜨도록 범위도 함께 전체로 되돌린다(내 은하로 들어와 있던 세션이면). */
+  const pendingEdgeLink = useRef(params.get("edge"));
+  useEffect(() => {
+    const requested = pendingEdgeLink.current;
+    if (!requested) return;
+    pendingEdgeLink.current = null;
+    if (useGalaxy.getState().scope !== "all") setScope("all");
+    selectEdge(requested);
+    setParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        next.delete("edge");
+        return next;
+      },
+      { replace: true },
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   /* URL ?scope=mine — 세션이 정해진 뒤 소비한다. 게스트면 로그인 안내만 하고 파라미터를 지운다(전체 은하 유지)
      params 자체를 구독해야, 은하 페이지에 이미 마운트된 채로 헤더 "내 은하"처럼 쿼리만 바뀌는 이동도 소비된다 */
