@@ -143,12 +143,13 @@
   border-color: rgba(109, 140, 255, 0.45);
   background: rgba(109, 140, 255, 0.16);
 }
+/* 고급 그룹은 이 버튼의 왼쪽으로 펼쳐진다 — 닫혀 있을 때는 '>'(오른쪽에 접혀 있음), 열려 있을 때는 '<'(왼쪽으로 열림). 예전에는 반대로 돌아가 있어 열고 닫는 방향이 거꾸로 읽혔다 */
 .dock-adv-toggle svg {
-  transform: rotate(90deg);
+  transform: rotate(-90deg);
   transition: transform 0.15s;
 }
 .dock-adv-toggle.on svg {
-  transform: rotate(-90deg);
+  transform: rotate(90deg);
 }
 
 /* 고급 그룹 — 뉴스·공시 비율 · 최소 점수 · 주가 고도, 세 줄을 세로로 */
