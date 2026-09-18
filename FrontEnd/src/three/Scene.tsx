@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, type MutableRefObject } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, type MutableRefObject } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { AdaptiveDpr, OrbitControls } from "@react-three/drei";
 import { Bloom, ChromaticAberration, EffectComposer, Vignette } from "@react-three/postprocessing";
@@ -27,7 +27,9 @@ import TourAnchor from "./TourAnchor";
 import Warp from "./Warp";
 import { targetY } from "./altitude";
 import { cameraBusy } from "./cameraState";
+import { markSceneReady, resetSceneReady } from "./sceneReady";
 import { computeEmphasis } from "./emphasis";
+import { bindLogoAtlasRenderer } from "./logoAtlas";
 import { dragState, liveFor, morphState, planMorph, sampleMorph } from "./morph";
 import { LAB, PLANET_RADIUS_K } from "./toon";
 
@@ -124,6 +126,14 @@ const WARP_COMMIT = 0.6;
 const WARP_END = 1.7;
 /** 워프 리빌 길이(ms) — 착지 후 이 시간 동안 빔이 안쪽에서 바깥으로 자란다 */
 const REVEAL_MS = 600;
+/** 인트로 비행 길이(초) */
+const INTRO_S = 2.4;
+/** 인트로 워밍업 상한(ms) — 프레임이 안정되지 않아도 이 시간 뒤에는 비행을 시작한다 */
+const WARMUP_TIMEOUT_MS = 2500;
+/** 워밍업이 끝났다고 보는 프레임 간격(초) — 직전 프레임(컴파일·업로드를 치른 프레임)이 이 아래로 내려오면 매끄럽게 날 수 있다 */
+const WARM_FRAME_S = 0.05;
+/** 워밍업에서 최소로 지켜보는 프레임 수 — 첫 프레임은 커밋, 둘째가 첫 드로우(컴파일), 셋째부터 간격을 판정한다 */
+const WARM_MIN_FRAMES = 3;
 const ORIGIN: Vec3 = [0, 0, 0];
 const SHIFT = new THREE.Vector3();
 const PIVOT = new THREE.Vector3();
@@ -162,6 +172,8 @@ function Director({ warpRef, galaxy, system, next }: { warpRef: MutableRefObject
     /** 정렬 격자에서 지금 시선을 둔 기업 (빈 문자열 = 가장 큰 기업) */
     spreadFocus: "",
     presetBeforeSpread: null as CameraPresetId | null,
+    /** 인트로 워밍업 — 모델이 마운트된 뒤 지난 프레임 수와 시작 시각. 프레임 간격이 안정되면(또는 상한에 닿으면) 비행을 시작한다 */
+    intro: null as { pose: Pose; frames: number; startedAt: number } | null,
   }).current;
 
   // 항상 "지금 카메라가 있는 곳"에서 시작한다 — 워프 커밋도 순간이동 없이 이어 붙인다
@@ -194,14 +206,27 @@ function Director({ warpRef, galaxy, system, next }: { warpRef: MutableRefObject
   const fitted = useRef<SceneModel | null>(null);
   // 은하 모델이 처음 준비되면 바깥에서 안으로 날아드는 인트로
   const introDone = useRef(false);
-  useEffect(() => {
+  // 레이아웃 이펙트인 이유: 카메라를 시작 자세에 세우는 일이 이 커밋의 첫 R3F 프레임보다 먼저 일어나야 한다 (useEffect 는 한 프레임 뒤에 돌 수 있다)
+  useLayoutEffect(() => {
     if (introDone.current || !galaxy) return;
     introDone.current = true;
     fitted.current = galaxy;
     const pose = poseFor(galaxy, "galaxy", (camera as THREE.PerspectiveCamera).aspect, useGalaxy.getState().cameraPreset);
     camera.position.set(...pose.pos).multiplyScalar(1.7);
-    startAnim(pose, 2.4);
+    if (controls) {
+      controls.target.fromArray(pose.tgt);
+      controls.update();
+    }
     rig.lastPhase = "galaxy";
+    /*
+     * 워밍업. 모델이 마운트된 이 프레임에 바로 비행을 시작하면 첫 드로우의 셰이더 컴파일·지오메트리·텍스처 업로드(실측 370~490ms)가
+     * 비행 첫 장면의 끊김으로 보였다 (2026-09-18). 카메라를 시작 자세에 세워 둔 채 그 첫 드로우를 먼저 치르고, 프레임 간격이
+     * WARM_FRAME_S 아래로 안정되면(useFrame 의 rig.intro 처리) 비행을 시작한다. 로딩 오버레이(GalaxyPage)는 markSceneReady 까지 남아 그 사이를 덮는다.
+     * gl.compileAsync 로 미리 컴파일하는 방식은 쓰지 않는다 — Windows 의 ANGLE(D3D11)은 실제 첫 드로우에서 HLSL 을 다시 컴파일하므로
+     * 숨긴 채 컴파일한 뒤 공개해도 공개 프레임에 485ms 가 그대로 남았다. 프레임 시간으로 판정하는 쪽이 플랫폼을 가리지 않는다.
+     * 이 이펙트는 galaxy 가 바뀔 때마다 다시 돌지만 introDone 이 막는다
+     */
+    rig.intro = { pose, frames: 0, startedAt: performance.now() };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [galaxy, camera]);
 
@@ -311,7 +336,9 @@ function Director({ warpRef, galaxy, system, next }: { warpRef: MutableRefObject
         rig.presetNonce = s.cameraPresetNonce;
         if (model && introDone.current) {
           fitted.current = model;
-          startAnim(poseFor(model, kind, aspect, s.cameraPreset), 1.2);
+          // 워밍업 중에 고른 프리셋은 대기 중인 인트로 비행의 목표를 바꾼다 — 여기서 startAnim 을 걸면 아래 인트로 시작이 처음 자세로 덮어써 선택이 사라진다
+          if (rig.intro) rig.intro.pose = poseFor(model, kind, aspect, s.cameraPreset);
+          else startAnim(poseFor(model, kind, aspect, s.cameraPreset), 1.2);
         }
       }
       // 워프 중에 그래프가 도착했거나 필터로 모델이 바뀐 경우: 진행 중인 애니메이션이 끝난 뒤 현재 모델에 다시 맞춘다
@@ -321,6 +348,23 @@ function Director({ warpRef, galaxy, system, next }: { warpRef: MutableRefObject
       }
     }
     warpRef.current = intensity;
+
+    // 인트로 워밍업 — 첫 드로우(컴파일·업로드)를 치른 뒤 프레임 간격이 안정되면 비행을 시작하고 로딩 오버레이를 걷는다.
+    // delta 는 직전 프레임이 걸린 시간이라, 무거운 프레임 바로 다음 프레임에서 작은 값이 나오면 그 고비를 넘긴 것이다
+    if (rig.intro) {
+      rig.intro.frames += 1;
+      const settled = rig.intro.frames >= WARM_MIN_FRAMES && delta < WARM_FRAME_S;
+      if (s.phase === "warp") {
+        // 딥링크(?company=)처럼 모델 도착과 함께 워프가 시작됐다 — 비행은 워프 연출이 맡으므로 인트로는 접고 오버레이만 걷는다
+        rig.intro = null;
+        markSceneReady();
+      } else if (settled || now - rig.intro.startedAt > WARMUP_TIMEOUT_MS) {
+        // 워밍업 사이에 모델이 바뀌어 재프레이밍(startAnim)이 이미 카메라를 잡았으면 그 비행을 두고 인트로는 생략한다
+        if (!rig.anim) startAnim(rig.intro.pose, INTRO_S);
+        rig.intro = null;
+        markSceneReady();
+      }
+    }
 
     if (rig.anim) {
       const a = rig.anim;
@@ -334,10 +378,10 @@ function Director({ warpRef, galaxy, system, next }: { warpRef: MutableRefObject
       if (a.t >= a.dur) rig.anim = null;
     }
 
-    cameraBusy.anim = !!rig.anim || s.phase === "warp";
+    cameraBusy.anim = !!rig.anim || s.phase === "warp" || rig.intro !== null;
     if (controls) {
-      // 행성을 끄는 동안은 궤도 회전을 멈춘다 — 안 그러면 행성과 카메라가 같은 드래그로 함께 움직인다
-      const free = s.phase !== "warp" && !rig.anim && !dragState.id;
+      // 행성을 끄는 동안은 궤도 회전을 멈춘다 — 안 그러면 행성과 카메라가 같은 드래그로 함께 움직인다. 인트로 워밍업 중에도 잠근다
+      const free = s.phase !== "warp" && !rig.anim && !dragState.id && !rig.intro;
       if (controls.enabled !== free) controls.enabled = free;
     }
   });
@@ -404,6 +448,13 @@ function Content({ galaxy, system, next = null, warpRef }: ContentProps) {
   );
   // Special Link 간선 집합 — 선 위 글자(EdgeLabels)에 ✦ 를 붙인다. 모델당 한 번만 스캔한다
   const surprise = useMemo(() => (model ? surpriseSet(model) : new Set<string>()), [model]);
+
+  // 로고 아틀라스의 부분 업로드(logoAtlas.flush)는 이 씬의 렌더러로 한다 — 떠날 때 풀어 다른 컨텍스트로 복사하지 않게
+  const gl = useThree((s) => s.gl);
+  useEffect(() => {
+    bindLogoAtlasRenderer(gl);
+    return () => bindLogoAtlasRenderer(null);
+  }, [gl]);
 
   useEffect(() => {
     document.body.style.cursor = hoveredId || hoveredEdgeId ? "pointer" : "";
@@ -476,6 +527,8 @@ function Content({ galaxy, system, next = null, warpRef }: ContentProps) {
 
 export default function Scene(props: Omit<ContentProps, "warpRef">) {
   const warpRef = useRef(0);
+  // 씬이 사라지면 R3F 가 WebGL 컨텍스트를 버린다(forceContextLoss) — 다음 마운트는 셰이더를 다시 컴파일하므로 준비 신호도 되돌려 오버레이가 다시 덮게 한다
+  useEffect(() => () => resetSceneReady(), []);
   return (
     <Canvas
       dpr={[1, 1.75]}

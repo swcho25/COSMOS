@@ -4,7 +4,7 @@ import { IMPACT_META, RELATIONSHIP_ORDER, SENTIMENT_META, SENTIMENT_PENDING, UNC
 import { initials } from "@/lib/format";
 import { logoUrl, useCompanyLogoRef } from "@/lib/logos";
 import { ROLE_META, roleColor, type RoleKey } from "@/lib/roles";
-import { LAB } from "@/three/toon";
+import { LAB } from "@/three/palette";
 
 /* ------------------------------ 로고 아바타 ------------------------------ */
 

@@ -5,7 +5,7 @@ import type { SceneEdge, SceneModel } from "@/lib/graph";
 import { relationshipMeta } from "@/lib/meta";
 import { hoverPath } from "@/lib/path";
 import { useGalaxy } from "@/store/galaxy";
-import { beamColorFor } from "@/three/toon";
+import { beamColorFor } from "@/three/palette";
 
 interface Props {
   /** 현재 뷰 모델 — 기업 중심 뷰면 systemModel, 은하 뷰면 galaxyModel. GalaxyPage 가 넘겨준다 (Canvas 와 결합도 0) */

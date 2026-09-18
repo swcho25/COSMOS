@@ -6,7 +6,7 @@ import { SURPRISE_UI } from "@/lib/guide";
 import { relationshipMeta } from "@/lib/meta";
 import { rankSurprises, type Surprise } from "@/lib/surprise";
 import { useGalaxy } from "@/store/galaxy";
-import { beamColorFor } from "@/three/toon";
+import { beamColorFor } from "@/three/palette";
 import "./surprise.css";
 
 const NARROW_BREAKPOINT = 900;
