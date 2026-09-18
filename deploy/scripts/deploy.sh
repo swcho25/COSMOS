@@ -108,6 +108,22 @@ check_health() {
     done
     return 1
 }
+check_web_delivery() {
+    local base_url="$1" index asset_path response_headers http_version
+    curl --fail --silent --show-error --max-time 15 "$base_url/healthz" | grep -q '"status":"UP"'
+    index="$(curl --fail --silent --show-error --max-time 15 "$base_url/")"
+    asset_path="$(printf '%s' "$index" | grep -oE '/assets/[^"[:space:]]+\.(js|css)' | sed -n '1p' || true)"
+    [[ -n "$asset_path" ]] || { echo 'Smoke test could not find a JS/CSS asset in index.html' >&2; return 1; }
+    response_headers="$(curl --fail --silent --show-error --max-time 30 \
+        --header 'Accept-Encoding: gzip' --dump-header - --output /dev/null "$base_url$asset_path")"
+    if ! printf '%s\n' "$response_headers" | grep -Eqi '^content-encoding:[[:space:]]*gzip([[:space:]]|$)'; then
+        echo "Smoke test expected gzip for $asset_path" >&2
+        return 1
+    fi
+    http_version="$(curl --fail --silent --show-error --max-time 15 \
+        --http2 --output /dev/null --write-out '%{http_version}' "$base_url/")"
+    [[ "$http_version" == 2 ]] || { echo "Smoke test expected HTTP/2, got HTTP/$http_version" >&2; return 1; }
+}
 rollback() {
     result=${1:-$?}
     trap - ERR INT TERM
@@ -136,8 +152,7 @@ trap 'rollback 143' TERM
 "${compose[@]}" up -d --no-deps backend frontend
 check_health
 if [[ -n "${COSMOS_SMOKE_URL:-}" ]]; then
-    curl --fail --silent --show-error --max-time 15 "$COSMOS_SMOKE_URL/healthz" | grep -q '"status":"UP"'
-    curl --fail --silent --show-error --max-time 15 "$COSMOS_SMOKE_URL/" >/dev/null
+    check_web_delivery "$COSMOS_SMOKE_URL"
 fi
 printf '%s\n' "$tag" > "$state/current.next"
 mv "$state/current.next" "$state/current"
