@@ -238,10 +238,19 @@
   height: 14px;
 }
 
-/* 좁은 화면 — 좌하단 상태 카드와 겹치지 않도록 (구 hud-readbar 규칙과 동일) */
+/* 좁은 화면 — 상태 카드는 모바일에서 감추므로(galaxy.css) 도크는 바닥까지 내려온다. 홈 인디케이터 영역은 피한다 */
 @media (max-width: 900px) {
   .hud-dock {
+    bottom: calc(14px + env(safe-area-inset-bottom, 0px));
+  }
+  /* 패널을 접은 꼬리표(바닥 중앙)가 있을 때만 그 위로 비켜 선다 */
+  .galaxy:has(.hud-panel-tag) .hud-dock {
     bottom: 64px;
+  }
+  /* 접힌 '^' 버튼(모바일 기본 상태)은 손가락 크기로 */
+  .dock-open {
+    width: 44px;
+    height: 44px;
   }
   /* 카드가 화면보다 넓어지면 열을 줄바꿈하고 세로 구분선은 접는다 */
   .dock-card {

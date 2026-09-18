@@ -3,6 +3,7 @@ import type { AltitudeWindow, MetricWindow, PricePeriod, RelationshipType } from
 import type { CameraPresetId } from "@/lib/guide";
 import { RELATIONSHIP_ORDER } from "@/lib/meta";
 import type { RoleKey } from "@/lib/roles";
+import { isNarrowViewport } from "@/lib/viewport";
 
 export type PanelTab = "news" | "price" | "board";
 /** 은하 범위 — "all" 전체 우주, "mine" 관심 기업(+1홉)만 보는 개인 은하 */
@@ -136,9 +137,11 @@ export const useGalaxy = create<GalaxyState>((set, get) => ({
   pricePeriod: "1M",
   searchOpen: false,
   panelOpen: true,
-  // 도크는 펼친 채로 시작한다 — 조절 수단이 첫 화면에 보여야 한다. 접으면 하단 중앙 '^' 버튼만 남는다
-  dockOpen: true,
-  dockAdvanced: true,
+  // 도크는 펼친 채로 시작한다 — 조절 수단이 첫 화면에 보여야 한다. 접으면 하단 중앙 '^' 버튼만 남는다.
+  // 모바일(900px 이하, lib/viewport)은 펼친 카드가 씬의 절반을 가리므로 접힌 채로 시작한다 — '^' 로 열 수 있다
+  dockOpen: !isNarrowViewport(),
+  // 고급(뉴스·공시 비율 · 최소 점수 · 주가 고도)도 모바일은 접힌 채로 — 열린 카드가 화면 1/3 을 차지했다. '>' 로 펼친다
+  dockAdvanced: !isNarrowViewport(),
   industryOpen: false,
   cameraPreset: "orbit",
   cameraPresetNonce: 0,

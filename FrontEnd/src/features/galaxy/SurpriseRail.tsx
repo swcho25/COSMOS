@@ -1,28 +1,14 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
 import { EdgeGlyph, Empty, Icon } from "@/components/ui";
 import { fmtScore } from "@/lib/format";
 import type { SceneModel } from "@/lib/graph";
 import { SURPRISE_UI } from "@/lib/guide";
 import { relationshipMeta } from "@/lib/meta";
 import { rankSurprises, type Surprise } from "@/lib/surprise";
+import { useNarrowViewport } from "@/lib/viewport";
 import { useGalaxy } from "@/store/galaxy";
 import { beamColorFor } from "@/three/palette";
 import "./surprise.css";
-
-const NARROW_BREAKPOINT = 900;
-
-/** 900px 미만에서는 카드를 아예 펼치지 않는다 — 접힘 여부는 store(surpriseOpen)가 아니라 뷰포트가 정한다 */
-function useNarrowViewport() {
-  const [narrow, setNarrow] = useState(() => (typeof window !== "undefined" ? window.innerWidth < NARROW_BREAKPOINT : false));
-  useEffect(() => {
-    if (typeof window === "undefined" || !window.matchMedia) return;
-    const mq = window.matchMedia(`(max-width: ${NARROW_BREAKPOINT}px)`);
-    const onChange = (e: MediaQueryListEvent) => setNarrow(e.matches);
-    mq.addEventListener("change", onChange);
-    return () => mq.removeEventListener("change", onChange);
-  }, []);
-  return narrow;
-}
 
 interface Props {
   /** 은하 뷰면 galaxyModel, 기업 관계망이면 systemModel — GalaxyPage 가 phase 에 맞춰 넘긴다 */
@@ -45,6 +31,7 @@ export default function SurpriseRail({ model, onPickCompany }: Props) {
   const activeTypes = useGalaxy((s) => s.activeTypes);
   const selectEdge = useGalaxy((s) => s.selectEdge);
   const setHoveredEdge = useGalaxy((s) => s.setHoveredEdge);
+  // 좁은 화면(900px 이하, lib/viewport)에서는 카드를 아예 펼치지 않는다 — 접힘 여부는 store(surpriseOpen)가 아니라 뷰포트가 정한다
   const narrow = useNarrowViewport();
 
   const rows = useMemo(() => {

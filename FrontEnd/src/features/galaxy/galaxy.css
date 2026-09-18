@@ -936,9 +936,9 @@
     border-right: 1px solid var(--border-strong);
     border-bottom: 0;
   }
+  /* 좌하단 스냅샷 카드(기준 시각·다음 갱신)는 모바일에서 감춘다 — 도크·패널 꼬리표와 바닥 자리를 다투고, 같은 안내가 ? 허브에도 있다 */
   .hud-status {
-    left: 16px;
-    bottom: 14px;
+    display: none;
   }
   .hud-crumb {
     left: 16px;
