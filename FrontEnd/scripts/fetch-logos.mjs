@@ -2,6 +2,8 @@
  * 기업 로고 수집 — 종목코드/티커 → 대표 도메인(계열사는 그룹 도메인) 순으로 공개 아이콘 출처를 훑어
  * public/company-logos/{code}.{ext} 로 저장한다. 후보 중 긴 변 128px 이상이 나오면 그것을 쓰고,
  * 없으면 가장 큰 것을 쓴다 (가이드 권장 조건: 정사각형·투명 배경·최소 128×128).
+ * 128px 보다 큰 그림은 받지 않는다 — 로고는 three/logoAtlas 의 128px 셀과 패널 아바타(≤56px)에만 쓰여서
+ * 그보다 큰 픽셀은 첫 화면 전송량만 늘린다 (2026-09-18: 256px 로 받아 둔 로고 3.8MB → 1.6MB).
  * 이미 있는 파일은 건너뛴다 — 특정 기업만 다시 받으려면 그 파일을 지우고 실행한다.
  * 실행: npm run logos:fetch  (--force 로 전부 덮어쓰기)
  * 저장된 목록은 src/lib/logo-codes.json 으로 다시 생성된다.
@@ -366,14 +368,14 @@ const MIN_PX = 128;
 async function fetchLogo(domain) {
   const candidates = [
     // 1) Clearbit — 정사각형 고해상도 로고 (서비스 중단 시 건너뜀)
-    ["clearbit", `https://logo.clearbit.com/${domain}?size=256`, 1500],
+    ["clearbit", `https://logo.clearbit.com/${domain}?size=128`, 1500],
     // 2) 사이트의 apple-touch-icon (보통 180px 정방형)
     ["touch-icon", `https://${domain}/apple-touch-icon.png`, 1500],
     ["touch-icon", `https://www.${domain}/apple-touch-icon.png`, 1500],
-    // 3) Google favicon 256px
-    ["gstatic", `https://t1.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://${domain}&size=256`, 2500],
+    // 3) Google favicon 128px
+    ["gstatic", `https://t1.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://${domain}&size=128`, 2500],
     // 4) logo.dev (공개 문서용 publishable key, 프로토타입 한정 — 서비스 시 자체 키·표기 필요)
-    ["logo.dev", `https://img.logo.dev/${domain}?token=pk_X-1ZO13GSgeOoUrIuJ6GMQ&size=256&format=png`, 1500],
+    ["logo.dev", `https://img.logo.dev/${domain}?token=pk_X-1ZO13GSgeOoUrIuJ6GMQ&size=128&format=png`, 1500],
     // 5) DuckDuckGo 아이콘 (ico, 다중 크기)
     ["ddg", `https://icons.duckduckgo.com/ip3/${domain}.ico`, 1500],
     // 6) 사이트 루트의 favicon.ico / precomposed 터치 아이콘 — 대개 32px 이하라 마지막에 둔다

@@ -28,11 +28,14 @@ export default function Header() {
   const menuRef = useClickOutside<HTMLDivElement>(close, open);
   const watchlist = useWatchlist();
   const scraps = useScraps();
+  // 프로필 메뉴의 '관심 기업 · 스크랩한 뉴스' 한 줄에 두 수를 라벨 순서대로 나란히 보여 준다
+  const nWatch = watchlist.data?.items.length ?? "-";
+  const nScrap = scraps.data?.items.length ?? "-";
 
   return (
     <header className="hd">
       <NavLink to="/" className="logo" aria-label="COSMOS 홈">
-        <img src="/cosmos-logo.png" alt="" />
+        <img src="/cosmos-logo.png" alt="" width={167} height={128} />
         <span>COSMOS</span>
       </NavLink>
       <nav aria-label="주요 메뉴">
@@ -72,13 +75,10 @@ export default function Header() {
                       <Icon.Galaxy /> 내 은하
                     </span>
                   </button>
-                  <button type="button" className="item" role="menuitem" onClick={() => (close(), navigate("/me#watch"))}>
-                    <span>관심 기업</span>
-                    <span className="num">{watchlist.data?.items.length ?? "-"}</span>
-                  </button>
-                  <button type="button" className="item" role="menuitem" onClick={() => (close(), navigate("/me#scraps"))}>
-                    <span>스크랩한 뉴스</span>
-                    <span className="num">{scraps.data?.items.length ?? "-"}</span>
+                  {/* 관심 기업과 스크랩은 내 페이지 한 화면에 나란히 있어 어느 쪽을 눌러도 같은 곳이었다 — 한 줄로 합친다 */}
+                  <button type="button" className="item" role="menuitem" onClick={() => (close(), navigate("/me#watch"))} title={`관심 기업 ${nWatch}개 · 스크랩한 뉴스 ${nScrap}개`}>
+                    <span>관심 기업 · 스크랩한 뉴스</span>
+                    <span className="num">{`${nWatch} · ${nScrap}`}</span>
                   </button>
                 </div>
                 <div className="divider" style={{ padding: "6px 0 0" }}>
