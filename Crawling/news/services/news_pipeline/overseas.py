@@ -65,6 +65,9 @@ class OverseasCollector:
         max_discovery_pages: int = 3,
         request_delay: float = 4.5,
         article_attempts: int = 3,
+        registry: str | None = None,
+        company_extractor=None,
+        target_companies_only: bool = False,
         stop_requested=None,
     ):
         self.overseas, self.history = _load_crawler(crawler_root)
@@ -81,6 +84,17 @@ class OverseasCollector:
             timeout=25.0, retries=2, request_delay=request_delay
         )
         self.source = self.overseas.SOURCE_CLASSES["yahoo"](self.client)
+        self.minimum_published_date = date(2016, 1, 1)
+        if registry and company_extractor is not None:
+            raise ValueError("Pass either registry or company_extractor, not both")
+        if registry:
+            from pipelines.company_extraction import CompanyExtractor
+
+            company_extractor = CompanyExtractor(registry)
+        self.company_extractor = company_extractor
+        if target_companies_only and company_extractor is None:
+            raise ValueError("target_companies_only requires a company registry")
+        self.target_companies_only = target_companies_only
         self.recovered = 0
         # Startup recovery happens once, before the service calls either loop.
         for path in [self.state_dir / "latest.db", *self.state_dir.glob("backfill-*.db")]:
@@ -135,12 +149,64 @@ class OverseasCollector:
             ).fetchone()[0],
         }
 
+    @staticmethod
+    def _article_date(value: str | None) -> date | None:
+        if not value:
+            return None
+        try:
+            return datetime.fromisoformat(value.replace("Z", "+00:00")).date()
+        except (ValueError, TypeError, AttributeError):
+            return None
+
+    def _extract_companies(self, *, news_id: str, title: str, body: str,
+                           published_at: str | None = None) -> dict | None:
+        if self.company_extractor is None:
+            return None
+        return self.company_extractor.extract({
+            "news_id": news_id,
+            "title": title,
+            "body": body,
+            "published_date": published_at,
+        })
+
+    @staticmethod
+    def _nasdaq_companies(extracted: dict | None) -> list[dict]:
+        return [company for company in (extracted or {}).get("companies", [])
+                if company["market"] == "NASDAQ"]
+
+    def _company_metadata(self, article) -> dict:
+        """Attach explicit Nasdaq-100 evidence to a Yahoo article."""
+        if self.company_extractor is None:
+            return {}
+        extracted = self._extract_companies(
+            news_id=article.url, title=article.title, body=article.content,
+            published_at=article.published_at,
+        )
+        companies = self._nasdaq_companies(extracted)
+        return {
+            "nasdaq100_companies": [{
+                "company_id": company["company_id"],
+                "name": company["name"],
+                "ticker": company["ticker"],
+                "tickers": company["tickers"],
+                "explicit_tickers": company["explicit_tickers"],
+                "resolved_level": company["resolved_level"],
+                "mention_count": company["n_mentions"],
+            } for company in companies],
+            "universe_version": extracted["universe_version"],
+            "registry_sha256": extracted["registry_sha256"],
+            "company_extractor_version": extracted["extractor_version"],
+            "membership_policy": extracted["membership_policy"],
+            "company_match_method": "explicit_title_or_body_mention",
+        }
+
     def _collect(self, path: Path, prefix: str, lower: date, upper: date, limit: int) -> dict:
         if limit < 1:
             raise ValueError("limit must be at least one")
         result = {
             "source": SOURCE, "mode": prefix, "fetched": 0, "enqueued": 0,
-            "existing": 0, "failed": 0, "discovery_pages": 0,
+            "existing": 0, "irrelevant": 0, "out_of_range": 0, "failed": 0,
+            "discovery_pages": 0,
             "discovered": 0, "discovery_errors": 0, "recovered": self.recovered,
         }
         with self.history.HistoryQueue(path) as queue:
@@ -204,12 +270,24 @@ class OverseasCollector:
                     )
                     if len(article.content) < self.source.minimum_content_chars:
                         raise ValueError("article body too short")
+                    published_date = self._article_date(article.published_at)
+                    if published_date and published_date < self.minimum_published_date:
+                        queue.mark_done(candidate.url)
+                        result["out_of_range"] += 1
+                        continue
+                    metadata = self._company_metadata(article)
+                    if (self.target_companies_only
+                            and not metadata.get("nasdaq100_companies")):
+                        queue.mark_done(candidate.url)
+                        result["irrelevant"] += 1
+                        continue
                     event = make_event(
                         source=article.source, region="overseas", language="en",
                         url=article.url, title=article.title, content=article.content,
                         organization=article.organization or "",
                         published_at=article.published_at,
                         collected_at=article.crawled_at, run_id=run_id,
+                        metadata=metadata,
                     )
                 except Exception as exc:
                     queue.mark_failed(candidate.url, f"{type(exc).__name__}: {str(exc)[:500]}")

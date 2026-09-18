@@ -7,8 +7,12 @@ import tarfile
 ROOT = Path(__file__).resolve().parents[1]
 VENDOR = "vendor/overseas-news-crawler/"
 FILES = [
-    "README.md", "requirements.txt", "package.json", "package-lock.json", "config/kospi100.json", "docs/NAVER.md",
+    "README.md", "requirements.txt", "package.json", "package-lock.json", "config/kospi100.json",
+    "data/company_extraction/registry.json", "docs/NAVER.md",
     "docs/OPERATIONS.md", "docs/PROVENANCE.md", "services/__init__.py",
+    "pipelines/__init__.py",
+    *["pipelines/company_extraction/" + name for name in (
+        "__init__.py", "automaton.py", "engine.py", "normalization.py", "registry.py")],
     *["services/news_pipeline/" + name for name in (
         "__init__.py", "collector.py", "common.py", "investing.py", "overseas.py", "seed_existing.py",
         "writer.py", "domestic_discover.mjs", "domestic.bundle.mjs", "naver.py", "naver_runner.py",
