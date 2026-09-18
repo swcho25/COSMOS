@@ -14,6 +14,7 @@ import uuid
 from pathlib import Path
 
 from .common import Outbox, atomic_json, kafka_producer, make_event, utcnow
+from .fundus import FundusCollector
 from .investing import InvestingKospiCollector, InvestingNasdaqCollector
 from .overseas import OverseasCollector
 from .yahoo_kospi import YahooKospiCollector
@@ -144,6 +145,10 @@ def main():
     parser.add_argument("--topic", default="news.raw")
     parser.add_argument("--node", default="node")
     parser.add_argument("--domestic-script", default=str(Path(__file__).with_name("domestic.bundle.mjs")))
+    parser.add_argument("--fundus-python", default="")
+    parser.add_argument("--fundus-worker", default=str(Path(__file__).with_name("fundus_worker.py")))
+    parser.add_argument("--fundus-registry", default="")
+    parser.add_argument("--fundus-interval", type=int, default=600)
     parser.add_argument(
         "--jobs",
         default="latest,investing,investing-kospi,yahoo-kospi,domestic,backfill",
@@ -166,6 +171,8 @@ def main():
     parser.add_argument("--once", action="store_true")
     parser.add_argument("--idle-seconds", type=int, default=30)
     args = parser.parse_args()
+    if args.fundus_registry:
+        args.company_registry = args.fundus_registry
     if not 1 <= args.limit <= 100:
         parser.error("limit must be 1..100")
     if not 1 <= args.backfill_limit <= 500:
@@ -217,8 +224,17 @@ def main():
     domestic = DomesticCollector(state_dir, outbox, args.node, args.domestic_script)
     producer = kafka_producer(args.bootstrap)
     jobs = args.jobs.split(",")
-    if any(job not in {"latest", "investing", "investing-kospi", "yahoo-kospi", "domestic", "backfill", "publish"} for job in jobs):
+    if any(job not in {"latest", "investing", "investing-kospi", "yahoo-kospi", "domestic", "fundus", "backfill", "publish"} for job in jobs):
         parser.error("unknown job")
+    fundus = None
+    if "fundus" in jobs:
+        if not args.fundus_python:
+            parser.error("--fundus-python is required when the fundus job is enabled")
+        fundus = FundusCollector(
+            state_dir / "fundus", outbox, python=args.fundus_python,
+            worker=args.fundus_worker, registry=args.company_registry,
+            interval_seconds=args.fundus_interval,
+        )
     status = {"started_at": utcnow(), "cycles": 0, "jobs": {}}
     try:
         while not STOP:
@@ -244,6 +260,8 @@ def main():
                         result = investing_kospi.collect(limit=args.investing_limit)
                     elif job == "yahoo-kospi":
                         result = yahoo_kospi.collect(limit=args.yahoo_kospi_limit)
+                    elif job == "fundus":
+                        result = fundus.collect_latest(limit=args.limit)
                     elif job == "backfill":
                         result = overseas.collect_backfill(limit=args.backfill_limit)
                     elif job == "domestic":
