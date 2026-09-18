@@ -252,13 +252,113 @@
     width: 44px;
     height: 44px;
   }
-  /* 카드가 화면보다 넓어지면 열을 줄바꿈하고 세로 구분선은 접는다 */
-  .dock-card {
-    flex-wrap: wrap;
-    justify-content: center;
-    row-gap: 10px;
-  }
-  .dock-div {
-    display: none;
+}
+
+/* ------------------------------ 모바일 카드 (.dock-mobile) — ControlDock 이 900px 이하에서 이 구조로 그린다 ------------------------------
+   [ 장(.dock-panes) — 기본 장 또는 고급 장 하나만 자리를 차지 ][ 초기화 / > ]
+   기본 장: [ 펼치기 슬라이더 = 남는 폭 ][ 관계 종류 2×2 = 내용 폭 ]      고급 장: 뉴스·공시 비율 / 최소 점수 / 주가 고도 세 줄, 슬라이더가 남는 폭을 채운다
+   375px 기준: 카드 343(좌우 여백 16) → 안쪽 315(패딩 14) = 장 269 + 간격 12 + 아이콘 열 34.
+   기본 장 269 → 장 안쪽 261(패딩 4) = 슬라이더 열 ≈103 + 간격 12 + 2×2 ≈146(가장 긴 칩 '투자·지분' 폭 × 2 + 6) */
+.dock-mobile {
+  width: calc(100vw - 32px);
+  max-width: none;
+  gap: 12px;
+  padding: 12px 14px;
+}
+/* 장 무대 — 활성 장만 흐름에 남아 높이를 정하고, 나가는 장은 absolute 로 미끄러져 잘린다 */
+.dock-panes {
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+}
+.dock-pane {
+  width: 100%;
+  box-sizing: border-box;
+  /* 칩·슬라이더의 포커스 테두리(outline-offset 2px)가 overflow 에 잘리지 않을 여유 */
+  padding: 4px;
+  transition:
+    transform 0.28s cubic-bezier(0.2, 0.8, 0.2, 1),
+    visibility 0s linear 0.28s;
+}
+.dock-pane.is-active {
+  position: relative;
+  transform: none;
+  visibility: visible;
+  transition:
+    transform 0.28s cubic-bezier(0.2, 0.8, 0.2, 1),
+    visibility 0s;
+}
+.dock-pane:not(.is-active) {
+  position: absolute;
+  top: 0;
+  left: 0;
+  visibility: hidden;
+}
+/* '>' 를 누르면 기본 장은 왼쪽으로 나가고 고급 장이 오른쪽에서 들어온다('<' 는 반대). 카드 간격만큼 더 밀어 두 장이 겹쳐 보이지 않게 */
+.dock-pane-main:not(.is-active) {
+  transform: translateX(calc(-100% - 12px));
+}
+.dock-pane-adv:not(.is-active) {
+  transform: translateX(calc(100% + 12px));
+}
+
+/* 기본 장 — 슬라이더 열이 남는 폭을 다 쓰고, 2×2 칩은 내용 폭만큼 */
+.dock-pane-main {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+}
+/* 기업 중심 뷰(펼치기 없음)에서는 2×2 만 가운데에 */
+.dock-pane-main.no-spread {
+  grid-template-columns: auto;
+  justify-content: center;
+}
+.dock-mobile .dock-spread {
+  min-width: 0;
+}
+.dock-mobile .dock-spread input[type="range"] {
+  width: 100%;
+  min-width: 0;
+}
+.dock-types-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  align-content: center;
+}
+.dock-types-grid .chip {
+  justify-content: center;
+  padding: 6px 9px;
+}
+
+/* 고급 장 — 세 줄 세로, 각 줄의 슬라이더가 남는 폭을 채운다 */
+.dock-pane-adv {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 8px;
+}
+.dock-pane-adv .dock-row {
+  min-width: 0;
+}
+.dock-pane-adv .dock-row input[type="range"] {
+  flex: 1 1 auto;
+  width: auto;
+  min-width: 0;
+}
+.dock-pane-adv .dock-mix-val {
+  flex: none;
+}
+
+/* 아이콘 열은 손가락 크기로 */
+.dock-mobile .dock-icon {
+  width: 34px;
+  height: 34px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .dock-pane {
+    transition: none;
   }
 }
