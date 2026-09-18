@@ -12,11 +12,11 @@
 
 이 문서는 다음 문서와 함께 사용한다.
 
-- [`architecture.md`](./architecture.md): 서비스 논리 구조와 분석 모델
+- [`architecture.md`](./architecture.md): 현재 서비스의 논리 구조와 데이터 흐름
 - [`database-design.md`](./database-design.md): PostgreSQL·HDFS·Redis 데이터 모델
 - [`api-specification.md`](./api-specification.md): Spring Boot API 계약
 
-문서 간 물리 배치나 런타임 구성이 충돌하면 이 문서를 인프라 구현 기준으로 사용한다. `architecture.md`의 FastAPI·Neo4j·Jena 구성은 논리 분석 모델 참고용이며, 현재 웹 서비스 배포 기준은 이 문서의 Spring Boot·PostgreSQL 구성이다.
+문서 간 물리 배치나 런타임 구성이 충돌하면 이 문서를 인프라 구현 기준으로 사용한다. 웹 서비스 배포 기준은 Spring Boot·PostgreSQL이며, AI 모델을 서비스에 연결할 때만 별도 FastAPI 추론 서비스를 추가한다.
 
 비밀번호, AWS 키, SSH 개인키, Kafka 인증정보와 DB 접속정보는 이 문서와 Git 저장소에 기록하지 않는다.
 
@@ -43,7 +43,7 @@ flowchart TB
         Nginx[Nginx]
         Spring[Spring Boot]
         PG[(PostgreSQL)]
-        Redis[(Redis - 선택)]
+        Redis[(Redis)]
     end
 
     subgraph SSAFY_MASTER[SSAFY 빅데이터 Master]
@@ -89,7 +89,7 @@ flowchart TB
     DataLayer -->|집계 HDFS 블록 읽기| Loader
     Loader --> PG
     User -->|HTTPS| Nginx --> Spring --> PG
-    Spring -. 선택적 캐시 .-> Redis
+    Spring -->|Refresh Token·이메일 인증| Redis
 ```
 
 ### 3.1 SSAFY 메인 EC2
@@ -99,7 +99,7 @@ flowchart TB
 | Nginx | TLS 종료, 정적 파일 제공, Spring Boot 리버스 프록시 |
 | Spring Boot | 인증, 비즈니스 로직, 기업·뉴스·관계·지표 API |
 | PostgreSQL | 기업 기준정보, 문서 메타데이터, 기간별 지표, 관계 기반 점수와 웹 조회 결과 |
-| Redis | 공통 그래프 캐시와 Refresh Token 관리. 필요할 때만 사용 |
+| Redis | Refresh Token, 이메일 인증 코드와 인증 완료 상태의 TTL 관리 |
 
 Spring Boot는 사용자 요청 처리 중 HDFS 원본을 직접 조회하거나 Spark Job을 실행하지 않는다.
 
@@ -284,25 +284,25 @@ NameNode는 HDFS 디스크 상태를 기준으로 블록 위치를 선택한다.
 
 ## 6. Worker 컴퓨팅·스토리지 정책
 
-### 6.1 초기 볼륨 구성
+### 6.1 현재 볼륨 구성
 
-Worker 한 대당 다음과 같이 시작한다.
+Worker 한 대당 다음 구성을 사용한다.
 
-| 볼륨 | 초기 용량 | 용도 |
+| 볼륨 | 현재 용량 | 용도 |
 | --- | ---: | --- |
-| Root gp3 | 30GB | Ubuntu, Java, Hadoop, Spark, 시스템 로그 |
-| HDFS Data gp3 | 100GB | DataNode 블록 및 제한된 Spark 임시 공간 |
+| Root gp3 | 30GiB | Ubuntu 24.04 LTS, Java, Hadoop, Spark, 시스템 로그 |
+| HDFS Data gp3 | 200GiB | DataNode 블록 및 제한된 Spark 임시 공간 |
 
-Worker 3대의 초기 HDFS 물리 용량은 300GB다. 복제 계수 `2`와 20% 운영 여유를 적용하면 안전한 논리 데이터 용량은 약 120GB이며, Spark 임시 공간을 같은 볼륨에서 사용하면 실사용 한도는 더 낮아진다.
+Worker 3대의 HDFS 물리 용량은 600GiB다. 복제 계수 `2`와 20% 운영 여유를 적용한 논리 데이터 기준은 약 240GiB이며, 파일시스템 예약 공간과 Spark 임시 공간을 함께 사용하므로 실제 한도는 더 낮다.
 
-초기 적재 대상의 실제 바이트 크기를 적재 전에 반드시 측정한다. 건수만으로 용량을 판단하지 않는다.
+현재 Worker는 서울 리전 동일 VPC·AZ의 `m7i-flex.large` 3대로 구성하며, 각 노드는 2 vCPU와 8GiB 메모리를 사용한다. 용량 판단은 문서 건수가 아닌 HDFS 실제 바이트와 복제 후 사용률을 기준으로 한다.
 
 ### 6.2 EBS 확장
 
 - HDFS 사용률 55%부터 확장을 준비한다.
 - HDFS 사용률 65%에서 세 Worker를 같은 크기로 확장한다.
 - 75% 이상에서는 대형 Spark Job을 중단하고 확장을 우선한다.
-- 권장 단계: `100GB → 200GB → 필요 시 300GB`
+- 다음 확장 단계: `200GiB → 필요 시 300GiB 이상`
 - gp3 EBS는 인스턴스를 실행한 상태에서도 확장할 수 있다.
 - AWS에서 볼륨을 확장한 후 Linux 파티션과 파일시스템도 확장해야 한다.
 - EBS는 직접 축소할 수 없다.
@@ -313,12 +313,12 @@ Worker 3대의 초기 HDFS 물리 용량은 300GB다. 복제 계수 `2`와 20% �
 
 인스턴스 유형은 저장 용량이 아니라 CPU·메모리 처리 능력을 조절한다. EBS와 HDFS 데이터는 유형 변경 후에도 유지된다.
 
-| 작업 상태 | 권장 유형 |
+| 작업 상태 | 운영 기준 |
 | --- | --- |
-| 최초 대량 적재·정제·집계 | `t3.large` |
-| 실시간 수집과 소규모 정기 처리 | `t3.medium` |
-| 대규모 재처리·전체 관계 집계 | `t3.large` |
-| 연산이 거의 없는 대기 상태 | 비용 상황에 따라 `t3.small` |
+| 최초 대량 적재·정제·집계 | 현재 `m7i-flex.large` 유지 |
+| 실시간 수집과 소규모 정기 처리 | 현재 `m7i-flex.large` 유지 또는 측정 후 조정 |
+| 대규모 재처리·전체 관계 집계 | CPU·메모리·Spark spill 측정 후 상위 유형 검토 |
+| 연산이 거의 없는 대기 상태 | 데이터 접근 일정과 비용을 확인한 뒤 인스턴스 중지 검토 |
 | 수집·HDFS 접근도 없는 기간 | 인스턴스 중지 |
 
 인스턴스 유형은 실행 중에 변경할 수 없다. Spark Job과 HDFS 쓰기를 멈춘 후 Worker를 한 대씩 중지하여 유형을 변경하고 재기동한다.
@@ -330,9 +330,8 @@ Worker 3 작업 중지 → EC2 중지 → 유형 변경 → 시작 → DataNode/
 ```
 
 - 공인 IP는 중지·시작 후 변경될 수 있으므로 Hadoop 설정에서 사용하지 않는다.
-- T3 CPU credit mode는 예측하지 못한 Unlimited 추가 요금을 피하기 위해 `standard`를 우선 검토한다.
 - 인스턴스를 중지해도 EBS 요금은 계속 발생한다.
-- 현재 AWS Free Plan에서 `t3.medium` 또는 `t3.large` 변경이 제한되면 Paid Plan 전환이 필요할 수 있다. 전환 전에 남은 크레딧과 실제 결제 한도를 확인한다.
+- 인스턴스 유형을 변경하기 전 AWS 계정의 지원 유형, 남은 크레딧, quota와 실제 결제 한도를 다시 확인한다.
 
 ## 7. 전체 데이터 흐름
 

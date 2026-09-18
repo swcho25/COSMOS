@@ -873,7 +873,7 @@ refresh token은 httpOnly 쿠키(`Set-Cookie`)로 전달
 #### 목적
 기업명·영문명·별칭·종목코드로 검색하거나 시장·산업별 기업 목록을 조회한다.
 #### 인증
-불필요. 유효한 Access Token이 선택적으로 전달되면 `watched`를 함께 반환한다.
+불필요. 이 API의 `watched`는 항상 `false`로 반환하며, 로그인 사용자의 실제 관심 여부는 프론트엔드가 관심 기업 목록 API의 결과와 결합하여 표시한다.
 #### Request
 바디 없음
 ```javascript
@@ -935,7 +935,7 @@ GET /api/companies?keyword=삼성&market=KOSPI&industryId={uuid}&size=20&cursor=
 ```
 #### Notes
 - `keyword`가 있으면 관련도순, 없으면 기업명순이 기본이다.
-- 비로그인 응답의 `watched`는 `false`로 반환한다.
+- `watched`는 로그인 여부와 관계없이 `false`로 반환한다. 프론트엔드는 `GET /api/users/me/watch-companies`의 결과와 결합하여 실제 관심 여부를 표시한다.
 #### Errors
 <table header-row="true">
 <tr>
@@ -965,7 +965,7 @@ GET /api/companies?keyword=삼성&market=KOSPI&industryId={uuid}&size=20&cursor=
 #### 목적
 선택한 기업의 기본 정보와 대표 산업을 조회한다.
 #### 인증
-불필요. 유효한 Access Token이 선택적으로 전달되면 `watched`를 함께 반환한다.
+불필요. 이 API의 `watched`는 항상 `false`로 반환하며, 로그인 사용자의 실제 관심 여부는 프론트엔드가 관심 기업 목록 API의 결과와 결합하여 표시한다.
 #### Path Variable
 - `companyId`: 기업 UUID
 #### Response — 200 OK
@@ -989,6 +989,7 @@ GET /api/companies?keyword=삼성&market=KOSPI&industryId={uuid}&size=20&cursor=
 ```
 #### Notes
 관련 뉴스·지표·주가·관계·댓글은 각 탭 진입 시 별도 API로 조회한다.
+`watched`는 로그인 여부와 관계없이 `false`로 반환한다. 프론트엔드는 `GET /api/users/me/watch-companies`의 결과와 결합하여 실제 관심 여부를 표시한다.
 #### Errors
 <table header-row="true">
 <tr>
@@ -1203,7 +1204,7 @@ GET /api/companies?keyword=삼성&market=KOSPI&industryId={uuid}&size=20&cursor=
 ```
 #### Notes
 - 최상위 산업의 `parentIndustryId`는 `null`이다.
-- 기업이 없는 산업도 반환할지는 구현 단계에서 데이터 정책으로 확정한다.
+- 기업이 없는 산업도 `companyCount: 0`으로 반환한다.
 #### Errors
 <table header-row="true">
 <tr>

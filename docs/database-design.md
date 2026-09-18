@@ -1,9 +1,9 @@
 # 데이터베이스 설계
 
-이 문서는 COSMOS 서비스의 데이터 저장 구조와 PostgreSQL 논리 ERD를 정의한다. 실제 자료형, `NOT NULL`, 기본값, 인덱스와 제약조건은 이 문서를 기준으로 DDL 작성 단계에서 확정한다.
+이 문서는 COSMOS 서비스의 데이터 저장 구조와 PostgreSQL 논리 ERD를 정의한다. 실제 물리 스키마의 기준은 `BackEnd/src/main/resources/db/migration`의 Flyway V1~V6이며, 이 문서는 해당 스키마의 구조와 설계 원칙을 설명한다.
 
 - 대상 범위: PostgreSQL, HDFS, Redis의 역할과 연결 기준
-- 제외 범위: 물리 DDL, 배포 환경별 접속 정보, 비밀번호와 인증키
+- 제외 범위: 배포 환경별 접속 정보, 비밀번호와 인증키
 
 ## 1. 저장소별 역할
 
@@ -11,7 +11,7 @@
 | --- | --- | --- |
 | PostgreSQL | 기업·산업 기준 정보, 뉴스·공시 메타데이터, 검증된 분석 결과, 관계 점수, 사용자·커뮤니티·파이프라인 운영 정보 | API 조회, 정렬·필터, 무결성 및 트랜잭션 |
 | HDFS | 뉴스·공시·주가 원본, 정제 본문, 분석 후보, 중간 특성값, 집계 결과와 그래프 스냅샷 | 대용량 보관, 재처리, 병렬 분석 및 결과 재현 |
-| Redis | 공통 그래프 캐시, 사용자별 활성 Refresh Token의 해시 또는 `jti` | 빠른 응답, TTL 기반 캐시와 토큰 폐기 |
+| Redis | 사용자별 활성 Refresh Token과 이메일 인증 코드·인증 완료 상태 | 인증 보조 데이터의 빠른 조회, TTL 기반 만료와 토큰 폐기 |
 
 HDFS는 분석 원본 저장소이고 PostgreSQL은 서비스 조회용 저장소다. 제목, URL, 시각과 공통 ID는 양쪽에 존재할 수 있지만, 원문 전체와 모든 분석 후보를 PostgreSQL에 중복 저장하지 않는다.
 
@@ -69,6 +69,7 @@ erDiagram
         TEXT original_url
         TIMESTAMP published_at
         TIMESTAMP first_collected_at
+        TIMESTAMP last_collected_at
         CHAR content_hash
         VARCHAR hdfs_raw_uri
         VARCHAR hdfs_clean_uri
@@ -89,7 +90,10 @@ erDiagram
     DISCLOSURE {
         UUID document_id PK, FK
         UUID filing_company_id FK
-        VARCHAR dart_receipt_no UK
+        VARCHAR filing_system
+        VARCHAR dart_receipt_no
+        VARCHAR sec_accession_no
+        VARCHAR sec_cik
         VARCHAR report_code
         VARCHAR report_name
         DATE filing_date
@@ -317,6 +321,16 @@ erDiagram
         TIMESTAMP created_at
     }
 
+    DOCUMENT_LOAD_BATCH {
+        TEXT batch_id PK
+        VARCHAR manifest_sha256
+        VARCHAR normalization_sha256
+        TEXT source_uri
+        BIGINT record_count
+        BIGINT document_count
+        TIMESTAMP loaded_at
+    }
+
     COMPANY ||--o{ COMPANY_ALIAS : has
     INDUSTRY ||--o{ INDUSTRY : contains
     COMPANY ||--o{ COMPANY_INDUSTRY : belongs_to
@@ -414,6 +428,7 @@ erDiagram
 | `COLLECTION_CHECKPOINT` | 수집기·출처·검색 조건별 다음 시작 위치 유지 |
 | `FAILURE_RECORD` | 최종 실패 건의 오류 요약, 재시도 횟수와 해결 상태 저장 |
 | `DATA_ASSET` | 기사별이 아닌 HDFS 파일·데이터 묶음의 위치와 상태 저장 |
+| `DOCUMENT_LOAD_BATCH` | V6에서 추가한 문서 적재 체크포인트. 입력 스냅샷과 정규화 결과의 해시·건수를 기록하여 정확한 재실행을 판별 |
 
 ## 4. 핵심 모델링 규칙
 
@@ -493,17 +508,13 @@ HDFS 데이터는 다음 계층으로 관리한다.
 
 HDFS에는 문서 하나당 파일 하나를 만들지 않고 여러 문서를 묶어 저장한다. 원본과 이전 버전을 덮어쓰지 않으며, 파생 데이터에는 이전 단계의 `parent_hdfs_uri`와 처리 버전을 남긴다.
 
-## 6. DDL 작성 시 확정할 항목
+## 6. 운영 데이터 증가 시 검토할 항목
 
-다음 내용은 논리 설계를 변경하지 않고 DDL 작성 단계에서 결정한다.
+현재 Flyway V1~V6의 제약조건과 인덱스를 기준으로 운영한다. 다음 항목은 실제 적재량과 API 부하 측정 결과를 근거로 추가 적용 여부를 결정한다.
 
-- 문자열 컬럼의 실제 길이와 `TEXT` 사용 기준
-- 필수 컬럼의 `NOT NULL` 여부와 기본값
-- 상태·유형 컬럼의 `CHECK` 제약조건 또는 PostgreSQL enum 사용 여부
-- FK 삭제·갱신 정책
-- 생성·수정 시각 자동 처리 방식
-- 목록·검색·관계 조회에 필요한 최소 인덱스
-- 시계열 테이블의 TimescaleDB 적용 여부
+- 목록·검색·관계 조회에 필요한 추가 인덱스
 - 대용량 뉴스 데이터의 파티셔닝 도입 시점
+- 관계 점수·기업 지표·주가 이력의 보존 기간과 아카이빙 정책
+- PostgreSQL 테이블별 VACUUM·ANALYZE 및 용량 경보 기준
 
-초기에는 필요한 최소 제약조건과 인덱스만 적용하고, 실제 적재량과 API 부하 테스트 결과를 근거로 파티셔닝과 추가 인덱스를 결정한다.
+시계열 데이터는 별도 TimescaleDB 없이 PostgreSQL 일반 테이블로 관리하며, 확장 필요성은 측정된 부하를 근거로 별도 설계 변경 절차를 거쳐 판단한다.
