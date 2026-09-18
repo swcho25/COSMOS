@@ -1364,6 +1364,53 @@
 .panel-steps {
   padding: 12px 18px 10px;
   border-bottom: 1px solid var(--border);
+  transition: padding 0.22s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.panel-steps.is-collapsed {
+  padding-top: 10px;
+  padding-bottom: 8px;
+}
+/* 머리줄 — 누르면 접힌다. 아래 본문(뉴스·주가·게시판)을 내려도 자동으로 접혀 한 줄만 남는다 */
+.steps-head {
+  width: 100%;
+  color: var(--text-4);
+  transition: color 0.15s;
+}
+.steps-head:hover {
+  color: var(--text-3);
+}
+.steps-head .kick {
+  color: inherit;
+}
+.steps-head svg {
+  display: block;
+  flex: none;
+  transition: transform 0.2s;
+}
+/* 접혔을 때만 'v' 를 '>' 로 눕힌다 (조절 도크의 고급 토글과 같은 방향) */
+.panel-steps.is-collapsed .steps-head svg {
+  transform: rotate(-90deg);
+}
+/* 접히는 부분 — 높이를 0fr 로 줄인다. 내용은 DOM 에 남지만 visibility 로 탭 이동에서는 빠진다 */
+.steps-detail {
+  display: grid;
+  grid-template-rows: 1fr;
+  transition: grid-template-rows 0.22s cubic-bezier(0.2, 0.8, 0.2, 1), visibility 0.22s;
+}
+.panel-steps.is-collapsed .steps-detail {
+  grid-template-rows: 0fr;
+  visibility: hidden;
+}
+.steps-detail-in {
+  min-height: 0;
+  overflow: hidden;
+}
+@media (prefers-reduced-motion: reduce) {
+  .panel-steps,
+  .steps-detail,
+  .steps-head svg {
+    transition: none;
+  }
 }
 .steps-role {
   display: grid;

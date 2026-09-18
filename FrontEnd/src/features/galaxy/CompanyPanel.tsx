@@ -56,6 +56,10 @@ export default function CompanyPanel({ companyId, model = null, onWarp, onClose,
   const c = company.data;
   // 백엔드 기업 상세의 watched 가 아직 항상 false 라 내 관심 목록과 합쳐 판단한다 (queries.useWatchedSet)
   const watched = Boolean(c?.watched) || watchedSet.has(companyId);
+  // 본문(뉴스·주가·게시판)을 내리면 위쪽 '연결 단계'는 한 줄로 접는다 — 읽는 동안 자리를 덜 차지하도록.
+  // stepsPin 은 머리줄을 직접 눌러 고정한 상태(null = 스크롤에 맡김)이고, 본문이 맨 위로 돌아오면 다시 풀린다
+  const [bodyScrolled, setBodyScrolled] = useState(false);
+  const [stepsPin, setStepsPin] = useState<boolean | null>(null);
 
   return (
     <aside className="card panel" aria-label="기업 인텔리전스">
@@ -72,7 +76,7 @@ export default function CompanyPanel({ companyId, model = null, onWarp, onClose,
           </button>
         </div>
       </div>
-      {model && model.nodeById.has(companyId) && <ConnectionSteps model={model} companyId={companyId} onPick={onPickCompany} />}
+      {model && model.nodeById.has(companyId) && <ConnectionSteps model={model} companyId={companyId} onPick={onPickCompany} open={stepsPin ?? !bodyScrolled} onToggle={setStepsPin} />}
       <div className="panel-id">
         {c ? <CompanyAvatar name={c.name} stockCode={c.stockCode} market={c.market} industry={c.industries.find((i) => i.primary)?.name} size={56} /> : <Skeleton h={56} w={56} style={{ borderRadius: 14 }} />}
         <div className="grow">
@@ -118,7 +122,14 @@ export default function CompanyPanel({ companyId, model = null, onWarp, onClose,
           </button>
         ))}
       </div>
-      <div className="panel-body scroll">
+      <div
+        className="panel-body scroll"
+        onScroll={(e) => {
+          const scrolled = e.currentTarget.scrollTop > 8;
+          setBodyScrolled(scrolled);
+          if (!scrolled) setStepsPin(null);
+        }}
+      >
         {tab === "news" && <NewsTab companyId={companyId} onPickCompany={onPickCompany} />}
         {tab === "price" && c && <PriceTab companyId={companyId} market={c.market} marketCap={c.marketCap ?? null} listedShares={c.listedShares ?? null} />}
         {tab === "board" && c && <BoardTab companyId={companyId} companyName={c.name} />}
@@ -460,9 +471,10 @@ function CommentItem({ comment, mine }: { comment: CompanyComment; mine: boolean
 
 /**
  * 연결 단계 — 미리보기 패널 맨 위. 1홉 이웃을 역할(공급사·고객·투자자…)별로 묶고 2홉까지 몇 기업이 닿는지 센다.
- * 이웃 이름을 누르면 그 기업이 미리보기로 바뀐다(워프 아님). 다른 행성에 커서를 올리면 이 기업에서 가는 경로가 상단 스트립에 뜬다
+ * 이웃 이름을 누르면 그 기업이 미리보기로 바뀐다(워프 아님). 다른 행성에 커서를 올리면 이 기업에서 가는 경로가 상단 스트립에 뜬다.
+ * 머리줄('연결 단계')을 누르면 접히고, 아래 본문을 내려도 알아서 접혀 한 줄만 남는다 (열림 여부는 패널이 정해 준다)
  */
-function ConnectionSteps({ model, companyId, onPick }: { model: SceneModel; companyId: string; onPick: (id: string) => void }) {
+function ConnectionSteps({ model, companyId, onPick, open, onToggle }: { model: SceneModel; companyId: string; onPick: (id: string) => void; open: boolean; onToggle: (open: boolean) => void }) {
   const minScore = useGalaxy((s) => s.minScore);
   const activeTypes = useGalaxy((s) => s.activeTypes);
   const { counts, hop1, hop2 } = useMemo(() => {
@@ -476,33 +488,41 @@ function ConnectionSteps({ model, companyId, onPick }: { model: SceneModel; comp
     return { counts, hop1, hop2 };
   }, [model, companyId, minScore, activeTypes]);
   return (
-    <section className="panel-steps">
-      <div className="row between">
-        <span className="kick">{PREVIEW_UI.steps}</span>
+    <section className={`panel-steps${open ? "" : " is-collapsed"}`}>
+      <button type="button" className="row between steps-head" onClick={() => onToggle(!open)} aria-expanded={open} title={open ? PREVIEW_UI.stepsCollapse : PREVIEW_UI.stepsExpand}>
+        <span className="row" style={{ gap: 6 }}>
+          <Icon.Chevron />
+          <span className="kick">{PREVIEW_UI.steps}</span>
+        </span>
         <span className="meta num">{PREVIEW_UI.hops(hop1.size, hop2.size)}</span>
-      </div>
-      {counts.length === 0 ? (
-        <div className="meta mt-8">{PREVIEW_UI.noLinks}</div>
-      ) : (
-        <div className="stack mt-8" style={{ gap: 6 }}>
-          {counts.map((rc) => (
-            <div key={rc.role} className="steps-role">
-              <span className="steps-role-name">
-                <i className="dot" style={{ background: roleColor(rc.role) }} />
-                {ROLE_META[rc.role].label} <b className="num">{rc.count}</b>
-              </span>
-              <span className="steps-role-names">
-                {rc.ids.map((id) => (
-                  <button key={id} type="button" className="chip chip-sm" onClick={() => onPick(id)} title={PREVIEW_UI.pickTitle}>
-                    {model.nodeById.get(id)?.name ?? id}
-                  </button>
-                ))}
-              </span>
+      </button>
+      {/* 접히는 부분 — 높이만 0 으로 줄이고 내용은 그대로 둔다(접히면 visibility 로 탭 이동에서도 빠진다) */}
+      <div className="steps-detail">
+        <div className="steps-detail-in">
+          {counts.length === 0 ? (
+            <div className="meta mt-8">{PREVIEW_UI.noLinks}</div>
+          ) : (
+            <div className="stack mt-8" style={{ gap: 6 }}>
+              {counts.map((rc) => (
+                <div key={rc.role} className="steps-role">
+                  <span className="steps-role-name">
+                    <i className="dot" style={{ background: roleColor(rc.role) }} />
+                    {ROLE_META[rc.role].label} <b className="num">{rc.count}</b>
+                  </span>
+                  <span className="steps-role-names">
+                    {rc.ids.map((id) => (
+                      <button key={id} type="button" className="chip chip-sm" onClick={() => onPick(id)} title={PREVIEW_UI.pickTitle}>
+                        {model.nodeById.get(id)?.name ?? id}
+                      </button>
+                    ))}
+                  </span>
+                </div>
+              ))}
             </div>
-          ))}
+          )}
+          <div className="meta mt-8">{PREVIEW_UI.pathHint}</div>
         </div>
-      )}
-      <div className="meta mt-8">{PREVIEW_UI.pathHint}</div>
+      </div>
     </section>
   );
 }
