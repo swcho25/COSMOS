@@ -829,6 +829,28 @@ button:disabled {
   color: var(--warn-fg);
   margin-top: -6px;
 }
+/* 입력칸 옆에 동작 버튼을 붙인 한 줄 — 이메일 + 인증 코드 받기, 인증 코드 + 확인 */
+.field-row {
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+}
+.field-row .field {
+  flex: 1;
+  min-width: 0;
+}
+.field-row .btn {
+  flex: none;
+}
+.field-row .btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.field-hint {
+  font-size: 12px;
+  color: var(--text-4);
+  margin-top: -6px;
+}
 .form-note {
   font-size: 13px;
   color: var(--pos-fg);

@@ -68,6 +68,9 @@ export const liveApi: CosmosApi = {
       return res;
     },
     signup: (body) => request("/auth/signup", { method: "POST", body, retry: false }),
+    // 공개 엔드포인트 — 409 EMAIL_DUPLICATED · 429 EMAIL_CODE_TOO_FREQUENT · 400 EMAIL_CODE_INVALID/EMAIL_CODE_EXPIRED 는 폼이 코드로 구분한다
+    sendEmailCode: (body) => request("/auth/email/send-code", { method: "POST", body, retry: false }),
+    verifyEmailCode: (body) => request("/auth/email/verify-code", { method: "POST", body, retry: false }),
   },
   users: {
     me: () => request("/users/me"),

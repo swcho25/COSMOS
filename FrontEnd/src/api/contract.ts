@@ -12,6 +12,8 @@ export interface CosmosApi {
     logout(): Promise<void>;
     refresh(): Promise<T.TokenResponse>;
     signup(body: T.SignupRequest): Promise<T.SignupResponse>;
+    sendEmailCode(body: T.EmailSendCodeRequest): Promise<T.EmailSendCodeResponse>;
+    verifyEmailCode(body: T.EmailVerifyCodeRequest): Promise<T.EmailVerifyCodeResponse>;
   };
   users: {
     me(): Promise<T.Me>;
