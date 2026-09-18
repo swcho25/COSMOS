@@ -50,6 +50,27 @@ export interface SignupResponse {
   email: string;
   nickname: string;
 }
+/** 가입 전 이메일 인증 — 순서는 코드 발송(send-code) → 코드 확인(verify-code) → 가입. 서버는 이메일을 소문자로 정규화해 돌려준다 */
+export interface EmailSendCodeRequest {
+  email: string;
+}
+export interface EmailSendCodeResponse {
+  email: string;
+  /** 코드 유효 시간(초, 기본 300) — 남은 시간 표시에 쓴다 */
+  expiresInSeconds: number;
+}
+export interface EmailVerifyCodeRequest {
+  email: string;
+  /** 숫자 6자리 */
+  code: string;
+}
+export interface EmailVerifyCodeResponse {
+  email: string;
+  /** 항상 true — 실패는 오류 응답(EMAIL_CODE_INVALID·EMAIL_CODE_EXPIRED)으로 온다 */
+  verified: boolean;
+  /** 인증 완료 상태가 유지되는 시간(초, 기본 1800). 이 안에 가입을 마쳐야 한다 */
+  validForSeconds: number;
+}
 export interface Availability {
   available: boolean;
 }
