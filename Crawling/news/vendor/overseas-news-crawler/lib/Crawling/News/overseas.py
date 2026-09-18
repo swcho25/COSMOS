@@ -381,7 +381,7 @@ class InvestingNewsSource(OverseasNewsSource):
         for link in soup.select("a[data-test='article-title-link'][href]"):
             url = canonicalize_url(urljoin(self.listing_url, link.get("href", "")))
             parts = urlsplit(url)
-            if parts.netloc not in {"investing.com", "www.investing.com"}:
+            if parts.netloc not in {"investing.com", "www.investing.com", "kr.investing.com"}:
                 continue
             if not parts.path.startswith("/news/") or url in seen:
                 continue

@@ -10,7 +10,8 @@ import uuid
 from dataclasses import dataclass
 from pathlib import Path
 from types import SimpleNamespace
-from urllib.parse import urljoin, urlsplit
+from datetime import date, datetime
+from urllib.parse import quote, urljoin, urlsplit
 
 from bs4 import BeautifulSoup
 
@@ -19,6 +20,7 @@ from .common import make_event
 
 SOURCE = "investing_com"
 COMPONENTS_URL = "https://www.investing.com/indices/nq-100-components"
+KOREAN_SEARCH_URL = "https://kr.investing.com/search/"
 MIN_COMPONENTS = 90
 MAX_COMPONENTS = 120
 
@@ -73,6 +75,33 @@ def _ticker_from_html(html: str) -> str | None:
     return match.group(1) if match else None
 
 
+def parse_kospi_feed(html: str, ticker: str, name: str) -> EquityFeed:
+    """Resolve one exact KOSPI security from the Korean search results."""
+
+    soup = BeautifulSoup(html, "html.parser")
+    matches: list[tuple[str, str, str]] = []
+    for link in soup.select("a.js-inner-all-results-quote-item[href*='/equities/']"):
+        item_ticker = " ".join(
+            (link.select_one(".second").get_text(" ", strip=True)
+             if link.select_one(".second") else "").split()
+        )
+        item_name = " ".join(
+            (link.select_one(".third").get_text(" ", strip=True)
+             if link.select_one(".third") else "").split()
+        )
+        path = urlsplit(urljoin(KOREAN_SEARCH_URL, link.get("href", ""))).path.rstrip("/")
+        if path.startswith("/equities/"):
+            matches.append((item_ticker, item_name, path))
+    exact = [item for item in matches if item[0] == ticker]
+    if not exact:
+        exact = [item for item in matches if item[1] == name]
+    if len(exact) != 1:
+        raise ValueError(f"Could not resolve unique KOSPI equity feed for {ticker}")
+    _, resolved_name, path = exact[0]
+    overview = f"https://kr.investing.com{path}"
+    return EquityFeed(ticker, resolved_name or name, overview, f"{overview}-news")
+
+
 def _signature(candidates) -> str:
     value = "\n".join(candidate.url for candidate in candidates)
     return hashlib.sha256(value.encode("utf-8")).hexdigest()
@@ -99,6 +128,7 @@ class InvestingNasdaqCollector:
         stop_requested=None,
         client=None,
         source=None,
+        database_name: str = "investing-nasdaq100.db",
     ) -> None:
         if request_delay < 0 or cooldown_seconds < 1 or max_page < 1:
             raise ValueError("Invalid Investing.com collector bounds")
@@ -111,7 +141,7 @@ class InvestingNasdaqCollector:
             timeout=35.0, retries=2, request_delay=request_delay
         )
         self.source = source or overseas_module.SOURCE_CLASSES["investing"](self.client)
-        path = Path(state_dir) / "investing-nasdaq100.db"
+        path = Path(state_dir) / database_name
         path.parent.mkdir(parents=True, exist_ok=True)
         self.db = sqlite3.connect(path, timeout=30)
         self.db.row_factory = sqlite3.Row
@@ -316,6 +346,20 @@ class InvestingNasdaqCollector:
             "discovery_tickers": sorted({row["ticker"] for row in rows if row["ticker"]}),
         }
 
+    def _article_rejection(self, article) -> str | None:
+        return None
+
+    def _article_metadata(self, article, url: str) -> dict:
+        return self._candidate_metadata(url)
+
+    @property
+    def event_region(self) -> str:
+        return "overseas"
+
+    @property
+    def event_language(self) -> str:
+        return "en"
+
     def _drain(self, limit: int, result: dict) -> None:
         for _ in range(limit):
             if self.stop_requested():
@@ -351,13 +395,23 @@ class InvestingNasdaqCollector:
                 if len(article.content) < self.source.minimum_content_chars:
                     raise ValueError("article body too short")
                 result["fetched"] += 1
+                rejection = self._article_rejection(article)
+                if rejection:
+                    with self.db:
+                        self.db.execute(
+                            "UPDATE investing_candidates SET status='done',last_error=? "
+                            "WHERE url=?", (rejection, url)
+                        )
+                    result[rejection] = result.get(rejection, 0) + 1
+                    continue
                 event = make_event(
-                    source=article.source, region="overseas", language="en",
+                    source=article.source, region=self.event_region,
+                    language=self.event_language,
                     url=article.url, title=article.title, content=article.content,
                     organization=article.organization or "",
                     published_at=article.published_at,
                     collected_at=article.crawled_at, run_id=str(uuid.uuid4()),
-                    metadata=self._candidate_metadata(url),
+                    metadata=self._article_metadata(article, url),
                 )
             except Exception as exc:
                 if _is_rate_limit(exc):
@@ -442,3 +496,160 @@ class InvestingNasdaqCollector:
 
     def close(self) -> None:
         self.db.close()
+
+
+class InvestingKospiCollector(InvestingNasdaqCollector):
+    """KOSPI-100 company-news collector using exact Korean equity feeds."""
+
+    minimum_published_date = date(2016, 1, 1)
+
+    def __init__(
+        self,
+        overseas_module,
+        state_dir: str,
+        outbox,
+        *,
+        companies_config: str,
+        company_extractor=None,
+        **kwargs,
+    ) -> None:
+        from .naver import load_companies
+
+        self.companies = load_companies(companies_config)
+        self.company_extractor = company_extractor
+        super().__init__(
+            overseas_module, state_dir, outbox,
+            database_name="investing-kospi100.db", **kwargs,
+        )
+
+    @property
+    def event_region(self) -> str:
+        return "domestic"
+
+    @property
+    def event_language(self) -> str:
+        return "ko"
+
+    @staticmethod
+    def _search_url(name: str) -> str:
+        return f"{KOREAN_SEARCH_URL}?q={quote(name)}&tab=quotes"
+
+    def _refresh_feeds(self) -> int:
+        now = time.time()
+        count = self.db.execute("SELECT count(*) FROM investing_feeds").fetchone()[0]
+        refreshed = float(self._state("components_refreshed_at", "0"))
+        if count == len(self.companies) and now - refreshed < 86400:
+            return 0
+        with self.db:
+            self.db.execute("UPDATE investing_feeds SET active=0")
+            self.db.executemany(
+                """
+                INSERT INTO investing_feeds(
+                    slug,name,overview_url,news_url,ticker,updated_at
+                ) VALUES (?,?,?,?,?,?)
+                ON CONFLICT(slug) DO UPDATE SET
+                    name=excluded.name,
+                    ticker=excluded.ticker,
+                    active=1,
+                    updated_at=excluded.updated_at
+                """,
+                ((item["ticker"], item["name"], self._search_url(item["name"]), "",
+                  item["ticker"], now) for item in self.companies),
+            )
+            self._set_state("components_refreshed_at", str(now))
+            self._set_state("component_count", str(len(self.companies)))
+        return len(self.companies)
+
+    def _resolve_feed(self, feed) -> None:
+        search_url = self._search_url(feed["name"])
+        self.client.assert_robots_allowed(search_url)
+        resolved = parse_kospi_feed(
+            self.client.get_text(search_url), feed["ticker"], feed["name"]
+        )
+        with self.db:
+            self.db.execute(
+                "UPDATE investing_feeds SET overview_url=?,news_url=?,failures=0,"
+                "next_try=0,updated_at=? WHERE slug=?",
+                (resolved.overview_url, resolved.news_url, time.time(), feed["slug"]),
+            )
+
+    def _discover_one(self, mode: str) -> dict:
+        feed = self._choose_feed(mode)
+        if feed is not None and not feed["news_url"]:
+            try:
+                self._resolve_feed(feed)
+            except Exception:
+                retry = time.time() + min(
+                    3600, 60 * (2 ** min(int(feed["failures"]), 5))
+                )
+                with self.db:
+                    self.db.execute(
+                        "UPDATE investing_feeds SET failures=failures+1,next_try=? "
+                        "WHERE slug=?", (retry, feed["slug"]),
+                    )
+                raise
+        return super()._discover_one(mode)
+
+    @staticmethod
+    def _article_date(value: str | None) -> date | None:
+        if not value:
+            return None
+        try:
+            return datetime.fromisoformat(value.replace("Z", "+00:00")).date()
+        except (ValueError, TypeError, AttributeError):
+            return None
+
+    def _extracted(self, article) -> dict | None:
+        if self.company_extractor is None:
+            return None
+        return self.company_extractor.extract({
+            "news_id": article.url,
+            "title": article.title,
+            "body": article.content,
+            "published_date": article.published_at,
+        })
+
+    def _article_rejection(self, article) -> str | None:
+        published = self._article_date(article.published_at)
+        if published is not None and published < self.minimum_published_date:
+            return "out_of_range"
+        extracted = self._extracted(article)
+        if extracted is not None and not any(
+            item["market"] == "KOSPI" for item in extracted["companies"]
+        ):
+            return "irrelevant"
+        return None
+
+    def _candidate_metadata(self, url: str) -> dict:
+        rows = self.db.execute(
+            "SELECT f.slug,f.name,f.ticker FROM investing_candidate_feeds c "
+            "JOIN investing_feeds f ON f.slug=c.slug WHERE c.url=? ORDER BY f.slug",
+            (url,),
+        ).fetchall()
+        return {
+            "discovery_method": "investing_kospi100_equity_news",
+            "discovery_companies": [row["name"] for row in rows],
+            "discovery_tickers": [row["ticker"] for row in rows],
+        }
+
+    def _article_metadata(self, article, url: str) -> dict:
+        metadata = self._candidate_metadata(url)
+        extracted = self._extracted(article)
+        if extracted is None:
+            return metadata
+        companies = [item for item in extracted["companies"] if item["market"] == "KOSPI"]
+        metadata.update({
+            "kospi100_companies": [{
+                "company_id": item["company_id"], "name": item["name"],
+                "ticker": item["ticker"], "tickers": item["tickers"],
+                "explicit_tickers": item["explicit_tickers"],
+                "resolved_level": item["resolved_level"],
+                "mention_count": item["n_mentions"],
+            } for item in companies],
+            "universe_version": extracted["universe_version"],
+            "registry_sha256": extracted["registry_sha256"],
+            "company_extractor_version": extracted["extractor_version"],
+            "membership_policy": extracted["membership_policy"],
+            "company_match_method": "explicit_title_or_body_mention",
+        })
+        return metadata

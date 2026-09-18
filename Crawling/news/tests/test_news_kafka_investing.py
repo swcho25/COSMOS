@@ -1,12 +1,16 @@
 """Investing.com Nasdaq-100 collector tests with fake network and outbox."""
 
 import tempfile
+import json
+from pathlib import Path
 from types import SimpleNamespace
 import unittest
 
 from services.news_pipeline.investing import (
     COMPONENTS_URL,
+    InvestingKospiCollector,
     InvestingNasdaqCollector,
+    parse_kospi_feed,
     parse_nasdaq100_feeds,
 )
 
@@ -78,6 +82,20 @@ class FakeOutbox:
         return True
 
 
+class FakeExtractor:
+    def extract(self, article):
+        return {
+            "companies": [{
+                "company_id": "KOSPI_000000", "name": "회사 0", "market": "KOSPI",
+                "ticker": "000000", "tickers": ["000000"],
+                "explicit_tickers": [], "resolved_level": "company", "n_mentions": 1,
+            }],
+            "universe_version": "test", "registry_sha256": "a" * 64,
+            "extractor_version": "test-v1",
+            "membership_policy": "snapshot_universe_not_historical_membership",
+        }
+
+
 class InvestingCollectorTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
@@ -107,6 +125,61 @@ class InvestingCollectorTests(unittest.TestCase):
             parse_nasdaq100_feeds(components_html(20))
         with self.assertRaisesRegex(ValueError, "table was not found"):
             parse_nasdaq100_feeds("<html>Just a moment...</html>")
+
+    def test_kospi_feed_parser_requires_exact_ticker(self):
+        html = """
+        <a class="js-inner-all-results-quote-item" href="/equities/company-common">
+          <span class="second">000000</span><span class="third">회사 0</span>
+        </a>
+        <a class="js-inner-all-results-quote-item" href="/equities/company-preferred">
+          <span class="second">000001</span><span class="third">회사 0 우</span>
+        </a>
+        """
+        feed = parse_kospi_feed(html, "000000", "회사 0")
+        self.assertEqual(feed.slug, "000000")
+        self.assertEqual(
+            feed.news_url,
+            "https://kr.investing.com/equities/company-common-news",
+        )
+
+    def test_kospi_collector_resolves_feed_and_emits_korean_company_metadata(self):
+        config = Path(self.temp.name) / "kospi100.json"
+        config.write_text(json.dumps({
+            "as_of": "2026-09-18",
+            "companies": [{"ticker": f"{index:06d}", "name": f"회사 {index}"}
+                          for index in range(100)],
+        }, ensure_ascii=False), encoding="utf-8")
+        search = "https://kr.investing.com/search/?q=%ED%9A%8C%EC%82%AC%200&tab=quotes"
+        feed = "https://kr.investing.com/equities/company-zero-news"
+        article = "https://www.investing.com/news/company-story-1"
+        client = FakeClient({
+            search: """
+                <a class="js-inner-all-results-quote-item" href="/equities/company-zero">
+                  <span class="second">000000</span><span class="third">회사 0</span>
+                </a>
+            """,
+            feed: "<h1>회사 0 (000000)</h1> feed page one",
+            article: "article body",
+        })
+        collector = InvestingKospiCollector(
+            SimpleNamespace(), self.temp.name, self.outbox,
+            companies_config=str(config), company_extractor=FakeExtractor(),
+            client=client, source=FakeSource(), cooldown_seconds=60,
+        )
+        self.addCleanup(collector.close)
+        result = collector.collect(limit=1)
+
+        self.assertEqual(result["feed_count"], 100)
+        self.assertEqual(result["enqueued"], 1)
+        self.assertEqual(self.outbox.events[0]["region"], "domestic")
+        self.assertEqual(self.outbox.events[0]["language"], "ko")
+        self.assertEqual(
+            self.outbox.events[0]["metadata"]["discovery_tickers"], ["000000"]
+        )
+        self.assertEqual(
+            self.outbox.events[0]["metadata"]["kospi100_companies"][0]["name"],
+            "회사 0",
+        )
 
     def test_collect_discovers_feed_fetches_article_and_keeps_ticker_metadata(self):
         feed = "https://www.investing.com/equities/company-000-news"
