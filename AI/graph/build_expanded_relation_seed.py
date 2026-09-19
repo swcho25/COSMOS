@@ -55,6 +55,8 @@ import json
 import re
 from pathlib import Path
 
+from relationship_score_components import blend, component
+
 HERE = Path(__file__).resolve().parent
 DATA = HERE / "data"
 OUT = DATA / "db_expanded"
@@ -157,16 +159,26 @@ def main() -> None:
                "target_market": market[b], "target_stock_code": b,
                "relationship_type_code": rt}
         rels.append(nat)
-        kinds = src_kind[(rt, a, b)]
-        # 점수: 근거 수를 로그 압축해 0~100. 공시는 법정 근거라 뉴스보다 가중을 준다.
-        n_disc = sum(1 for e in evs if e["kind"] == "DISCLOSURE")
-        n_news = sum(1 for e in evs if e["kind"] == "NEWS")
-        import math
-        score = min(100.0, 100.0 * (math.log1p(n_disc * 1.5 + n_news) / math.log1p(40)))
-        scores.append({**nat, "window_type": WINDOW, "score": round(score, 6),
+        # 구성 점수는 기존 119관계와 같은 공식을 쓴다 (relationship_score_components.component).
+        # 새 공식을 만들면 같은 화면에서 옛 점수와 새 점수의 크기를 비교할 수 없게 된다.
+        # 같은 출처 문서의 중복 인용은 한 번만 센다 (README_INTEGRATED_RELATIONS '구성 점수').
+        docs = collections.defaultdict(dict)
+        for i, e in enumerate(evs):
+            docs[e["kind"]][e.get("url") or f"_noid{i}"] = {"confidence": 1.0}
+        news_score = component(list(docs["NEWS"].values()))
+        disc_score = component(list(docs["DISCLOSURE"].values()))
+        score = blend(news_score, disc_score)
+        if score is None:
+            skipped["구성 점수 없음"] += 1
+            rels.pop()
+            continue
+        n_docs = sum(len(v) for v in docs.values())
+        scores.append({**nat, "window_type": WINDOW, "score": score,
+                       "news_score": "" if news_score is None else news_score,
+                       "disclosure_score": "" if disc_score is None else disc_score,
                        "impact_direction": direction.get(frozenset((a, b)), "POSITIVE"),
-                       "confidence": round(min(1.0, 0.5 + 0.1 * len(evs)), 6),
-                       "evidence_count": len(evs),
+                       "confidence": round(min(1.0, 0.5 + 0.1 * n_docs), 6),
+                       "evidence_count": n_docs,
                        "formula_version": FORMULA, "as_of_at": as_of_at})
 
     args.out.mkdir(parents=True, exist_ok=True)
@@ -191,15 +203,22 @@ def main() -> None:
            "relationship_type_code"], rels)
     write("relationship_score_current.csv",
           ["source_market", "source_stock_code", "target_market", "target_stock_code",
-           "relationship_type_code", "window_type", "score", "impact_direction",
-           "confidence", "evidence_count", "formula_version", "as_of_at"], scores)
+           "relationship_type_code", "window_type", "score", "news_score", "disclosure_score",
+           "impact_direction", "confidence", "evidence_count", "formula_version", "as_of_at"],
+          scores)
 
     by_type = collections.Counter(r["relationship_type_code"] for r in rels)
     by_src = collections.Counter(
         "+".join(sorted(src_kind[(r["relationship_type_code"], r["source_stock_code"],
                                   r["target_stock_code"])])) for r in rels)
+    both = sum(1 for s in scores if s["news_score"] != "" and s["disclosure_score"] != "")
+    only_n = sum(1 for s in scores if s["news_score"] != "" and s["disclosure_score"] == "")
+    only_d = sum(1 for s in scores if s["news_score"] == "" and s["disclosure_score"] != "")
     neg = sum(1 for s in scores if s["impact_direction"] == "NEGATIVE")
     print(f"\n관계 {len(rels)}개  {dict(by_type)}")
+    print(f"구성 점수: 뉴스+공시 {both} / 뉴스만 {only_n} / 공시만 {only_d}")
+    print(f"  -> 프론트 가중치 슬라이더가 실제로 움직이는 관계는 {both}개다."
+          f" 나머지는 있는 쪽 점수를 그대로 쓴다(빈칸 아님).")
     print(f"근거 출처별 관계 수: {dict(by_src)}")
     print(f"impact_direction NEGATIVE {neg}개 / POSITIVE {len(scores)-neg}개")
     print(f"제출인 근사매칭으로 제거한 공시 근거 {dropped_fuzzy}건 | 기타 제외 {dict(skipped)}")

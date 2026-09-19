@@ -19,3 +19,6 @@ artifacts/
 
 # Local LLM weights, runtime packages and Hugging Face cache (never commit)
 local_models/
+
+# HDFS 샌드박스 게시용 parquet (스크립트로 재생성 가능)
+data/hdfs_sandbox_relations/
