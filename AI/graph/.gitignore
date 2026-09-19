@@ -16,3 +16,6 @@ data/impact_gnn_*.log
 data/impact_coefficients*.csv
 data/impact_scores_eval.csv
 artifacts/
+
+# Local LLM weights, runtime packages and Hugging Face cache (never commit)
+local_models/
