@@ -4,8 +4,11 @@ One deterministic hash sample per region/year (including 2016 for graph warmup).
 Select only body representatives with high-confidence linked companies, then
 join ORIGINAL article text. No outcome-based selection. Existing HDFS data is
 never modified. Output is a new local JSONL plus a manifest of source counts.
-The prepared source has dates, not publication times: downstream labels must
-not use the same-date return as an unseen outcome.
+This legacy export reduces source publication metadata to dates. The prepared
+source also has raw/normalized time, timezone, collection time and URLs; use
+export_news_quality.py to preserve and audit them. Some source timestamps are
+date-only midnight placeholders or lack timezones. Legacy downstream labels
+must not treat the same-date return as an unseen outcome.
 """
 import argparse
 import json
