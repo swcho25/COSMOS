@@ -1,5 +1,9 @@
 """Knowledge graph step 7 — DB seed for the relationship tables, from every typed edge we have.
 
+개인화 구성 점수는 --components --news-hits <전체 근거 JSONL> 로 생성한다.
+새 경로는 relationship_score_components.py의 날짜별·출처별 집계와 별도 Loader를 쓴다.
+아래 설명과 기본 실행은 rel-v0.2 과거 실험 재현용이며 구성 점수로 재사용하지 않는다.
+
   PYTHONUTF8=1 ../ner/.venv/Scripts/python.exe build_relationship_seed.py
   -> data/db/{relationship_type,graph_snapshot,company_relationship,relationship_score_current}.csv
   -> data/db/load_relationships.sql
@@ -92,11 +96,25 @@ def main() -> None:
     ap.add_argument("--correlation", default=DATA / "edges_correlation.csv", type=Path)
     ap.add_argument("--sector", default=DATA / "edges_sector.csv", type=Path)
     ap.add_argument("--companies", default=COMPANIES, type=Path)
-    ap.add_argument("--out", default=OUT, type=Path)
+    ap.add_argument("--out", type=Path)
+    ap.add_argument("--components", action="store_true", help="7D/30D/90D 뉴스·공시 구성 점수 생성")
+    ap.add_argument("--news-hits", type=Path, help="전체 뉴스 관계 근거 JSONL 또는 Spark JSON 디렉터리")
+    ap.add_argument("--disclosure-evidence", type=Path,
+                    help="공시 관계 JSONL. 생략 시 --ownership의 DART 접수번호를 사용")
     ap.add_argument("--as-of", default=dt.date.today().isoformat())
     ap.add_argument("--impact-override", default=IMPACT_OVERRIDE, type=Path,
                     help="쌍별 impact_direction 표. 없으면 유형 기본값만 쓴다")
     args = ap.parse_args()
+
+    if args.components:
+        if args.news_hits is None:
+            ap.error("--components에는 --news-hits가 필요합니다. 전체 집계의 last_date로 기간별 점수를 만들 수 없습니다.")
+        from relationship_score_components import build_seed
+        build_seed(args, args.out or HERE / "artifacts/relationship_components")
+        return
+    if args.news_hits or args.disclosure_evidence:
+        ap.error("--news-hits/--disclosure-evidence는 --components와 함께 사용하세요")
+    args.out = args.out or OUT
 
     market = {r["ticker"]: r["market"] for r in read_csv(args.companies)}
     as_of_at = f"{args.as_of}T00:00:00Z"

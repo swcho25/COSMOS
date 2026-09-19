@@ -31,3 +31,6 @@ gradlew text eol=lf
 *.gif binary
 *.ico binary
 *.pdf binary
+
+# Preserve mixed source line endings and intentional spaces in delivery patches.
+AI/graph/service_delivery/*.patch -text -whitespace
