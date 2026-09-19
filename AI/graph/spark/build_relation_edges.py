@@ -31,6 +31,7 @@ def main():
     ap.add_argument("--min-conf", type=float, default=0.6)
     ap.add_argument("--out", required=True)
     ap.add_argument("--as-of", default=dt.date.today().isoformat())
+    ap.add_argument("--hits-out", help="개인화 기간 집계용 전체 근거 Spark JSON 디렉터리 (표본 아님)")
     args = ap.parse_args()
 
     from pyspark.sql import SparkSession, functions as F, types as T
@@ -79,6 +80,13 @@ def main():
     undirected = F.col("rel_type").isin("PARTNER", "COMPETE")
     hits = hits.withColumn("a", F.when(undirected & (F.col("src") > F.col("dst")), F.col("dst")).otherwise(F.col("src"))) \
                .withColumn("b", F.when(undirected & (F.col("src") > F.col("dst")), F.col("src")).otherwise(F.col("dst")))
+
+    if args.hits_out:
+        # Export before the ALL-TIME min-docs filter; each window must count its own evidence.
+        # Do not overwrite a completed export while a downstream loader may be reading it.
+        (hits.select("record_id", "published_date", F.col("a").alias("src_ticker"),
+                     F.col("b").alias("dst_ticker"), "rel_type", "confidence")
+             .write.mode("errorifexists").json(args.hits_out))
 
     agg = (hits.groupBy("a", "b", "rel_type")
            .agg(F.countDistinct("record_id").alias("n_docs"),
