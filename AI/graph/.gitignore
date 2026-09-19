@@ -26,3 +26,6 @@ data/hdfs_sandbox_relations/
 # 뉴스 영향도 점수 산출 중간물 (DB 에서 재추출 가능, 20MB+)
 data/news_features.csv
 data/company_document_scores.csv
+data/sentiment_inputs.csv
+data/sentiment_filled.csv
+data/sentiment_scores_load.csv
