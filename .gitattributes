@@ -25,5 +25,5 @@ gradlew text eol=lf
 *.ico binary
 *.pdf binary
 
-# Unified diff context lines contain intentional spaces; preserve patch hashes.
-AI/graph/service_delivery/*.patch text eol=lf -whitespace
+# Preserve mixed source line endings and intentional spaces in delivery patches.
+AI/graph/service_delivery/*.patch -text -whitespace
