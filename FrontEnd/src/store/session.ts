@@ -93,7 +93,7 @@ export const useSession = create<SessionState>((set, get) => ({
 
   async signup(email, password, nickname) {
     await api.auth.signup({ email, password, nickname });
-    // 백엔드에 로그인 엔드포인트가 아직 없을 수 있다. 실패해도 가입 자체는 성공이므로 삼킨다
+    // 가입 직후 자동 로그인. 로그인·me 가 실패해도 가입 자체는 성공이므로 삼키고 로그인 폼으로 안내한다
     try {
       await api.auth.login({ email, password });
       const me = await api.users.me();

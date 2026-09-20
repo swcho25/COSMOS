@@ -33,10 +33,11 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
-@Transactional(readOnly = true)
+@Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
 public class GraphService {
 
     private static final String GRAPH_WINDOW = "30D";
@@ -120,6 +121,8 @@ public class GraphService {
                 row.directionality(),
                 row.window(),
                 row.score(),
+                row.newsScore(),
+                row.disclosureScore(),
                 row.impactDirection(),
                 row.confidence(),
                 row.evidenceCount(),
@@ -232,6 +235,7 @@ public class GraphService {
     private GraphEdgeResponse toEdge(EdgeRow row) {
         return new GraphEdgeResponse(
                 row.relationshipId(), row.sourceCompanyId(), row.targetCompanyId(),
-                row.relationshipType(), row.score(), row.impactDirection());
+                row.relationshipType(), row.score(), row.newsScore(), row.disclosureScore(),
+                row.impactDirection());
     }
 }

@@ -1,9 +1,9 @@
 # 데이터베이스 설계
 
-이 문서는 COSMOS 서비스의 데이터 저장 구조와 PostgreSQL 논리 ERD를 정의한다. 실제 자료형, `NOT NULL`, 기본값, 인덱스와 제약조건은 이 문서를 기준으로 DDL 작성 단계에서 확정한다.
+이 문서는 COSMOS 서비스의 데이터 저장 구조와 PostgreSQL 논리 ERD를 정의한다. 실제 물리 스키마의 기준은 `BackEnd/src/main/resources/db/migration`의 Flyway V1~V6이며, 이 문서는 해당 스키마의 구조와 설계 원칙을 설명한다.
 
 - 대상 범위: PostgreSQL, HDFS, Redis의 역할과 연결 기준
-- 제외 범위: 물리 DDL, 배포 환경별 접속 정보, 비밀번호와 인증키
+- 제외 범위: 배포 환경별 접속 정보, 비밀번호와 인증키
 
 ## 1. 저장소별 역할
 
@@ -11,7 +11,7 @@
 | --- | --- | --- |
 | PostgreSQL | 기업·산업 기준 정보, 뉴스·공시 메타데이터, 검증된 분석 결과, 관계 점수, 사용자·커뮤니티·파이프라인 운영 정보 | API 조회, 정렬·필터, 무결성 및 트랜잭션 |
 | HDFS | 뉴스·공시·주가 원본, 정제 본문, 분석 후보, 중간 특성값, 집계 결과와 그래프 스냅샷 | 대용량 보관, 재처리, 병렬 분석 및 결과 재현 |
-| Redis | 공통·개인화 그래프 캐시, 사용자별 활성 Refresh Token의 해시 또는 `jti` | 빠른 응답, TTL 기반 캐시와 토큰 폐기 |
+| Redis | 사용자별 활성 Refresh Token과 이메일 인증 코드·인증 완료 상태 | 인증 보조 데이터의 빠른 조회, TTL 기반 만료와 토큰 폐기 |
 
 HDFS는 분석 원본 저장소이고 PostgreSQL은 서비스 조회용 저장소다. 제목, URL, 시각과 공통 ID는 양쪽에 존재할 수 있지만, 원문 전체와 모든 분석 후보를 PostgreSQL에 중복 저장하지 않는다.
 
@@ -69,6 +69,7 @@ erDiagram
         TEXT original_url
         TIMESTAMP published_at
         TIMESTAMP first_collected_at
+        TIMESTAMP last_collected_at
         CHAR content_hash
         VARCHAR hdfs_raw_uri
         VARCHAR hdfs_clean_uri
@@ -89,7 +90,10 @@ erDiagram
     DISCLOSURE {
         UUID document_id PK, FK
         UUID filing_company_id FK
-        VARCHAR dart_receipt_no UK
+        VARCHAR filing_system
+        VARCHAR dart_receipt_no
+        VARCHAR sec_accession_no
+        VARCHAR sec_cik
         VARCHAR report_code
         VARCHAR report_name
         DATE filing_date
@@ -150,6 +154,15 @@ erDiagram
         TIMESTAMP published_at
     }
 
+    GRAPH_SNAPSHOT_LOAD {
+        UUID snapshot_id PK, FK
+        VARCHAR manifest_sha256
+        BIGINT record_count
+        BIGINT stored_count
+        TEXT_ARRAY windows
+        TIMESTAMP loaded_at
+    }
+
     COMPANY_RELATIONSHIP {
         UUID relationship_id PK
         UUID source_company_id FK
@@ -162,6 +175,8 @@ erDiagram
         UUID relationship_id PK, FK
         VARCHAR window_type PK
         UUID snapshot_id FK
+        DECIMAL news_score
+        DECIMAL disclosure_score
         DECIMAL score
         VARCHAR impact_direction
         DECIMAL confidence
@@ -175,6 +190,8 @@ erDiagram
         UUID relationship_id FK
         UUID snapshot_id FK
         VARCHAR window_type
+        DECIMAL news_score
+        DECIMAL disclosure_score
         DECIMAL score
         VARCHAR impact_direction
         DECIMAL confidence
@@ -249,12 +266,6 @@ erDiagram
         TIMESTAMP created_at
     }
 
-    USER_WEIGHT_SETTING {
-        BIGINT user_id PK, FK
-        DECIMAL news_weight
-        TIMESTAMP updated_at
-    }
-
     COLLECTION_RUN {
         UUID run_id PK
         VARCHAR collector_type
@@ -310,6 +321,16 @@ erDiagram
         TIMESTAMP created_at
     }
 
+    DOCUMENT_LOAD_BATCH {
+        TEXT batch_id PK
+        VARCHAR manifest_sha256
+        VARCHAR normalization_sha256
+        TEXT source_uri
+        BIGINT record_count
+        BIGINT document_count
+        TIMESTAMP loaded_at
+    }
+
     COMPANY ||--o{ COMPANY_ALIAS : has
     INDUSTRY ||--o{ INDUSTRY : contains
     COMPANY ||--o{ COMPANY_INDUSTRY : belongs_to
@@ -334,6 +355,7 @@ erDiagram
     GRAPH_SNAPSHOT ||--o{ RELATIONSHIP_SCORE_CURRENT : publishes
     COMPANY_RELATIONSHIP ||--o{ RELATIONSHIP_SCORE_HISTORY : score_history
     GRAPH_SNAPSHOT ||--o{ RELATIONSHIP_SCORE_HISTORY : groups
+    GRAPH_SNAPSHOT ||--o| GRAPH_SNAPSHOT_LOAD : load_receipt
     COMPANY_RELATIONSHIP ||--o{ RELATIONSHIP_EVIDENCE : supported_by
     SOURCE_DOCUMENT ||--o{ RELATIONSHIP_EVIDENCE : evidence_document
     DOCUMENT_EVIDENCE ||--o{ RELATIONSHIP_EVIDENCE : representative_sentence
@@ -347,8 +369,6 @@ erDiagram
     COMPANY ||--o{ USER_WATCH_COMPANY : watched_by
     USERS ||--o{ USER_SCRAP : scraps
     NEWS_ARTICLE ||--o{ USER_SCRAP : scrap_target
-    USERS ||--o| USER_WEIGHT_SETTING : configures
-
     COLLECTION_RUN ||--o{ FAILURE_RECORD : failures
     SOURCE_DOCUMENT o|--o{ FAILURE_RECORD : failed_document
     COLLECTION_RUN ||--o{ DATA_ASSET : creates_asset
@@ -384,8 +404,9 @@ erDiagram
 | `RELATIONSHIP_TYPE` | 공급·투자·협력·경쟁 등 관계 유형 정의 |
 | `COMPANY_RELATIONSHIP` | 기업 쌍과 관계 유형을 식별하는 기준 관계 |
 | `GRAPH_SNAPSHOT` | 특정 계산 시점의 전체 공통 관계 결과 묶음 |
-| `RELATIONSHIP_SCORE_CURRENT` | API에서 즉시 조회할 기간별 현재 관계 점수 |
-| `RELATIONSHIP_SCORE_HISTORY` | 관계 점수의 기간별 과거 이력 |
+| `RELATIONSHIP_SCORE_CURRENT` | API에서 즉시 조회할 뉴스·공시 구성 점수와 기본 관계 점수 |
+| `RELATIONSHIP_SCORE_HISTORY` | 뉴스·공시 구성 점수와 기본 관계 점수의 기간별 과거 이력 |
+| `GRAPH_SNAPSHOT_LOAD` | V5에서 추가한 스냅샷별 적재 영수증. manifest 해시·원본/적재 행 수·기간으로 정확한 재시도를 판별 |
 | `RELATIONSHIP_EVIDENCE` | 기업 관계와 근거 문서·대표 문장을 연결 |
 | `COMPANY_METRIC_HISTORY` | 기업별 뉴스 언급량·감성·관계 수의 시계열 |
 | `STOCK_PRICE_HISTORY` | 서비스 차트용 기업별 OHLCV 시세 |
@@ -398,7 +419,6 @@ erDiagram
 | `COMPANY_COMMUNITY_COMMENT` | 기업별 커뮤니티의 단일 계층 댓글 저장 |
 | `USER_WATCH_COMPANY` | 사용자 관심 기업 저장 |
 | `USER_SCRAP` | 사용자가 스크랩한 뉴스 저장 |
-| `USER_WEIGHT_SETTING` | 관계 분석 개인화에 사용할 뉴스 가중치 저장 |
 
 ### 수집 파이프라인 운영
 
@@ -408,6 +428,7 @@ erDiagram
 | `COLLECTION_CHECKPOINT` | 수집기·출처·검색 조건별 다음 시작 위치 유지 |
 | `FAILURE_RECORD` | 최종 실패 건의 오류 요약, 재시도 횟수와 해결 상태 저장 |
 | `DATA_ASSET` | 기사별이 아닌 HDFS 파일·데이터 묶음의 위치와 상태 저장 |
+| `DOCUMENT_LOAD_BATCH` | V6에서 추가한 문서 적재 체크포인트. 입력 스냅샷과 정규화 결과의 해시·건수를 기록하여 정확한 재실행을 판별 |
 
 ## 4. 핵심 모델링 규칙
 
@@ -430,14 +451,17 @@ erDiagram
 - 경쟁·협력처럼 방향이 없는 관계는 두 기업 ID의 저장 순서를 통일해 중복을 방지한다.
 - 한 기업 쌍에 여러 관계 유형이 존재할 수 있으며 관계 유형별로 별도 행을 저장한다.
 - 서비스 API는 `GRAPH_SNAPSHOT.status = PUBLISHED`인 결과만 사용한다.
-- 사용자별 그래프 스냅샷은 만들지 않는다. 공통 스냅샷에 사용자 가중치를 적용한 결과만 Redis에 임시 캐시한다.
+- RDB Loader는 전체 기간 스냅샷의 현재 점수 교체, 점수 이력 추가, `GRAPH_SNAPSHOT_LOAD` 영수증 기록과 게시를 한 트랜잭션으로 수행한다. 이전 이력은 보존하며 같은 ID·같은 manifest 재실행은 중복 적재하지 않는다.
+- 사용자별 그래프 스냅샷과 가중치는 PostgreSQL·Redis에 저장하지 않는다. 프론트엔드는 사용자가 지정한 비율을 브라우저 탭의 `sessionStorage`에 보관하고 `news_score`와 `disclosure_score`를 일시 조합한다.
+- `RELATIONSHIP_SCORE_CURRENT`와 `RELATIONSHIP_SCORE_HISTORY`는 `news_score`, `disclosure_score`와 시스템 기본 비율(뉴스 50%·공시 50%)로 계산한 `score`를 함께 저장한다.
+- 특정 출처의 근거가 없으면 해당 구성 점수는 `0`이 아닌 `NULL`로 저장한다. 한쪽 점수만 존재하면 개인화 계산에서도 그 점수를 그대로 사용한다.
 
 ### 사용자 기능
 
 - 비밀번호 컬럼명은 `password`를 사용하지만 평문을 저장하지 않고 BCrypt 또는 Argon2 해시만 저장한다.
 - Refresh Token 원문은 HttpOnly·Secure 쿠키로 전달하고 Redis에는 해시 또는 `jti`만 TTL과 함께 저장한다.
 - 사용자당 활성 Refresh Token 하나만 유지하며 새 로그인과 로그아웃 시 기존 토큰을 무효화한다.
-- `USER_WEIGHT_SETTING.news_weight`만 저장하고 공시 가중치는 `100 - news_weight`로 계산한다.
+- 사용자가 조절한 뉴스·공시 비율은 프론트엔드 `sessionStorage`에 보관한다. 같은 탭의 페이지 이동과 새로고침에서는 유지하고, 탭 세션 종료 후 다시 접속하면 시스템 기본 비율로 돌아간다.
 - `USER_SCRAP.document_id`는 `NEWS_ARTICLE`이 존재하는 뉴스 문서만 허용한다. 공시는 스크랩 대상이 아니다.
 - 커뮤니티 댓글은 대댓글과 좋아요 없이 기업과 사용자에 직접 연결한다.
 
@@ -484,17 +508,13 @@ HDFS 데이터는 다음 계층으로 관리한다.
 
 HDFS에는 문서 하나당 파일 하나를 만들지 않고 여러 문서를 묶어 저장한다. 원본과 이전 버전을 덮어쓰지 않으며, 파생 데이터에는 이전 단계의 `parent_hdfs_uri`와 처리 버전을 남긴다.
 
-## 6. DDL 작성 시 확정할 항목
+## 6. 운영 데이터 증가 시 검토할 항목
 
-다음 내용은 논리 설계를 변경하지 않고 DDL 작성 단계에서 결정한다.
+현재 Flyway V1~V6의 제약조건과 인덱스를 기준으로 운영한다. 다음 항목은 실제 적재량과 API 부하 측정 결과를 근거로 추가 적용 여부를 결정한다.
 
-- 문자열 컬럼의 실제 길이와 `TEXT` 사용 기준
-- 필수 컬럼의 `NOT NULL` 여부와 기본값
-- 상태·유형 컬럼의 `CHECK` 제약조건 또는 PostgreSQL enum 사용 여부
-- FK 삭제·갱신 정책
-- 생성·수정 시각 자동 처리 방식
-- 목록·검색·관계 조회에 필요한 최소 인덱스
-- 시계열 테이블의 TimescaleDB 적용 여부
+- 목록·검색·관계 조회에 필요한 추가 인덱스
 - 대용량 뉴스 데이터의 파티셔닝 도입 시점
+- 관계 점수·기업 지표·주가 이력의 보존 기간과 아카이빙 정책
+- PostgreSQL 테이블별 VACUUM·ANALYZE 및 용량 경보 기준
 
-초기에는 필요한 최소 제약조건과 인덱스만 적용하고, 실제 적재량과 API 부하 테스트 결과를 근거로 파티셔닝과 추가 인덱스를 결정한다.
+시계열 데이터는 별도 TimescaleDB 없이 PostgreSQL 일반 테이블로 관리하며, 확장 필요성은 측정된 부하를 근거로 별도 설계 변경 절차를 거쳐 판단한다.

@@ -34,6 +34,40 @@ PYTHONUTF8=1 .venv/Scripts/python.exe -m unittest tests.test_matcher
 PYTHONUTF8=1 .venv/Scripts/python.exe run_sample.py data/sample_domestic_2025.jsonl --review 20
 ```
 
+### 실시간 raw 배치 분석·게시
+
+`realtime_analyzer.py`는 Kafka HDFS writer가 원자적으로 게시한 raw 뉴스 배치 하나를 검증하고,
+그 배치의 유효 기사를 기업 분석 결과와 함께 정식 analyzed 경로에 게시합니다. 같은 `event_id`가
+at-least-once 전달로 반복되면 모든 offset을 검증한 뒤 최신 `(collected_at, kafka_offset)` 한 건만
+남기고, 제외한 수를 manifest의 `duplicate_records`에 기록합니다. 기업이
+검출되지 않은 기사도 `companies=[]`인 한 행으로 남으므로 분석 전 상태와 분석 결과 없음이
+구분됩니다.
+
+```bash
+python realtime_analyzer.py \
+  --input 'hdfs://namenode:9000/data-lake/raw/realtime/news/topic=news.raw/partition=0/start=00000000000000000000' \
+  --output-base 'hdfs://namenode:9000/data-lake/analyzed/news/company-mentions' \
+  --model-version dict-v1.3 \
+  --analysis-version '<배포한 AI/ner git revision>'
+```
+
+출력은 raw 배치와 일대일인 아래 불변 디렉터리입니다.
+
+```text
+/data-lake/analyzed/news/company-mentions/
+  model_version=dict-v1.3/topic=news.raw/partition=0/start=00000000000000000000/
+    data.parquet
+    _manifest.json
+    _SUCCESS
+```
+
+`data.parquet`에는 기사 원문 필드와 `raw_json`, Kafka 위치, raw manifest SHA-256,
+분석·사전·회사목록 버전, 그리고 `companies` 배열이 함께 들어갑니다. 회사 항목은
+`market + stock_code`를 포함해 RDB의 기업과 모호하지 않게 연결할 수 있습니다. raw manifest와
+모든 선언 파일의 크기·SHA-256·행 수·전체 offset 범위를 확인한 뒤 staging 디렉터리를 rename해
+게시합니다. 같은 입력과 같은 버전의 재실행은 검증 후 no-op이고, 같은 목적지에 다른 입력이나
+버전이 들어오면 덮어쓰지 않고 실패합니다.
+
 ```python
 from matcher import CompanyMatcher
 m = CompanyMatcher.from_csv("data/aliases.csv")

@@ -1,17 +1,41 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
 import type { ImpactDirection, Market, RelationshipType, Sentiment } from "@/api/types";
-import { IMPACT_META, RELATIONSHIP_ORDER, SENTIMENT_META, industryColor, relationshipMeta } from "@/lib/meta";
+import { IMPACT_META, RELATIONSHIP_ORDER, SENTIMENT_META, SENTIMENT_PENDING, UNCLASSIFIED_INDUSTRY, industryColor, relationshipMeta } from "@/lib/meta";
 import { initials } from "@/lib/format";
-import { logoUrl } from "@/lib/logos";
+import { logoUrl, useCompanyLogoRef } from "@/lib/logos";
 import { ROLE_META, roleColor, type RoleKey } from "@/lib/roles";
-import { LAB } from "@/three/toon";
+import { LAB } from "@/three/palette";
 
 /* ------------------------------ 로고 아바타 ------------------------------ */
 
-export function CompanyAvatar({ name, stockCode, industry, size = 44, radius }: { name: string; stockCode?: string | null; industry?: string | null; size?: number; radius?: number }) {
-  const [broken, setBroken] = useState(false);
-  const url = logoUrl(stockCode);
-  const hasLogo = Boolean(url) && !broken;
+/**
+ * 기업 로고 — 로고 키는 `시장 + 종목코드`다. 두 값을 아는 화면은 그대로 넘기고,
+ * `companyId`·`name` 만 가진 화면(뉴스의 관련 기업 등)은 companyId 를 넘기면 api 경계에서 적어 둔 참조로 찾는다.
+ * 파일이 없거나 이미지 로딩이 실패하면 깨진 이미지 대신 기업명 이니셜을 그린다.
+ */
+export function CompanyAvatar({
+  name,
+  companyId,
+  stockCode,
+  market,
+  industry,
+  size = 44,
+  radius,
+}: {
+  name: string;
+  companyId?: string | null;
+  stockCode?: string | null;
+  market?: Market | null;
+  industry?: string | null;
+  size?: number;
+  radius?: number;
+}) {
+  // 이미 코드를 아는 화면은 조회를 건너뛴다 — 훅 자체는 항상 호출해야 하므로 인자만 비운다
+  const ref = useCompanyLogoRef(stockCode ? null : companyId);
+  const url = logoUrl(stockCode ?? ref?.stockCode, market ?? ref?.market);
+  // 목록이 재사용되며 다른 기업으로 바뀔 수 있으므로 '깨짐'은 그 URL 에만 붙인다
+  const [brokenUrl, setBrokenUrl] = useState<string | null>(null);
+  const hasLogo = Boolean(url) && url !== brokenUrl;
   const color = industryColor(industry);
   return (
     <span
@@ -19,14 +43,15 @@ export function CompanyAvatar({ name, stockCode, industry, size = 44, radius }: 
       style={{ width: size, height: size, borderRadius: radius ?? Math.round(size * 0.28), fontSize: Math.max(11, Math.round(size * 0.3)), background: hasLogo ? "#fff" : `linear-gradient(140deg, ${color}66, ${color}22)`, color: "#fff", border: `1px solid ${color}55` }}
       aria-hidden="true"
     >
-      {hasLogo ? <img src={url!} alt="" onError={() => setBroken(true)} /> : initials(name)}
+      {hasLogo ? <img src={url!} alt="" loading="lazy" decoding="async" onError={() => setBrokenUrl(url)} /> : initials(name)}
     </span>
   );
 }
 
 /* ------------------------------ 배지 ------------------------------ */
-export function SentimentBadge({ value, compact = false }: { value: Sentiment; compact?: boolean }) {
-  const m = SENTIMENT_META[value] ?? SENTIMENT_META.NEUTRAL;
+/** sentiment 는 분석 전이면 null 이다 — 그때는 중립이 아니라 '분석 전' 톤으로 그린다 */
+export function SentimentBadge({ value, compact = false }: { value: Sentiment | null | undefined; compact?: boolean }) {
+  const m = (value && SENTIMENT_META[value]) ?? SENTIMENT_PENDING;
   return (
     <span className="badge" style={{ background: m.bg, color: m.fg }}>
       <i className="dot" style={{ background: m.color }} />
@@ -54,11 +79,13 @@ export function TypeBadge({ type, directed }: { type: RelationshipType; directed
     </span>
   );
 }
-export function IndustryBadge({ name }: { name: string }) {
-  const c = industryColor(name);
+/** 대표 산업이 없는 기업(primaryIndustry: null)은 '미분류' 로 표시한다 */
+export function IndustryBadge({ name }: { name: string | null | undefined }) {
+  const label = name || UNCLASSIFIED_INDUSTRY;
+  const c = industryColor(label);
   return (
     <span className="badge" style={{ background: `${c}22`, color: c }}>
-      {name}
+      {label}
     </span>
   );
 }
@@ -76,7 +103,9 @@ export function RoleBadge({ role, count, on = false, dimmed = false, title, onCl
     </button>
   );
 }
-export function MarketTag({ market }: { market: Market }) {
+/** 시장 코드가 비어 있으면(백엔드가 "" 로 내려주는 기업) 빈 칸 대신 아무것도 그리지 않는다 */
+export function MarketTag({ market }: { market: Market | null | undefined }) {
+  if (!market) return null;
   return (
     <span className="meta num" style={{ fontFamily: "var(--mono)", fontSize: 11, letterSpacing: "0.04em" }}>
       {market}
@@ -96,9 +125,8 @@ export function ScoreBar({ score, color }: { score: number; color?: string }) {
 /* ------------------------------ 관계 유형 범례 ------------------------------ */
 /**
  * 간선의 방향을 선 모양으로 나타낸다: 방향 있음 = 실선 + 화살, 방향 없음 = 점선.
- * 빔 색은 영향 방향이 정하므로(긍정 파랑·부정 빨강·중립 보라) 실제 간선을 가리킬 때는 color 로 그 색을 넘긴다.
- * 특정 간선이 아닌 자리(유형 범례)는 기본값인 중립 보라로 둬서 색이 방향을 잘못 주장하지 않게 한다.
- * 유형색은 빔이 아니라 기업을 호버했을 때 이웃 행성의 링·칩 태그에 나타나므로, 범례 칩 앞의 색 점이 그 대응을 알려 준다
+ * 빔 색은 관계 유형이 정하므로(협력 파랑·경쟁 빨강·공급/투자 보라 계열, lib/meta) 실제 간선을 가리킬 때는 color 로 그 색을 넘긴다.
+ * 특정 간선을 가리키지 않는 자리만 기본값(중립 보라)을 쓴다.
  * PathStrip(최단 경로 스트립)도 같은 글리프로 홉 사이 방향을 나타내므로 export 한다.
  */
 export function EdgeGlyph({ directed, color = LAB.beamNeutral }: { directed: boolean; color?: string }) {
@@ -117,9 +145,9 @@ export function TypeLegend({ active, onToggle }: { active?: Set<RelationshipType
         const m = relationshipMeta(t);
         const on = active ? active.has(t) : true;
         return (
-          <button key={t} type="button" className={`chip chip-sm ${on ? "on" : ""}`} onClick={() => onToggle?.(t)} title={`${m.description} · ${m.directed ? "방향 있음 (펄스가 한쪽으로 흐름)" : "방향 없음 (점선)"} · 기업을 호버하면 이 색 링으로 표시`} style={{ opacity: on ? 1 : 0.55 }}>
+          <button key={t} type="button" className={`chip chip-sm ${on ? "on" : ""}`} onClick={() => onToggle?.(t)} title={`${m.description} · ${m.directed ? "방향 있음 (펄스가 한쪽으로 흐름)" : "방향 없음 (점선)"} · 씬의 관계선도 이 색입니다`} style={{ opacity: on ? 1 : 0.55 }}>
             <i className="dot" style={{ background: m.color }} />
-            <EdgeGlyph directed={m.directed} />
+            <EdgeGlyph directed={m.directed} color={m.color} />
             {m.label}
           </button>
         );
@@ -135,17 +163,71 @@ export function Skeleton({ h = 14, w = "100%", style }: { h?: number; w?: number
 export function Empty({ children }: { children: ReactNode }) {
   return <div className="empty">{children}</div>;
 }
-export function Kpi({ label, value, unit, tone, children }: { label: string; value: ReactNode; unit?: string; tone?: string; children?: ReactNode }) {
+/**
+ * 목록·상세 쿼리가 네트워크·서버 오류로 실패했을 때의 공통 안내.
+ * <Empty>(필터 조건에 맞는 결과가 없음)와 시각적으로 구분해, 오류를 "결과 없음"으로 오인하지 않게 한다.
+ */
+export function ErrorNotice({ message = "데이터를 불러오지 못했습니다.", onRetry }: { message?: string; onRetry?: () => void }) {
   return (
-    <div className="card kpi">
-      <div className="lab">{label}</div>
+    <div className="empty error-notice">
+      <div>{message}</div>
+      {onRetry && (
+        <button type="button" className="btn btn-g btn-sm mt-8" onClick={onRetry}>
+          <Icon.Refresh /> 다시 시도
+        </button>
+      )}
+    </div>
+  );
+}
+/** onClick 을 주면 이 수치가 어떻게 나왔는지 보여주는 근거 화면 등을 열 수 있도록 button 으로 렌더링한다. */
+export function Kpi({ label, value, unit, tone, children, onClick }: { label: string; value: ReactNode; unit?: string; tone?: string; children?: ReactNode; onClick?: () => void }) {
+  const body = (
+    <>
+      <div className="lab">
+        {label}
+        {/* 클릭 가능한 Kpi 는 hover 전에도 '눌러볼 수 있다'는 게 드러나야 하므로 화살표를 덧붙인다 */}
+        {onClick && (
+          <span className="kpi-hint" aria-hidden="true">
+            {" "}
+            ▸
+          </span>
+        )}
+      </div>
       <div className="kpi-v num" style={{ color: tone }}>
         {value}
         {unit && <span className="lab" style={{ marginLeft: 4 }}>{unit}</span>}
       </div>
       {children}
-    </div>
+    </>
   );
+  if (onClick) {
+    return (
+      <button type="button" className="card kpi kpi-click" onClick={onClick}>
+        {body}
+      </button>
+    );
+  }
+  return <div className="card kpi">{body}</div>;
+}
+
+/* ------------------------------ 다이얼로그 포커스 순환 ------------------------------ */
+/**
+ * 다이얼로그(모바일 서랍·바텀시트) 안에서 Tab/Shift+Tab 을 첫·마지막 초점 요소 사이에서 순환시킨다 — 스크림 뒤의 HUD 로 포커스가 새면
+ * 래퍼의 ESC 핸들러가 닿지 않아 닫을 길이 없어진다. 컨테이너의 keydown 핸들러에서 부른다
+ */
+export function cycleTabFocus(e: ReactKeyboardEvent<HTMLElement>, container: HTMLElement | null) {
+  if (e.key !== "Tab" || !container) return;
+  const items = container.querySelectorAll<HTMLElement>('button:not([disabled]), a[href], input:not([disabled]), [tabindex]:not([tabindex="-1"])');
+  if (items.length === 0) return;
+  const first = items[0];
+  const last = items[items.length - 1];
+  if (e.shiftKey && document.activeElement === first) {
+    e.preventDefault();
+    last.focus();
+  } else if (!e.shiftKey && document.activeElement === last) {
+    e.preventDefault();
+    first.focus();
+  }
 }
 
 /* ------------------------------ 외부 클릭 감지 ------------------------------ */
@@ -179,6 +261,12 @@ export const Icon = {
   Close: () => (
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" aria-hidden="true">
       <path d="M6 6l12 12M18 6 6 18" />
+    </svg>
+  ),
+  /* 모바일 헤더의 ☰ — 탭·계정 서랍을 연다 */
+  Menu: () => (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" aria-hidden="true">
+      <path d="M4 7h16M4 12h16M4 17h16" />
     </svg>
   ),
   Chevron: () => (
@@ -224,6 +312,39 @@ export const Icon = {
       <path d="M10.6 6.7A9.6 9.6 0 0 1 12 5.5c6.4 0 10 6.5 10 6.5a17 17 0 0 1-3.4 4.1M6.3 8.1A17.6 17.6 0 0 0 2 12s3.6 6.5 10 6.5a9.9 9.9 0 0 0 3.5-.6" />
       <path d="M9.9 9.9a3 3 0 0 0 4.2 4.2" />
       <path d="M3 3l18 18" />
+    </svg>
+  ),
+  Help: () => (
+    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+      <circle cx="12" cy="12" r="9" />
+      <path d="M9.5 9.3a2.6 2.6 0 0 1 5 .9c0 1.7-2.5 2.1-2.5 3.8" />
+      <path d="M12 17.2h.01" strokeWidth="2.6" strokeLinecap="round" />
+    </svg>
+  ),
+  /* 카메라 프리셋 — 궤도(비스듬히 도는 궤도), 위에서(원반을 정확히 위에서), 정면에서(원반을 옆에서 본 선) */
+  CamOrbit: () => (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+      <ellipse cx="12" cy="12" rx="9" ry="4.2" transform="rotate(-20 12 12)" />
+      <circle cx="12" cy="12" r="2.2" fill="currentColor" stroke="none" />
+    </svg>
+  ),
+  CamTop: () => (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+      <circle cx="12" cy="12" r="8.5" />
+      <circle cx="12" cy="12" r="4" />
+      <circle cx="12" cy="12" r="1" fill="currentColor" stroke="none" />
+    </svg>
+  ),
+  CamFront: () => (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+      <path d="M3 13.5h18" />
+      <ellipse cx="12" cy="13.5" rx="8" ry="1.6" />
+      <path d="M8 13.5V8.5M12 13.5V6M16 13.5v-4" strokeLinecap="round" />
+    </svg>
+  ),
+  Cursor: () => (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor" stroke="#0b1020" strokeWidth="1.4" strokeLinejoin="round" aria-hidden="true">
+      <path d="M6 3l12 9.2-5.4.9 3.1 5.9-2.6 1.3-3.1-6-3.8 3.9z" />
     </svg>
   ),
 };

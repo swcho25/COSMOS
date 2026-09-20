@@ -1,7 +1,10 @@
+import { useCallback, useMemo } from "react";
 import { keepPreviousData, useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/api";
 import type * as T from "@/api/types";
+import { weightedEdges, weightedRelationship } from "@/lib/score";
 import { useSession } from "@/store/session";
+import { useNewsWeight } from "@/store/weight";
 
 const useKey = () => useSession((s) => s.sessionKey);
 const useAuthed = () => useSession((s) => s.status === "authed");
@@ -20,15 +23,27 @@ export function useIndustries() {
 }
 
 /* ------------------------------ 그래프 ------------------------------ */
+/**
+ * 뉴스·공시 비율은 서버에 보내지 않는다 — 받은 구성 점수를 화면에서만 섞는다(lib/score).
+ * select 에서 한 번 섞어 두면 씬·목록·경로 등 score 를 읽는 화면이 모두 같은 값을 본다.
+ * 캐시(queryKey)는 비율과 무관하므로 슬라이더를 움직여도 다시 요청하지 않는다.
+ */
+function useWeightedEdges<G extends { edges: T.GraphEdge[] }>() {
+  const w = useNewsWeight();
+  return useCallback((g: G): G => ({ ...g, edges: weightedEdges(g.edges, w) }), [w]);
+}
+
 export function useLatestGraph(industryId: string | null) {
   const k = useKey();
   const booted = useBooted();
+  const select = useWeightedEdges<T.LatestGraph>();
   return useQuery({
     queryKey: ["graph", "latest", k, industryId],
     queryFn: () => api.graphs.latest({ industryId: industryId ?? undefined }),
     enabled: booted,
     staleTime: 5 * 60_000,
     placeholderData: keepPreviousData,
+    select,
   });
 }
 /** 기업 그래프 쿼리 옵션 — 훅과 prefetch(호버 선로딩)가 같은 키·함수를 공유하도록 팩토리로 둔다 */
@@ -40,18 +55,46 @@ export const companyGraphQuery = (k: string, companyId: string) => ({
 export function useCompanyGraph(companyId: string | null) {
   const k = useKey();
   const booted = useBooted();
-  return useQuery({ ...companyGraphQuery(k, companyId ?? ""), enabled: booted && Boolean(companyId) });
+  const select = useWeightedEdges<T.CompanyGraph>();
+  return useQuery({ ...companyGraphQuery(k, companyId ?? ""), enabled: booted && Boolean(companyId), select });
 }
 export function useRelationship(relationshipId: string | null, window: T.MetricWindow) {
   const k = useKey();
   const booted = useBooted();
+  const w = useNewsWeight();
+  const select = useCallback((r: T.RelationshipDetail) => weightedRelationship(r, w), [w]);
   return useQuery({
     queryKey: ["relationship", k, relationshipId, window],
     queryFn: () => api.graphs.relationship(relationshipId!, window),
     enabled: booted && Boolean(relationshipId),
     placeholderData: keepPreviousData,
+    select,
   });
 }
+/**
+ * 씬 툴팁 3단(B-2)의 대표 근거 1건 — size:1 로 가장 가벼운 요청만 보낸다.
+ * 세션 상한(60회): 훅이 실제로 서버에 쏘는 총 횟수를 모듈 변수로 세고, 닿으면 새 요청을 막고 capped 를 알린다.
+ * 스침(hover) 필터링은 호출 측(SceneTip)의 300ms 디바운스가 담당 — 여기서 또 디바운스하면 지연이 겹친다.
+ */
+const TOP_EVIDENCE_SESSION_CAP = 60;
+let topEvidenceCallCount = 0;
+
+export function useTopEvidence(relationshipId: string | null) {
+  const capped = topEvidenceCallCount >= TOP_EVIDENCE_SESSION_CAP;
+  const query = useQuery({
+    queryKey: ["relationship", "evidence", "top", relationshipId],
+    queryFn: () => {
+      topEvidenceCallCount += 1;
+      // api.graphs.evidence 는 signal 을 받지 않는다(RequestOptions·contract 어디에도 없음) — react-query 가
+      // 키 변경 시 이전 관찰을 알아서 버려 주므로 취소 전달은 생략한다.
+      return api.graphs.evidence(relationshipId!, { size: 1 });
+    },
+    enabled: Boolean(relationshipId) && !capped,
+    staleTime: 5 * 60_000,
+  });
+  return { ...query, capped };
+}
+
 export function useRelationshipEvidence(relationshipId: string | null) {
   return useInfiniteQuery({
     queryKey: ["relationship", "evidence", relationshipId],
@@ -145,8 +188,15 @@ export function useCompanyComments(companyId: string | null) {
     enabled: Boolean(companyId),
   });
 }
-export function useLatestComments(size = 8) {
-  return useQuery({ queryKey: ["comments", "latest", size], queryFn: () => api.community.latest({ size }), staleTime: 60_000 });
+/** 커뮤니티 페이지(전체 기업 댓글 최신순 피드) — 다른 목록과 동일하게 커서 기반 무한 스크롤로 받는다. */
+export function useLatestComments(size = 20) {
+  return useInfiniteQuery({
+    queryKey: ["comments", "latest", size],
+    queryFn: ({ pageParam }) => api.community.latest({ cursor: pageParam, size }),
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (last) => last.nextCursor ?? undefined,
+    staleTime: 60_000,
+  });
 }
 
 /* ------------------------------ 내 정보 ------------------------------ */
@@ -155,17 +205,21 @@ export function useWatchlist() {
   const authed = useAuthed();
   return useQuery({ queryKey: ["me", "watchlist", k], queryFn: () => api.users.watchCompanies({ size: 100 }), enabled: authed });
 }
+/**
+ * 관심 여부의 기준. 명세는 기업 목록·상세의 `watched` 를 "유효한 토큰이 오면 채운다" 로 두지만, 백엔드 CompanyController 가
+ * 아직 인증 주체를 받지 않아 로그인해도 항상 false 를 내려준다(README '실 응답과 명세의 차이'). 내 관심 목록
+ * (/users/me/watch-companies)은 정확하므로 둘을 합쳐 판단한다 — 서버가 고쳐지면 목록 없이도 같은 결과가 나온다.
+ * 게스트는 관심 목록 쿼리가 꺼져 있어 빈 집합이다.
+ */
+export function useWatchedSet() {
+  const watchlist = useWatchlist();
+  return useMemo(() => new Set(watchlist.data?.items.map((w) => w.companyId) ?? []), [watchlist.data]);
+}
 export function useScraps() {
   const k = useKey();
   const authed = useAuthed();
   return useQuery({ queryKey: ["me", "scraps", k], queryFn: () => api.users.scraps({ size: 100 }), enabled: authed });
 }
-export function useWeightSetting() {
-  const k = useKey();
-  const authed = useAuthed();
-  return useQuery({ queryKey: ["me", "weight", k], queryFn: () => api.users.weightSetting(), enabled: authed });
-}
-
 /* ------------------------------ 변경 ------------------------------ */
 export function useToggleWatch() {
   const qc = useQueryClient();
@@ -228,16 +282,5 @@ export function useUpdateNickname() {
   return useMutation({
     mutationFn: (nickname: string) => api.users.updateNickname(nickname),
     onSuccess: (me) => setUser(me),
-  });
-}
-export function useUpdateWeight() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (newsWeight: number) => api.users.updateWeightSetting(newsWeight),
-    onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ["me", "weight"] });
-      void qc.invalidateQueries({ queryKey: ["graph"] });
-      void qc.invalidateQueries({ queryKey: ["relationship"] });
-    },
   });
 }

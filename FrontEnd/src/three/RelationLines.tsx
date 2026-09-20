@@ -2,11 +2,12 @@ import { useEffect, useMemo } from "react";
 import { useFrame, type ThreeEvent } from "@react-three/fiber";
 import * as THREE from "three";
 import type { SceneEdge, SceneModel } from "@/lib/graph";
-import { altitudeGate } from "./altitude";
+import { altitudeGate, altitudeState } from "./altitude";
 import { touch } from "./bufferUtil";
 import { bezier, CHORD_CLEAR, controlPoint, radiusOf } from "./edgeCurve";
 import type { Emphasis } from "./emphasis";
 import { dragState, liveFor, morphState, type LiveTransform } from "./morph";
+import { spreadDim, spreadGate, spreadState } from "./spread";
 import { beamColorFor } from "./toon";
 
 /** 튜브 길이 방향 분할, 둘레 분할, 간선당 빛 구슬 수 */
@@ -56,8 +57,27 @@ const PICK_REVEAL = 0.9;
  * 키는 인스턴스마다 새로 만들어지는 built 객체라, 컴포넌트가 사라지면 항목도 함께 회수된다.
  */
 const GATES = new WeakMap<object, { born: number; reveal: number }>();
-/** 인스턴스별 드래그 추종 상태 — 마지막으로 반영한 dragState.version. GATES 와 같은 이유로 모듈 캐시에 둔다 */
-const FOLLOWED = new WeakMap<object, { version: number }>();
+/**
+ * 인스턴스별 드래그 추종 상태 — 마지막으로 반영한 dragState.version 과 "마운트 직후 따라잡기가 남았는지".
+ * GATES 와 같은 이유로 모듈 캐시에 둔다.
+ */
+const FOLLOWED = new WeakMap<object, { version: number; catchUp: boolean }>();
+
+/** live 가 레이아웃 좌표와 어긋났다고 보는 거리 */
+const MOVED_EPS = 1e-3;
+/**
+ * live 버퍼가 레이아웃 좌표와 다른 노드 — 마운트 직후의 따라잡기가 볼 "실제로 옮겨진" 목록.
+ * dragState.dirty 는 배치가 바뀌어도 남아 있어(직전 모델의 id) 이 자리에서는 쓸 수 없다:
+ * 은하와 기업 중심 뷰는 같은 기업 id 를 공유하므로, 남은 표식이 새 뷰의 간선을 통째로 다시 굽게 만든다.
+ */
+function movedNodes(model: SceneModel, live: LiveTransform) {
+  const out = new Set<string>();
+  model.nodes.forEach((nd, i) => {
+    const o = i * 3;
+    if (Math.abs(live.pos[o] - nd.pos[0]) > MOVED_EPS || Math.abs(live.pos[o + 1] - nd.pos[1]) > MOVED_EPS || Math.abs(live.pos[o + 2] - nd.pos[2]) > MOVED_EPS) out.add(nd.id);
+  });
+  return out;
+}
 
 /** followEdges 가 건드리는 병합 버퍼 (built 의 부분집합) */
 interface EdgeBuffers {
@@ -79,9 +99,9 @@ interface EdgeBuffers {
  * 드래그로 움직인(dirty) 노드에 붙은 간선만 live 좌표로 다시 굽는다 — 튜브 정점·법선, 제어점, 피킹 선분.
  * 전체 재생성은 하지 않는다 (한 노드의 인접 간선은 수십 개 수준).
  */
-function followEdges(buf: EdgeBuffers, edges: SceneEdge[], adjacency: Map<string, number[]>, nodeIndex: Map<string, number>, live: LiveTransform, clear: number) {
+function followEdges(buf: EdgeBuffers, edges: SceneEdge[], adjacency: Map<string, number[]>, nodeIndex: Map<string, number>, live: LiveTransform, clear: number, dirty: Set<string>) {
   const hits = new Set<number>();
-  dragState.dirty.forEach((id) => adjacency.get(id)?.forEach((ei) => hits.add(ei)));
+  dirty.forEach((id) => adjacency.get(id)?.forEach((ei) => hits.add(ei)));
   if (!hits.size) return;
   const { fromArr, toArr, position, normal, pickPos, ctrls, radii, vPer } = buf;
   hits.forEach((ei) => {
@@ -183,7 +203,7 @@ export default function RelationLines({ edges, emphasis, model, onHover, onSelec
       phases[ei] = (ei * 0.6180339887) % 1;
       // 이 셰이더는 톤매핑도 출력 색공간 변환도 거치지 않는다 — 넘긴 값이 곧 화면 sRGB 라서
       // 선형화(THREE.Color 기본 변환)를 거치면 파랑·보라가 함께 어두운 청색으로 몰려 구분이 사라진다
-      C.setStyle(beamColorFor(e.impact), THREE.NoColorSpace);
+      C.setStyle(beamColorFor(e.type), THREE.NoColorSpace);
       rgb[ei * 3] = C.r;
       rgb[ei * 3 + 1] = C.g;
       rgb[ei * 3 + 2] = C.b;
@@ -296,6 +316,7 @@ export default function RelationLines({ edges, emphasis, model, onHover, onSelec
       const v = emphasis.edge.get(e.id) ?? 1;
       arr.fill(v, ei * built.vPer, (ei + 1) * built.vPer);
     });
+    // eslint-disable-next-line react-hooks/immutability -- Notify Three.js to upload the changed GPU attribute after commit.
     built.emphAttr.needsUpdate = true;
   }, [edges, emphasis, built]);
 
@@ -324,22 +345,36 @@ export default function RelationLines({ edges, emphasis, model, onHover, onSelec
   const haloUniforms = useMemo(() => ({ uDim: { value: 1 }, uInflate: { value: 1.7 }, uHalo: { value: 1 }, uFade: { value: 1 }, uReveal: { value: 1 } }), []);
   const pulseUniforms = useMemo(() => ({ uDim: { value: 1 }, uScale: { value: 600 } }), []);
 
+  /* eslint-disable react-hooks/immutability -- R3F updates shader uniforms and GPU buffers imperatively in its frame callback. */
   useFrame((state, delta) => {
     const dt = Math.min(delta, 0.05);
     // 드래그로 행성이 움직인 프레임에만 그 행성의 인접 간선을 다시 굽는다.
-    // -1 로 시작해, 이미 옮겨 둔 행성이 있는 채로 마운트해도 한 번은 따라잡는다
+    // catchUp: 이미 옮겨 둔 행성이 있는 채로 마운트해도 한 번은 따라잡는다
     let follow = FOLLOWED.get(built);
     if (!follow) {
-      follow = { version: -1 };
+      follow = { version: dragState.version, catchUp: true };
       FOLLOWED.set(built, follow);
     }
-    if (model && follow.version !== dragState.version) {
-      follow.version = dragState.version;
-      followEdges(built, edges, adjacency, nodeIndex, liveFor(model), clear);
+    // 워프 낙하 중에는 live 가 중간 좌표다 — 그때 구우면 그 자리에 굳어 버린다(빔이 이전 배치에 남는다).
+    // 착지하면 live 가 레이아웃 좌표로 정확히 돌아오므로 한 프레임 미루는 것으로 충분하다
+    if (model && !morphState.plan) {
+      const live = liveFor(model);
+      // 고도 전이는 자기 이동이 끝난 프레임에 직접 dirty 를 찍어 알린다 — 버전 경로는 그 신호를 그대로 따른다
+      if (follow.version !== dragState.version) {
+        follow.catchUp = false;
+        follow.version = dragState.version;
+        followEdges(built, edges, adjacency, nodeIndex, live, clear, dragState.dirty);
+      } else if (follow.catchUp && !altitudeState.animating && !spreadState.animating) {
+        // 따라잡기는 live 가 가만히 있을 때만 — 고도·펼치기 전이 중의 중간 좌표를 굽지 않는다
+        follow.catchUp = false;
+        followEdges(built, edges, adjacency, nodeIndex, live, clear, movedNodes(model, live));
+      }
     }
-    tubeUniforms.uDim.value = intensity;
-    haloUniforms.uDim.value = intensity;
-    pulseUniforms.uDim.value = intensity;
+    // 펼치기 정렬 단계에서는 격자 위의 선이 관계가 아니라 잡음이라 슬라이더를 따라 즉시 흐려진다 (미니 씬은 warpFx=false 라 그대로 1)
+    const spreadIntensity = warpFx ? spreadDim() : 1;
+    tubeUniforms.uDim.value = intensity * spreadIntensity;
+    haloUniforms.uDim.value = intensity * spreadIntensity;
+    pulseUniforms.uDim.value = intensity * spreadIntensity;
     // 포인트 크기를 화면 높이에 맞춘다 (fov 고정 가정)
     pulseUniforms.uScale.value = state.size.height * 0.62;
 
@@ -350,15 +385,16 @@ export default function RelationLines({ edges, emphasis, model, onHover, onSelec
       gate = { born: state.clock.elapsedTime, reveal: warpFx ? 0 : 1 };
       GATES.set(built, gate);
     }
-    // 주가 고도 전이도 같은 게이트를 쓴다 — 행성이 높이를 바꾸는 동안 빔을 끄고(fade·reveal 0), 다 옮긴 뒤 한 번 다시 구워 리빌한다.
-    // 워프 연출과 같은 축이라 둘 중 더 감춘 쪽을 따른다. 미니 씬(warpFx=false)은 어느 쪽에도 반응하지 않는다
+    // 주가 고도·펼치기 전이도 같은 게이트를 쓴다 — 행성이 움직이는 동안 빔을 끄고(fade·reveal 0), 다 옮긴 뒤 한 번 다시 구워 리빌한다.
+    // 워프 연출과 같은 축이라 셋 중 가장 감춘 쪽을 따른다. 미니 씬(warpFx=false)은 어느 쪽에도 반응하지 않는다
     const alt = warpFx ? altitudeGate() : { fade: 1, reveal: 1 };
+    const sp = warpFx ? spreadGate() : { fade: 1, reveal: 1 };
     const reveal = (gate.reveal = !warpFx
       ? 1
       : morphState.plan
         ? 0
-        : Math.min(morphState.reveal, alt.reveal, smoothstep(AGE_IN[0], AGE_IN[1], state.clock.elapsedTime - gate.born)));
-    const fade = warpFx ? Math.min(morphState.fade, alt.fade) : 1;
+        : Math.min(morphState.reveal, alt.reveal, sp.reveal, smoothstep(AGE_IN[0], AGE_IN[1], state.clock.elapsedTime - gate.born)));
+    const fade = warpFx ? Math.min(morphState.fade, alt.fade, sp.fade) : 1;
     tubeUniforms.uFade.value = fade;
     haloUniforms.uFade.value = fade;
     tubeUniforms.uReveal.value = reveal;
@@ -393,6 +429,8 @@ export default function RelationLines({ edges, emphasis, model, onHover, onSelec
     built.pSize.needsUpdate = true;
     built.pAlpha.needsUpdate = true;
   });
+
+  /* eslint-enable react-hooks/immutability */
 
   /** 지금 리빌 — 아직 자라는 중(또는 워프로 사라진) 빔은 보이지 않으므로 집히지도 않아야 한다 */
   const revealOf = () => GATES.get(built)?.reveal ?? 1;

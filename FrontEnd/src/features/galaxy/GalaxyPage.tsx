@@ -1,35 +1,36 @@
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ApiError } from "@/api";
 import { useSearchParams } from "react-router-dom";
-import type { AltitudeWindow } from "@/api/types";
 import { useQueryClient } from "@tanstack/react-query";
-import Scene, { type Callout } from "@/three/Scene";
 import { capScale, layoutGalaxy, layoutMyGalaxy, layoutSystemCached, type CompanyLookup } from "@/lib/graph";
-import { fmtDateTime, fmtRelative } from "@/lib/format";
-import { companyGraphQuery, useCompanyGraph, useIndustries, useLatestGraph, useNewsFeed, useSessionKey, useToggleWatch, useWatchlist } from "@/lib/queries";
+import { fmtDateTime } from "@/lib/format";
+import { companyGraphQuery, useCompanyGraph, useIndustries, useLatestGraph, useSessionKey, useToggleWatch, useWatchlist } from "@/lib/queries";
 import { useGalaxy, type GalaxyScope } from "@/store/galaxy";
 import { useSession } from "@/store/session";
 import { useUi } from "@/store/ui";
-import { Icon, TypeLegend } from "@/components/ui";
-import { LAB } from "@/three/toon";
+import { useNarrowViewport } from "@/lib/viewport";
+import { useSceneReady } from "@/three/sceneReady";
+import { Icon } from "@/components/ui";
+import CameraPresets from "./CameraPresets";
 import CompanyPanel from "./CompanyPanel";
+import ControlDock from "./ControlDock";
+import HelpHub, { HelpHotkey } from "./HelpHub";
+import HoldRing from "./HoldRing";
 import HopSummary from "./HopSummary";
 import IndustryPicker from "./IndustryPicker";
+import { PanelFrame } from "./MobileSheet";
 import MyGalaxyBar, { MyGalaxyEmpty } from "./MyGalaxyBar";
 import PathStrip from "./PathStrip";
 import RelationshipPanel from "./RelationshipPanel";
 import SceneTip, { type PointerPos } from "./SceneTip";
 import SearchPalette from "./SearchPalette";
+import SurpriseRail from "./SurpriseRail";
+import Tour, { isTourDone } from "./Tour";
 import "./galaxy.css";
 
-/** 주가 고도의 기준 기간 — 은하 뷰 행성 높이가 이 기간의 등락률을 쓴다 */
-const ALTITUDE_WINDOWS: AltitudeWindow[] = ["1D", "1M", "3M"];
-
-/** 빔 색 범례 — toon.beamColorFor 와 같은 색·같은 순서라야 범례가 씬을 설명한다 */
-const IMPACT_LEGEND = [
-  { label: "긍정", color: LAB.beamPositive },
-  { label: "부정", color: LAB.beamNegative },
-  { label: "중립", color: LAB.beamNeutral },
-];
+// 씬(three 청크 1.2MB)은 HUD 뒤에 받는다 — 정적으로 묶었을 때는 헤더·카드의 첫 페인트가 three 평가가 끝날 때까지 밀렸다 (2026-09-18 Lighthouse LCP 1.8s).
+// 청크 자체는 vite.config 의 preloadSceneChunks 가 HTML 에서 미리 받게 하므로 다운로드가 늦어지지는 않는다
+const Scene = lazy(() => import("@/three/Scene"));
 
 /** 호버 200ms 프리페치 — 워프 커밋(0.6s) 전에 목적지 배치가 준비되도록 미리 받아 둔다.
     hoveredId 구독을 이 조각에 가둬 호버마다 HUD 전체가 리렌더되지 않게 한다 */
@@ -51,7 +52,6 @@ function HoverPrefetch({ focusId }: { focusId: string | null }) {
  */
 export default function GalaxyPage() {
   const [params, setParams] = useSearchParams();
-  const qc = useQueryClient();
 
   const scope = useGalaxy((s) => s.scope);
   const includeNeighbors = useGalaxy((s) => s.includeNeighbors);
@@ -59,30 +59,16 @@ export default function GalaxyPage() {
   const focusId = useGalaxy((s) => s.focusId);
   const phase = useGalaxy((s) => s.phase);
   const selectedEdgeId = useGalaxy((s) => s.selectedEdgeId);
-  const minScore = useGalaxy((s) => s.minScore);
-  const activeTypes = useGalaxy((s) => s.activeTypes);
-  const showLabels = useGalaxy((s) => s.showLabels);
-  const edgeBudget = useGalaxy((s) => s.edgeBudget);
-  const toggleEdgeBudget = useGalaxy((s) => s.toggleEdgeBudget);
-  const altitudeOn = useGalaxy((s) => s.altitudeOn);
-  const altitudeWindow = useGalaxy((s) => s.altitudeWindow);
-  const setAltitude = useGalaxy((s) => s.setAltitude);
-  const setAltitudeWindow = useGalaxy((s) => s.setAltitudeWindow);
+  const selectedId = useGalaxy((s) => s.selectedId);
+  const selectCompany = useGalaxy((s) => s.selectCompany);
   const setScope = useGalaxy((s) => s.setScope);
   const toggleNeighbors = useGalaxy((s) => s.toggleNeighbors);
   const setIndustry = useGalaxy((s) => s.setIndustry);
-  const setMinScore = useGalaxy((s) => s.setMinScore);
-  const toggleType = useGalaxy((s) => s.toggleType);
-  const toggleLabels = useGalaxy((s) => s.toggleLabels);
   const warpTo = useGalaxy((s) => s.warpTo);
   const selectEdge = useGalaxy((s) => s.selectEdge);
   const setSearchOpen = useGalaxy((s) => s.setSearchOpen);
   const panelOpen = useGalaxy((s) => s.panelOpen);
   const setPanelOpen = useGalaxy((s) => s.setPanelOpen);
-  const legendOpen = useGalaxy((s) => s.legendOpen);
-  const toggleLegend = useGalaxy((s) => s.toggleLegend);
-  const calloutHidden = useGalaxy((s) => s.calloutHidden);
-  const hideCallout = useGalaxy((s) => s.hideCallout);
 
   const status = useSession((s) => s.status);
   const openAuth = useUi((s) => s.openAuth);
@@ -94,7 +80,6 @@ export default function GalaxyPage() {
   // 워프 중인 목적지 — 커밋 전에 미리 배치를 만들어 둬야 모프가 첫 프레임부터 이어진다
   const warpTarget = useGalaxy((s) => s.warpTarget);
   const targetGraph = useCompanyGraph(phase === "warp" ? warpTarget : null);
-  const focusNews = useNewsFeed({ companyId: focusId ?? undefined, size: 1 }, Boolean(focusId));
   const watchlist = useWatchlist();
   const toggleWatch = useToggleWatch();
   const mineScope = scope === "mine";
@@ -120,6 +105,14 @@ export default function GalaxyPage() {
   // 씬 툴팁이 따라갈 포인터 위치 — ref 에만 써서 포인터 이동이 리렌더를 만들지 않는다
   const pointer = useRef<PointerPos>({ x: -1000, y: -1000 });
 
+  /* 첫 방문 투어 자동 시작 — 딥링크(?company=·?edge=)나 내 은하(?scope=mine)로 들어온 진입은 그 화면이 먼저다. 마운트 시점에 한 번 정한다 */
+  const [autoTour] = useState(() => !params.get("company") && !params.get("edge") && params.get("scope") !== "mine");
+  /** 첫 방문 투어가 자동으로 뜰 조건 — Tour.tsx 의 자동 시작 조건과 같다. 그 인트로 딤(72% 어둡게)이 씬을 덮으므로 워밍업 오버레이를 따로 붙잡을 필요가 없다 */
+  const [tourWillCover] = useState(() => autoTour && !isTourDone());
+  const helpOpen = useUi((s) => s.helpOpen);
+  /* 모바일(900px 이하): 상단 줄을 두 줄로 다시 짠다 — 첫 줄 검색 아이콘 · 카메라 시점 · 은하 범위, 둘째 줄 Special Link 꼬리표 · 산업 선택판 */
+  const narrow = useNarrowViewport();
+
   /* URL ?company= 와 포커스 동기화 — 진입 시 딥링크를 먼저 소비한 뒤에만 URL 을 상태에 맞춘다 */
   const pendingDeepLink = useRef(params.get("company"));
   useEffect(() => {
@@ -139,6 +132,30 @@ export default function GalaxyPage() {
     setParams(next, { replace: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [focusId]);
+
+  /* URL ?edge= — 뉴스 페이지 관계 줄의 은하 버튼("전체 은하에서 보기")에서 들어오는 딥링크.
+     RelationshipPanel 은 relationshipId로 서버에서 직접 조회하므로(모델은 "왜 특별한가" 설명에만
+     쓰고 없어도 동작한다) ?company= 와 달리 galaxyModel 을 기다릴 필요가 없다. 간선 선택은 이 화면
+     안에서 URL 과 계속 동기화되는 상태가 아니라서(3D 씬에서 다른 간선을 눌러도 URL은 그대로다),
+     ?company= 처럼 양방향으로 두지 않고 진입 시 한 번만 선택한 뒤 파라미터를 지운다. "전체 은하"에서
+     본 것과 같은 화면이 뜨도록 범위도 함께 전체로 되돌린다(내 은하로 들어와 있던 세션이면). */
+  const pendingEdgeLink = useRef(params.get("edge"));
+  useEffect(() => {
+    const requested = pendingEdgeLink.current;
+    if (!requested) return;
+    pendingEdgeLink.current = null;
+    if (useGalaxy.getState().scope !== "all") setScope("all");
+    selectEdge(requested);
+    setParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        next.delete("edge");
+        return next;
+      },
+      { replace: true },
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   /* URL ?scope=mine — 세션이 정해진 뒤 소비한다. 게스트면 로그인 안내만 하고 파라미터를 지운다(전체 은하 유지)
      params 자체를 구독해야, 은하 페이지에 이미 마운트된 채로 헤더 "내 은하"처럼 쿼리만 바뀌는 이동도 소비된다 */
@@ -195,15 +212,17 @@ export default function GalaxyPage() {
     if (status === "guest" && useGalaxy.getState().scope === "mine") setScope("all");
   }, [status, setScope]);
 
-  /* 키보드: ESC — 산업 선택판 → 역할 필터 → 경로 기준 핀 → 선택 간선 → 은하 복귀 순으로 한 겹씩 벗긴다 */
+  /* 키보드: ESC — 도움말 허브 → 산업 선택판 → 역할 필터 → 경로 기준 핀 → 선택 간선 → 은하 복귀 순으로 한 겹씩 벗긴다 */
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const s = useGalaxy.getState();
       if (e.key === "Escape" && !s.searchOpen) {
-        if (s.industryOpen) s.setIndustryOpen(false);
+        const ui = useUi.getState();
+        if (ui.helpOpen) ui.closeHelp();
+        else if (s.industryOpen) s.setIndustryOpen(false);
         else if (s.roleFilter) s.setRoleFilter(null);
-        else if (s.pinnedId) s.togglePin(s.pinnedId);
         else if (s.selectedEdgeId) selectEdge(null);
+        else if (s.selectedId) s.selectCompany(null);
         else if (s.focusId && s.phase !== "warp") s.backToGalaxy();
       }
     };
@@ -247,23 +266,53 @@ export default function GalaxyPage() {
     [status, openAuth, setScope, focusId, warpTo],
   );
 
-  const callout: Callout | null = useMemo(() => {
-    const n = focusNews.data?.pages[0]?.items[0];
-    if (!focusId || !n || phase !== "system" || calloutHidden) return null;
-    return { companyId: focusId, kicker: "latest news signal", title: n.title, meta: [n.publisher, fmtRelative(n.publishedAt)].filter(Boolean).join(" · "), onClose: hideCallout };
-  }, [focusNews.data, focusId, phase, calloutHidden, hideCallout]);
-
   const focusName = focusId ? systemModel?.nodeById.get(focusId)?.name ?? lookup(focusId)?.name ?? "…" : null;
   // 내 은하의 기준 스냅샷은 우주다 — 상태 카드의 시각·갱신 예정도 그 재료를 가리켜야 한다
   const snapshot = mineScope ? universe.data : latest.data;
-  const stale = snapshot ? Date.now() > Date.parse(snapshot.nextRefreshAt) : false;
+  const nextRefreshAt = snapshot?.nextRefreshAt;
+  const [now, setNow] = useState(Date.now);
+  useEffect(() => {
+    if (!nextRefreshAt) return;
+    // 갱신 예정 시각을 넘을 때 상태 표시를 갱신하고, 스냅샷 변경 시 예약을 교체한다.
+    const timer = setTimeout(() => setNow(Date.now()), Math.max(0, Date.parse(nextRefreshAt) - Date.now() + 1));
+    return () => clearTimeout(timer);
+  }, [nextRefreshAt]);
+  const stale = nextRefreshAt ? now > Date.parse(nextRefreshAt) : false;
   const scopeLoading = mineScope ? universe.isLoading || watchlist.isLoading : latest.isLoading;
   const loading = scopeLoading || (Boolean(focusId) && focusGraph.isLoading && !systemModel);
+  // 모델은 왔지만 씬이 첫 프레임을 매끄럽게 낼 준비(셰이더 컴파일·텍스처 업로드 — Scene.tsx Director 의 워밍업)가 안 됐으면 로딩 화면을 조금 더 붙잡는다.
+  // 예전에는 데이터 도착 즉시 걷혀 그 컴파일 멈춤(120~370ms)이 인트로 비행 첫 장면의 끊김으로 그대로 보였다
+  // 첫 방문에는 투어 인트로가 모델 도착과 함께 떠서 그 뒤를 덮는다 — 이때 오버레이까지 붙잡으면 인트로 문구(이 화면의 LCP 요소)만 늦어진다
+  const sceneReady = useSceneReady();
+  const warming = Boolean(galaxyModel) && !sceneReady && !(tourWillCover && scope === "all" && !focusId);
+  const showLoading = loading || warming;
   const scopeError = mineScope ? universe.isError : latest.isError;
+  // 공개된 스냅샷이 아직 없는 것(404 GRAPH_SNAPSHOT_NOT_FOUND)은 장애가 아니다 — 분석 결과가 게시되기 전 상태를 그대로 알린다
+  const scopeErr = mineScope ? universe.error : latest.error;
+  const noSnapshot = scopeErr instanceof ApiError && scopeErr.status === 404;
+  // 기업 중심 그래프만 실패한 경우(딥링크한 기업이 스냅샷에 없음 등) — 씬이 빈 이유를 말하고 은하로 돌아갈 길을 준다
+  const focusError = Boolean(focusId) && focusGraph.isError && !systemModel;
+  const focusNoSnapshot = focusGraph.error instanceof ApiError && focusGraph.error.status === 404;
   // 관심 기업이 0개거나(watchIds 없음), 있어도 전부 우주 스냅샷 밖이라 배치할 별이 없으면 씬 대신 안내 카드를 보여 준다
   // (워프해 들어간 상태에서는 씬이 주인공이므로 비운다)
   const noStars = watchIds.length === 0 || (mine !== null && mine.model.nodes.length === 0);
   const showEmpty = mineScope && status === "authed" && watchlist.data !== undefined && !focusId && noStars;
+
+  /* 산업 선택판 — 넓은 화면은 상단 한 줄의 마지막 항목, 모바일은 둘째 줄에서 Special Link 꼬리표와 나란히 */
+  const industryPicker = (
+    <IndustryPicker
+      industries={industries.data?.items ?? []}
+      loading={industries.isLoading}
+      total={universe.data?.nodes.length}
+      value={industryId}
+      onChange={(id) => {
+        setIndustry(id);
+        if (focusId) warpTo(null);
+      }}
+    />
+  );
+  /* 모바일에서는 Special Link 꼬리표를 상단 묶음의 둘째 줄 안에 그린다(은하 뷰 · 기업 중심 뷰) — 내 은하의 은하 뷰만 관심 기업 막대가 그 줄을 쓰므로 단독 레일로 남긴다 */
+  const surpriseInline = narrow && (focusId !== null || !mineScope);
 
   return (
     <div
@@ -274,27 +323,48 @@ export default function GalaxyPage() {
       }}
     >
       <div className="stage">
-        <Scene galaxy={galaxyModel} system={systemModel} next={nextModel} callout={callout} />
+        <Suspense fallback={null}>
+          <Scene galaxy={galaxyModel} system={systemModel} next={nextModel} />
+        </Suspense>
       </div>
       <HoverPrefetch focusId={focusId} />
       {/* 빔·기업 호버 툴팁 — 포인터를 따라가는 DOM, 클릭은 통과시킨다 */}
       <SceneTip model={focusId ? systemModel : galaxyModel} pointer={pointer} />
+      {/* 모바일 길게 누르기 진행 원 — 손가락 자리에 차오르고 다 차면 관계망으로 */}
+      <HoldRing />
+      {/* 첫 방문 4단 스포트라이트 투어 (은하 뷰 전용) 와 `?` 도움말 허브 — 문구는 둘 다 lib/guide 한 곳 */}
+      <Tour model={galaxyModel} autoStart={autoTour} />
+      <HelpHotkey />
+      {helpOpen && <HelpHub />}
 
-      {loading && (
-        <div className="stage-loading" aria-live="polite">
-          <span className="kick">news × relationship graph</span>
-          <b>COSMOS</b>
-          <i />
-          <span>{focusId ? "기업 관계망을 불러오는 중" : mineScope ? "내 은하를 불러오는 중" : "최신 스냅샷을 불러오는 중"}</span>
-        </div>
-      )}
+      {/* 로딩 — 언마운트하지 않고 .off 로 접어 0.35s 페이드아웃한다: index.html 의 정적 로더 → 이 오버레이 → 씬 순으로 끊김 없이 이어진다 */}
+      <div className={`stage-loading${showLoading ? "" : " off"}`} aria-live="polite" aria-hidden={!showLoading}>
+        <span className="kick">news × relationship graph</span>
+        <b>COSMOS</b>
+        <i />
+        <span>{!showLoading ? "" : focusId ? "기업 관계망을 불러오는 중" : mineScope ? "내 은하를 불러오는 중" : "최신 스냅샷을 불러오는 중"}</span>
+      </div>
       {scopeError && (
         <div className="stage-loading" style={{ pointerEvents: "auto" }}>
-          <b>연결 실패</b>
-          <span>그래프 스냅샷을 가져오지 못했습니다.</span>
+          <b>{noSnapshot ? "아직 공개된 관계 그래프가 없습니다" : "연결 실패"}</b>
+          <span>{noSnapshot ? "뉴스·공시 분석 결과가 게시되면 은하가 나타납니다. 뉴스·기업 탭은 지금도 볼 수 있습니다." : "그래프 스냅샷을 가져오지 못했습니다."}</span>
           <button type="button" className="btn btn-g btn-sm" onClick={() => (mineScope ? universe.refetch() : latest.refetch())}>
             다시 시도
           </button>
+        </div>
+      )}
+      {!scopeError && focusError && (
+        <div className="stage-loading" style={{ pointerEvents: "auto" }}>
+          <b>{focusNoSnapshot ? "이 기업의 관계망이 아직 없습니다" : "관계망을 불러오지 못했습니다"}</b>
+          <span>{focusNoSnapshot ? "공개된 스냅샷에 이 기업의 관계가 없습니다. 분석 결과가 게시되면 나타납니다." : "기업 관계 그래프를 가져오지 못했습니다."}</span>
+          <div className="row" style={{ gap: 8 }}>
+            <button type="button" className="btn btn-g btn-sm" onClick={() => focusGraph.refetch()}>
+              다시 시도
+            </button>
+            <button type="button" className="btn btn-g btn-sm" onClick={() => warpTo(null)}>
+              은하로 돌아가기
+            </button>
+          </div>
         </div>
       )}
       {showEmpty && <MyGalaxyEmpty outOfSnapshot={watchIds.length > 0} onSearch={() => setSearchOpen(true)} onBack={() => pickScope("all")} />}
@@ -302,11 +372,14 @@ export default function GalaxyPage() {
       {/* 상단 한 줄: 검색 · 은하 범위 · 산업 선택판 (은하 뷰에서만) */}
       {!focusId && (
       <div className="hud hud-top">
-        <button type="button" className="field search-trigger" onClick={() => setSearchOpen(true)}>
+        {/* 모바일에서는 글자를 감추고 돋보기 아이콘만 남는다(galaxy.css) — 라벨은 aria-label 로 유지 */}
+        <button type="button" className="field search-trigger" onClick={() => setSearchOpen(true)} aria-label="기업 검색 (/)" title="기업명 또는 종목코드 검색 (/)">
           <Icon.Search />
           <span>기업명 또는 종목코드를 검색하세요</span>
           <span className="kbd">/</span>
         </button>
+        {/* 카메라 시점 — 둘러보기 / 거리 비교 / 고도 비교 */}
+        <CameraPresets />
         {/* 은하 범위 — 탭을 늘리지 않고 같은 화면을 전체 우주 / 내 관심 기업 두 가지로 쓴다 */}
         <div className="seg scope-seg" role="group" aria-label="은하 범위">
           <button type="button" className={mineScope ? "" : "on"} aria-pressed={!mineScope} onClick={() => pickScope("all")}>
@@ -327,22 +400,19 @@ export default function GalaxyPage() {
             missing={(mine?.missing ?? []).map((id) => ({ companyId: id, name: watchItems.find((w) => w.companyId === id)?.name ?? id }))}
             onPick={pickCompany}
           />
+        ) : surpriseInline ? (
+          <div className="hud-top-line">
+            <SurpriseRail model={galaxyModel} onPickCompany={pickCompany} inline />
+            {industryPicker}
+          </div>
         ) : (
-          <IndustryPicker
-            industries={industries.data?.items ?? []}
-            total={universe.data?.nodes.length}
-            value={industryId}
-            onChange={(id) => {
-              setIndustry(id);
-              if (focusId) warpTo(null);
-            }}
-          />
+          industryPicker
         )}
       </div>
       )}
 
-      {/* 좌상단: 기업 중심 뷰 브레드크럼 */}
-      {focusId && (
+      {/* 좌상단: 기업 중심 뷰 브레드크럼 (넓은 화면) */}
+      {focusId && !narrow && (
         <div className="hud hud-crumb">
           <div className="crumb">
             <button type="button" onClick={() => warpTo(null)} title="은하로 돌아가기 (ESC)">
@@ -355,11 +425,34 @@ export default function GalaxyPage() {
           <button type="button" className="crumb" onClick={() => setSearchOpen(true)} title="다른 기업 검색">
             <Icon.Search /> <span className="kbd">/</span>
           </button>
+          <CameraPresets />
         </div>
       )}
-      {/* 브레드크럼 아래: 중심 기업의 1홉 역할 요약 (칩을 누르면 그 역할만 남긴다) */}
-      <HopSummary model={systemModel} />
-      {/* 상단 중앙: 최단 경로 스트립 — 기업 중심 뷰는 중심 기준, 은하 뷰는 Shift+클릭 핀 기준 (자기 모델로 재계산, Canvas 와 결합도 0) */}
+      {/* 모바일 기업 중심 뷰 — 은하 뷰의 두 줄과 같은 결로 묶는다: [← 전체 은하 › 기업명 ···· 🔍] / [시점 · Special Link] / [1홉 역할 칩(가로 스크롤)] */}
+      {focusId && narrow && (
+        <div className="hud hud-top hud-top-focus">
+          <div className="hud-top-line crumb-line">
+            <div className="crumb crumb-main">
+              <button type="button" onClick={() => warpTo(null)} title="은하로 돌아가기">
+                <Icon.Back /> {mineScope ? "내 은하" : "전체 은하"}
+              </button>
+              <span aria-hidden="true">›</span>
+              <b>{focusName}</b>
+            </div>
+            <button type="button" className="crumb crumb-search" onClick={() => setSearchOpen(true)} aria-label="다른 기업 검색" title="다른 기업 검색">
+              <Icon.Search />
+            </button>
+          </div>
+          <div className="hud-top-line">
+            <CameraPresets />
+            <SurpriseRail model={systemModel} onPickCompany={pickCompany} inline />
+          </div>
+          <HopSummary model={systemModel} inline />
+        </div>
+      )}
+      {/* 브레드크럼 아래: 중심 기업의 1홉 역할 요약 (칩을 누르면 그 역할만 남긴다) — 넓은 화면 */}
+      {!(focusId && narrow) && <HopSummary model={systemModel} />}
+      {/* 상단 중앙: 최단 경로 스트립 — 기업 중심 뷰는 중심 기준, 은하 뷰는 미리보기로 고른 기업 기준 (자기 모델로 재계산, Canvas 와 결합도 0) */}
       <PathStrip model={focusId ? systemModel : galaxyModel} />
 
       {/* 좌하단: 상태 */}
@@ -372,92 +465,50 @@ export default function GalaxyPage() {
               {stale && <span className="meta">· 새 스냅샷 가능</span>}
             </div>
             <div className="meta num" style={{ marginTop: 4 }}>
-              {snapshot ? `${fmtDateTime(snapshot.asOfAt)} 기준 · 다음 갱신 ${fmtDateTime(snapshot.nextRefreshAt).slice(-5)}` : "불러오는 중"}
+              {snapshot
+                ? `${fmtDateTime(snapshot.asOfAt)} 기준 · 다음 갱신 ${fmtDateTime(snapshot.nextRefreshAt).slice(-5)}`
+                : scopeError
+                  ? noSnapshot
+                    ? "공개된 스냅샷 없음 · 분석 결과 게시 전"
+                    : "스냅샷 확인 실패"
+                  : "불러오는 중"}
             </div>
           </div>
-          <button type="button" onClick={() => qc.invalidateQueries({ queryKey: ["graph"] })} aria-label="그래프 새로고침" title="최신 스냅샷 확인">
-            <Icon.Refresh />
-          </button>
         </div>
       </div>
 
-      {/* 우하단: 관계 유형·최소 점수 (접으면 꼬리표) */}
-      {!focusId && !selectedEdgeId && (
-        <div className="hud hud-legend">
-          {legendOpen ? (
-            <div className="card legend-card">
-              <div className="row between legend-head">
-                <span className="kick">관계 필터</span>
-                <div className="row legend-actions">
-                  <button type="button" className={`toggle ${edgeBudget ? "on" : ""}`} onClick={toggleEdgeBudget} title="켜면 점수 상위 관계만 기본 표시, 나머지는 기업을 호버할 때 나타납니다">
-                    상위만
-                  </button>
-                  <button type="button" className={`toggle ${showLabels ? "on" : ""}`} onClick={toggleLabels}>
-                    라벨
-                  </button>
-                  <button type="button" className="toggle" onClick={toggleLegend} aria-label="필터 접기" title="접기">
-                    <Icon.Close />
-                  </button>
-                </div>
-              </div>
-              <div className="legend-types">
-                <TypeLegend active={activeTypes} onToggle={toggleType} />
-              </div>
-              <div className="meta legend-hint">굵을수록 점수가 높고, 점선은 방향이 없는 관계입니다</div>
-              {/* 색은 관계 유형이 아니라 영향 방향이다 — 유형 칩(색 점) 바로 아래 두면 오해하기 쉬워 굵기·점선 설명 뒤에 붙인다 */}
-              <div className="meta legend-impact" title="관계 빔 색 — 충격이 어느 쪽으로 전이되는지">
-                {IMPACT_LEGEND.map((it) => (
-                  <span key={it.label}>
-                    <i className="dot" style={{ background: it.color }} />
-                    {it.label}
-                  </span>
-                ))}
-              </div>
-              <div className="row-ctl">
-                <span className="lab">최소 점수</span>
-                <input type="range" min={0} max={90} step={5} value={minScore} onChange={(e) => setMinScore(Number(e.target.value))} aria-label="관계 최소 점수" />
-                <span className="num" style={{ fontSize: 13, fontWeight: 700, width: 28, textAlign: "right" }}>
-                  {minScore}
-                </span>
-              </div>
-              {/* 주가 고도 — 행성 높이가 곧 기간 등락률이다 (은하 뷰 전용) */}
-              <div className="alt-row">
-                <button type="button" className={`toggle ${altitudeOn ? "on" : ""}`} onClick={() => setAltitude(!altitudeOn)} title="기간 등락률만큼 행성을 원반 위·아래로 띄웁니다">
-                  주가 고도
-                </button>
-                <div className="seg" role="tablist" aria-label="주가 고도 기간">
-                  {ALTITUDE_WINDOWS.map((w) => (
-                    <button key={w} type="button" role="tab" aria-selected={altitudeWindow === w} className={altitudeWindow === w ? "on" : ""} onClick={() => setAltitudeWindow(w)}>
-                      {w}
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <div className="meta legend-hint">위쪽 = 상승, 아래쪽 = 하락 (선택 기간 등락률)</div>
-            </div>
-          ) : (
-            <button type="button" className="hud-tag" onClick={toggleLegend} title="관계 유형 · 최소 점수 필터 펼치기">
-              필터 · 범례
-              {(minScore > 0 || activeTypes.size < 4 || !edgeBudget || !altitudeOn) && <i className="dot" style={{ background: "var(--primary-2)" }} />}
-            </button>
-          )}
-        </div>
-      )}
+      {/* 하단 중앙: 조절 도크 — '^' 로 열면 펼치기 슬라이더(은하 → 평면 → 크기순 정렬) · 관계 종류 4개 · '>' 고급(뉴스·공시 비율 · 최소 점수 · 주가 고도).
+          씬 인코딩 설명(자리·굵기·색·점선)은 ? 허브에만 둔다 */}
+      <ControlDock />
+      {/* 왼쪽: Special Link — 특별한 관계만 골라 보여 주는 이 제품의 핵심 카드. 행 호버 = 씬 강조, 클릭 = 근거 패널 */}
+      {!surpriseInline && <SurpriseRail model={focusId ? systemModel : galaxyModel} onPickCompany={pickCompany} />}
 
       {/* 우측 패널 — 닫으면 오른쪽 가장자리 꼬리표로 접힌다 */}
-      {(focusId || selectedEdgeId) &&
+      {/* 은하 뷰에서 행성을 클릭하면 워프하지 않고 그 기업의 뉴스·연결 단계를 여기서 먼저 본다 — 더블클릭(또는 패널의 "관계망 보기")이 워프 */}
+      {(focusId || selectedEdgeId || selectedId) &&
         (panelOpen ? (
-          <div className="hud hud-panel">
+          /* 모바일은 바텀시트(살짝 보기 → 전체 펼침, 손잡이로 끌어 접기·닫기) — 끌어 내려 닫을 때는 각 패널의 onClose 와 같은 일을 한다 */
+          <PanelFrame narrow={narrow} onDismiss={selectedEdgeId || focusId ? () => setPanelOpen(false) : () => selectCompany(null)}>
             {selectedEdgeId ? (
-              <RelationshipPanel relationshipId={selectedEdgeId} onClose={() => setPanelOpen(false)} onPickCompany={pickCompany} />
+              <RelationshipPanel relationshipId={selectedEdgeId} onClose={() => setPanelOpen(false)} onPickCompany={pickCompany} model={focusId ? systemModel : galaxyModel} />
+            ) : focusId ? (
+              <CompanyPanel companyId={focusId} onClose={() => setPanelOpen(false)} onPickCompany={pickCompany} />
             ) : (
-              focusId && <CompanyPanel companyId={focusId} onClose={() => setPanelOpen(false)} onPickCompany={pickCompany} />
+              selectedId && (
+                <CompanyPanel
+                  companyId={selectedId}
+                  model={galaxyModel}
+                  onClose={() => selectCompany(null)}
+                  onPickCompany={(id) => (galaxyModel?.nodeById.has(id) ? selectCompany(id) : pickCompany(id))}
+                  onWarp={() => pickCompany(selectedId)}
+                />
+              )
             )}
-          </div>
+          </PanelFrame>
         ) : (
           <div className="hud hud-panel-tag">
             <button type="button" className="hud-tag vertical" onClick={() => setPanelOpen(true)} title="패널 펼치기">
-              {selectedEdgeId ? "기업 관계" : `${focusName} · 인텔리전스`}
+              {selectedEdgeId ? "기업 관계" : `${focusName ?? galaxyModel?.nodeById.get(selectedId ?? "")?.name ?? ""} · 인텔리전스`}
             </button>
           </div>
         ))}

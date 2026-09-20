@@ -2,13 +2,16 @@ import { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { ApiError } from "@/api";
 import { fmtDateTime, fmtRelative } from "@/lib/format";
-import { useScraps, useToggleScrap, useToggleWatch, useUpdateNickname, useUpdateWeight, useWatchlist, useWeightSetting } from "@/lib/queries";
+import { useScraps, useToggleScrap, useToggleWatch, useUpdateNickname, useWatchlist } from "@/lib/queries";
 import { useSession } from "@/store/session";
 import { useUi } from "@/store/ui";
 import { CompanyAvatar, Empty, Icon, Skeleton } from "@/components/ui";
 import "./profile.css";
 
-/** 내 페이지 — 프로필 메뉴 진입점. 내 정보 · 관심 기업 · 스크랩 · 분석 가중치 */
+/**
+ * 내 페이지 — 프로필 메뉴 진입점. 내 정보 · 관심 기업 · 스크랩.
+ * 뉴스·공시 비율은 서버에 저장하지 않는 화면 설정이라 여기가 아니라 은하 하단 조절 도크(ControlDock)의 고급 영역에 있다.
+ */
 export default function MePage() {
   const status = useSession((s) => s.status);
   const user = useSession((s) => s.user);
@@ -41,7 +44,6 @@ export default function MePage() {
       </div>
       <div className="me-grid">
         <ProfileCard />
-        <WeightCard />
         <WatchCard />
         <ScrapCard />
       </div>
@@ -78,43 +80,6 @@ function ProfileCard() {
   );
 }
 
-function WeightCard() {
-  const weight = useWeightSetting();
-  const update = useUpdateWeight();
-  const toast = useUi((s) => s.toast);
-  const [v, setV] = useState<number | null>(null);
-  const news = v ?? weight.data?.newsWeight ?? 50;
-  return (
-    <section className="card me-card" id="weight">
-      <div className="kick">personalization</div>
-      <h2 className="sect" style={{ fontSize: 20, marginTop: 6 }}>
-        분석 가중치
-      </h2>
-      <p className="hint mt-8">관계 점수를 계산할 때 뉴스와 공시를 어떤 비율로 반영할지 정합니다. 저장하면 다음 그래프 조회부터 개인화 점수가 적용됩니다.</p>
-      <div className="weight-bar mt-16">
-        <div className="row between">
-          <span>
-            뉴스 <b className="num">{news}</b>
-          </span>
-          <span>
-            공시 <b className="num">{100 - news}</b>
-          </span>
-        </div>
-        <input type="range" min={0} max={100} step={5} value={news} onChange={(e) => setV(Number(e.target.value))} aria-label="뉴스 가중치" />
-        <div className="bar" style={{ height: 8 }}>
-          <i style={{ width: `${news}%` }} />
-        </div>
-      </div>
-      <div className="row between mt-16">
-        <span className="meta num">{weight.data?.updatedAt ? `마지막 변경 ${fmtDateTime(weight.data.updatedAt)}` : "저장된 설정 없음 · 기본 50 / 50"}</span>
-        <button type="button" className="btn btn-p btn-sm" disabled={v === null || update.isPending} onClick={() => update.mutate(news, { onSuccess: () => (setV(null), toast("가중치를 저장했습니다. 그래프를 다시 계산합니다.", "success")) })}>
-          저장
-        </button>
-      </div>
-    </section>
-  );
-}
-
 function WatchCard() {
   const watch = useWatchlist();
   const toggle = useToggleWatch();
@@ -139,11 +104,11 @@ function WatchCard() {
         {!watch.isLoading && !items.length && <Empty>은하에서 기업을 선택하고 ★ 관심 등록을 눌러보세요.</Empty>}
         {items.map((w) => (
           <div key={w.companyId} className="me-item">
-            <CompanyAvatar name={w.name} stockCode={w.stockCode} industry={w.primaryIndustry.name} size={40} />
+            <CompanyAvatar name={w.name} stockCode={w.stockCode} market={w.market} industry={w.primaryIndustry?.name} size={40} />
             <button type="button" className="grow" style={{ textAlign: "left" }} onClick={() => navigate(`/?company=${w.companyId}`)}>
               <b>{w.name}</b>
               <span className="meta num">
-                {[w.stockCode, w.primaryIndustry.name, `${fmtRelative(w.watchedAt)} 등록`].filter(Boolean).join(" · ")}
+                {[w.stockCode, w.primaryIndustry?.name, `${fmtRelative(w.watchedAt)} 등록`].filter(Boolean).join(" · ")}
               </span>
             </button>
             <button type="button" className="btn btn-g btn-xs" onClick={() => toggle.mutate({ companyId: w.companyId, watched: true })} aria-label="관심 해제">
@@ -174,7 +139,7 @@ function ScrapCard() {
             <div className="grow">
               <div style={{ fontSize: 15, fontWeight: 600, lineHeight: 1.45 }}>{s.title}</div>
               <div className="meta num mt-8">
-                {s.publisher} · {fmtDateTime(s.publishedAt)} · {fmtRelative(s.scrappedAt)} 저장
+                {[s.publisher, s.publishedAt ? fmtDateTime(s.publishedAt) : null, `${fmtRelative(s.scrappedAt)} 저장`].filter(Boolean).join(" · ")}
               </div>
             </div>
             <a className="btn btn-g btn-xs" href={s.originalUrl} target="_blank" rel="noreferrer" aria-label="원문 보기">

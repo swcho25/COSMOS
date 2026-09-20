@@ -1,19 +1,22 @@
 import { useMemo, useState } from "react";
-import type { LatestGraph } from "@/api/types";
-import { OWNERSHIP_TYPES, industryColor, relationshipMeta } from "@/lib/meta";
-import { Empty } from "@/components/ui";
+import type { LatestGraph, Market } from "@/api/types";
+import { josa } from "@/lib/format";
+import { OWNERSHIP_TYPES, relationshipMeta } from "@/lib/meta";
+import { CompanyAvatar, Empty, ScoreBar } from "@/components/ui";
 
 interface Props {
   graph: LatestGraph | null;
   onPick: (companyId: string) => void;
 }
 
-const W = 1000;
-const ROW = 58;
-
 /**
- * 투자·지분 관계를 지배 방향(보유 → 피보유)의 트리로 그린다.
+ * 투자·지분 관계를 지배 방향(보유 → 피보유)의 목록으로 보여준다.
  * 지주사(보유 기업)를 고르면 그 기업이 보유한 기업들과, 그 기업들이 다시 보유한 기업까지 2단계를 펼친다.
+ *
+ * 원래는 2차원 화살표 트리(SVG)였는데, 자회사가 많은 지주사에서 세로로 한없이 길어지고 화살표
+ * 곡선이 좁은 간격에 뭉쳐 오히려 안 읽혔다 — 뉴스 페이지의 관계 지도가 겪었던 것과 같은 문제다.
+ * 그래서 같은 해법(관계 점수순 스크롤 목록)을 여기에도 적용했다. 몇 단계 들어가는지 구조만 다를 뿐,
+ * 클릭 동작(보유 기업이면 그 기업 기준으로 다시 펼치고, 아니면 미리보기를 연다)은 그대로다.
  */
 export default function OwnershipView({ graph, onPick }: Props) {
   // 지분 관계 코드는 meta.ts 한 곳에서만 정의한다 (relationship_type 시드가 확정되면 그곳만 고친다)
@@ -29,7 +32,7 @@ export default function OwnershipView({ graph, onPick }: Props) {
   const root = holder ?? holders[0]?.id ?? null;
 
   /**
-   * 다른 기업을 보유하고 있는 기업(=holders 에 있는 기업)을 누르면 그 기업 기준으로 트리를 다시 펼치고,
+   * 다른 기업을 보유하고 있는 기업(=holders 에 있는 기업)을 누르면 그 기업 기준으로 목록을 다시 펼치고,
    * 더 이상 보유가 없는 말단 기업을 누르면 미리보기를 연다. 매번 은하로 이탈하지 않고 계열구조를 계속 탐색할 수 있게 한다.
    */
   const handleNodeClick = (id: string) => {
@@ -42,36 +45,39 @@ export default function OwnershipView({ graph, onPick }: Props) {
 
   const tree = useMemo(() => {
     if (!root) return null;
-    const level1 = invest.filter((e) => e.sourceCompanyId === root).sort((a, b) => b.score - a.score);
-    const rows: { id: string; depth: number; parent: string; score: number; y: number }[] = [];
-    let y = 0;
-    level1.forEach((e) => {
-      const l2 = invest.filter((x) => x.sourceCompanyId === e.targetCompanyId && x.targetCompanyId !== root).sort((a, b) => b.score - a.score);
-      const start = y;
-      rows.push({ id: e.targetCompanyId, depth: 1, parent: root, score: e.score, y: 0 });
-      const idx = rows.length - 1;
-      if (l2.length) {
-        l2.forEach((x) => {
-          rows.push({ id: x.targetCompanyId, depth: 2, parent: e.targetCompanyId, score: x.score, y: y * ROW });
-          y += 1;
-        });
-        rows[idx].y = ((start + y - 1) / 2) * ROW;
-      } else {
-        rows[idx].y = y * ROW;
-        y += 1;
-      }
-    });
-    return { rows, height: Math.max(1, y) * ROW };
+    return invest
+      .filter((e) => e.sourceCompanyId === root)
+      .sort((a, b) => b.score - a.score)
+      .map((e) => ({
+        id: e.targetCompanyId,
+        score: e.score,
+        children: invest
+          .filter((x) => x.sourceCompanyId === e.targetCompanyId && x.targetCompanyId !== root)
+          .sort((a, b) => b.score - a.score)
+          .map((x) => ({ id: x.targetCompanyId, score: x.score })),
+      }));
   }, [invest, root]);
+
+  /**
+   * 목록 옆 남는 공간에 채운 요약 통계 — 이미 계산된 그래프 데이터만으로 만들어서 별도 API 호출이
+   * 없다. "이 기업을 보유한 상위 기업"은 지금까지 화면에 없던 정보라 새로 추가했다: 목록은 root가
+   * 보유한 쪽만 아래로 펼치기 때문에, root 자신이 다른 회사에 보유되고 있는지는 보이지 않았다.
+   */
+  const stats = useMemo(() => {
+    if (!tree) return null;
+    const level1Ids = new Set(tree.map((l1) => l1.id));
+    const level2Ids = new Set(tree.flatMap((l1) => l1.children.map((c) => c.id)).filter((id) => !level1Ids.has(id)));
+    const scores = tree.map((l1) => l1.score);
+    const avgScore = scores.length ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) : 0;
+    const maxEntry = tree.length ? tree.reduce((a, b) => (b.score > a.score ? b : a)) : null;
+    return { directCount: level1Ids.size, totalAffiliates: level1Ids.size + level2Ids.size, avgScore, maxEntry };
+  }, [tree]);
+  const parentHolders = useMemo(() => (root ? invest.filter((e) => e.targetCompanyId === root).sort((a, b) => b.score - a.score) : []), [invest, root]);
 
   if (!graph) return <div className="own-wrap">그래프 스냅샷을 불러오는 중…</div>;
   if (!holders.length) return <Empty>스냅샷에 투자·지분 유형 관계가 없습니다.</Empty>;
 
   const meta = relationshipMeta(OWNERSHIP_TYPES[0]);
-  const colX = [40, 380, 720];
-  const boxW = 240;
-  const boxH = 40;
-  const rootY = tree ? tree.height / 2 : 0;
   const rootNode = root ? info.get(root) : undefined;
 
   return (
@@ -86,52 +92,97 @@ export default function OwnershipView({ graph, onPick }: Props) {
           </button>
         ))}
       </div>
-      <div className="own-stage">
-        {tree && rootNode && (
-          <svg viewBox={`0 0 ${W} ${tree.height + 40}`} height={Math.min(720, tree.height + 40)} role="img" aria-label="지분 관계 트리">
-            <defs>
-              <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
-                <path d="M0,0 L10,5 L0,10 z" fill={meta.color} />
-              </marker>
-            </defs>
-            {tree.rows.map((r) => {
-              const parent = r.depth === 1 ? { x: colX[0] + boxW, y: rootY + 20 } : { x: colX[1] + boxW, y: (tree.rows.find((p) => p.id === r.parent && p.depth === 1)?.y ?? 0) + 20 };
-              const x2 = colX[r.depth];
-              const y2 = r.y + 20;
-              const mx = (parent.x + x2) / 2;
+      {tree && rootNode && (
+        <div className="own-body">
+          <div className="own-list scroll">
+            <div className="own-root">
+              <CompanyAvatar name={rootNode.name} stockCode={rootNode.stockCode} market={rootNode.market} industry={rootNode.industryName} size={40} />
+              <div>
+                <b>{rootNode.name}</b>
+                <span className="meta num">
+                  {[rootNode.industryName, rootNode.stockCode].filter(Boolean).join(" · ")} · 보유 기업 {tree.length}개
+                </span>
+              </div>
+            </div>
+            {/*
+              들여쓰기(2단계) 하나만으로는 그 의미가 "왜 이 행이 안쪽으로 밀려 있는지" 한눈에
+              안 들어온다는 지적이 있었다. 그래서 (1) 1단계 목록 전체 앞에 "직접 보유" 소제목을
+              달고, (2) 2단계 그룹마다 "OOO가 보유" 라벨을 따로 붙여 들여쓰기의 의미를 글로도
+              명시했다. 세로선(.own-sub 의 border-left, companies.css)도 함께 그어서 그 라벨이
+              가리키는 1단계 기업과 아래 2단계 행들이 한 그룹임을 시각적으로 잇는다.
+            */}
+            <div className="own-level-label">직접 보유</div>
+            {tree.map((l1) => {
+              const n = info.get(l1.id);
+              if (!n) return null;
               return (
-                <g key={`${r.parent}-${r.id}`}>
-                  <path d={`M${parent.x},${parent.y + 20} C${mx},${parent.y + 20} ${mx},${y2 + 20} ${x2},${y2 + 20}`} fill="none" stroke={meta.color} strokeOpacity={0.35 + (r.score / 100) * 0.6} strokeWidth={1 + (r.score / 100) * 3} markerEnd="url(#arrow)" />
-                  <text x={mx} y={(parent.y + y2) / 2 + 16} fontSize="11" fill="#AAB3C2" textAnchor="middle" fontVariant="tabular-nums">
-                    {Math.round(r.score)}
-                  </text>
-                </g>
+                <div key={l1.id}>
+                  <OwnRow node={n} score={l1.score} color={meta.color} expandable={holderIds.has(l1.id)} onClick={() => handleNodeClick(l1.id)} />
+                  {l1.children.length > 0 && (
+                    <div className="own-sub">
+                      <div className="own-level-label own-level-label-sub">
+                        {n.name}
+                        {josa(n.name, "이", "가")} 보유
+                      </div>
+                      {l1.children.map((l2) => {
+                        const cn = info.get(l2.id);
+                        if (!cn) return null;
+                        return <OwnRow key={l2.id} node={cn} score={l2.score} color={meta.color} sub expandable={holderIds.has(l2.id)} onClick={() => handleNodeClick(l2.id)} />;
+                      })}
+                    </div>
+                  )}
+                </div>
               );
             })}
-            <Node x={colX[0]} y={rootY + 20} w={boxW} h={boxH} name={rootNode.name} sub={[rootNode.industryName, rootNode.stockCode].filter(Boolean).join(" · ")} color={industryColor(rootNode.industryName)} root onClick={() => onPick(rootNode.companyId)} />
-            {tree.rows.map((r) => {
-              const n = info.get(r.id);
-              return (
-                <Node
-                  key={`n-${r.parent}-${r.id}`}
-                  x={colX[r.depth]}
-                  y={r.y + 20}
-                  w={boxW}
-                  h={boxH}
-                  name={n?.name ?? r.id}
-                  sub={n ? [n.industryName, n.stockCode].filter(Boolean).join(" · ") : ""}
-                  color={industryColor(n?.industryName)}
-                  expandable={holderIds.has(r.id)}
-                  onClick={() => handleNodeClick(r.id)}
-                />
-              );
-            })}
-          </svg>
-        )}
-      </div>
+          </div>
+
+          {/* 목록 오른쪽 남는 공간 — 이미 계산돼 있던 그래프 통계를 요약 카드로 보여준다 */}
+          <aside className="own-stats" aria-label="선택 기업 통계 요약">
+            <div className="kick">선택 기업 요약</div>
+            <div className="own-stat-row">
+              <span className="lab">직접 보유 기업</span>
+              <b className="num">{stats?.directCount ?? 0}개</b>
+            </div>
+            <div className="own-stat-row">
+              <span className="lab">2단계 포함 계열사</span>
+              <b className="num">{stats?.totalAffiliates ?? 0}개</b>
+            </div>
+            <div className="own-stat-row">
+              <span className="lab">평균 지분 점수</span>
+              <b className="num">{stats?.avgScore ?? 0}</b>
+            </div>
+            {stats?.maxEntry && (
+              <div className="own-stat-row">
+                <span className="lab">최고 지분 점수</span>
+                <b className="num">
+                  {Math.round(stats.maxEntry.score)} <span className="meta">({info.get(stats.maxEntry.id)?.name ?? "…"})</span>
+                </b>
+              </div>
+            )}
+            <div className="own-stats-divider" />
+            <div className="lab">이 기업을 보유한 상위 기업</div>
+            {parentHolders.length ? (
+              <div className="own-parent-list">
+                {parentHolders.slice(0, 4).map((e) => {
+                  const holder = info.get(e.sourceCompanyId);
+                  if (!holder) return null;
+                  return (
+                    <button key={e.relationshipId} type="button" className="own-parent-chip" onClick={() => handleNodeClick(e.sourceCompanyId)}>
+                      <span className="nm">{holder.name}</span>
+                      <span className="num">{Math.round(e.score)}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="meta mt-8">스냅샷에서 이 기업을 보유한 상위 기업을 찾지 못했습니다.</div>
+            )}
+          </aside>
+        </div>
+      )}
       <div className="row wrap mt-12" style={{ gap: 16 }}>
         <span className="meta row" style={{ gap: 6 }}>
-          <i className="dot" style={{ background: meta.color }} /> 화살표 = 지배 방향 · 굵기와 숫자 = 관계 점수
+          <i className="dot" style={{ background: meta.color }} /> 보유 → 피보유 순서로, 관계 점수가 높은 기업부터 나열합니다
         </span>
         <span className="meta">
           <b style={{ color: "var(--text-3)" }}>▸</b> 표시가 있는 기업(다른 기업을 보유 중)을 누르면 그 기업 기준으로 계속 펼치고, 그 외 기업을 누르면 미리보기가 열립니다. 지분율은 백엔드 관계 상세에 포함되면 표시됩니다.
@@ -141,57 +192,37 @@ export default function OwnershipView({ graph, onPick }: Props) {
   );
 }
 
-function Node({
-  x,
-  y,
-  w,
-  h,
-  name,
-  sub,
+function OwnRow({
+  node,
+  score,
   color,
-  root,
+  sub,
   expandable,
   onClick,
 }: {
-  x: number;
-  y: number;
-  w: number;
-  h: number;
-  name: string;
-  sub: string;
+  node: { companyId: string; name: string; stockCode: string | null; market: Market; industryName: string | null };
+  score: number;
   color: string;
-  root?: boolean;
+  sub?: boolean;
   expandable?: boolean;
   onClick: () => void;
 }) {
   return (
-    <g
-      className="own-node"
-      transform={`translate(${x},${y})`}
-      onClick={onClick}
-      onKeyDown={(e) => {
-        if (e.key === "Enter" || e.key === " ") {
-          e.preventDefault();
-          onClick();
-        }
-      }}
-      role="button"
-      tabIndex={0}
-      aria-label={expandable ? `${name}, 이 기업 기준으로 다시 펼치기` : `${name}, 미리보기 열기`}
-    >
-      <rect width={w} height={h} rx={12} strokeWidth={root ? 1.5 : 1} style={root ? { stroke: color } : undefined} />
-      <rect x={0} y={0} width={5} height={h} rx={2} fill={color} />
-      <text x={16} y={17} fontSize="13" fontWeight={700}>
-        {name}
-      </text>
-      <text x={16} y={32} fontSize="11" fill="#8B95A1">
-        {sub}
-      </text>
+    <button type="button" className="own-row" onClick={onClick}>
+      <CompanyAvatar name={node.name} stockCode={node.stockCode} market={node.market} industry={node.industryName} size={sub ? 28 : 32} radius={sub ? 14 : 16} />
+      <span className="nm">
+        <b>{node.name}</b>
+        <span className="meta num">{[node.industryName, node.stockCode].filter(Boolean).join(" · ")}</span>
+      </span>
+      <ScoreBar score={score} color={color} />
+      <span className="sc">
+        <b className="num">{Math.round(score)}</b>
+      </span>
       {expandable && (
-        <text x={w - 16} y={h / 2 + 4} fontSize="12" fill="#8B95A1" textAnchor="end" aria-hidden="true">
+        <span className="own-arrow" aria-hidden="true">
           ▸
-        </text>
+        </span>
       )}
-    </g>
+    </button>
   );
 }

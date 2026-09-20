@@ -113,6 +113,21 @@ export function clamp(v: number, min: number, max: number) {
   return Math.max(min, Math.min(max, v));
 }
 
+/**
+ * 동적으로 들어오는 이름 뒤에 붙는 조사(은/는, 이/가, 과/와 등)를 마지막 글자의 받침 유무로
+ * 고른다. 한글 음절 범위가 아닌 마지막 글자(영문 약어 등)는 받침 없음으로 간주한다 — 완벽하진
+ * 않지만 "TSMC는", "SK와"처럼 실제 발음과 맞아떨어지는 경우가 대부분이라 절충안으로 충분하다.
+ */
+export function hasBatchim(word: string): boolean {
+  const ch = word.trim().slice(-1);
+  const code = ch.charCodeAt(0);
+  if (code < 0xac00 || code > 0xd7a3) return false;
+  return (code - 0xac00) % 28 !== 0;
+}
+export function josa(word: string, withBatchim: string, withoutBatchim: string) {
+  return hasBatchim(word) ? withBatchim : withoutBatchim;
+}
+
 export function initials(name: string) {
   const latin = name.match(/[A-Za-z0-9]+/g);
   if (latin && latin.length > 1) return latin.slice(0, 2).map((w) => w[0]).join("").toUpperCase();

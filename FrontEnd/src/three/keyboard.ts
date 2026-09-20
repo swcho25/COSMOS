@@ -22,6 +22,16 @@ export function isTyping() {
 }
 
 /**
+ * 포커스가 슬라이더(range)에 있는지. 도크의 펼치기·비율 슬라이더를 만진 직후가 그렇다.
+ * 방향키는 그 슬라이더의 기본 동작이라 양보하지만, W A S D 는 슬라이더에 아무 의미가 없으므로 씬이 그대로 받는다 —
+ * 예전에는 isTyping() 에 걸려 "슬라이더를 만진 뒤 우주를 한 번 클릭해야" 이동이 먹었다.
+ */
+export function focusIsSlider() {
+  const el = document.activeElement as HTMLInputElement | null;
+  return !!el && el.tagName === "INPUT" && el.type === "range";
+}
+
+/**
  * 포커스된 요소를 감싸는 상자 중 그 축으로 실제 스크롤이 남아 있는 것이 있는지 — 있으면 방향키는 그 스크롤에 양보한다.
  * 우측 인텔리전스 패널(.panel-body)의 뉴스 목록 안 버튼·링크에 포커스가 있을 때 ↑↓ 가 목록을 넘기던 동작을 지키기 위한 것.
  * 캔버스는 포커스를 받지 않으므로 씬을 클릭한 뒤에는 activeElement 가 body 라 항상 false 다.

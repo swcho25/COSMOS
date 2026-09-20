@@ -78,6 +78,7 @@ function Streaks({ intensityRef }: { intensityRef: IntensityRef }) {
     return { positions, colors, state };
   }, []);
 
+  /* eslint-disable react-hooks/immutability -- R3F advances particle buffers in place between React renders. */
   useFrame((_, dt) => {
     const it = intensityRef.current;
     if (mat.current) mat.current.opacity = it * 0.55;
@@ -99,6 +100,8 @@ function Streaks({ intensityRef }: { intensityRef: IntensityRef }) {
     }
     geo.current.attributes.position.needsUpdate = true;
   });
+
+  /* eslint-enable react-hooks/immutability */
 
   return (
     <lineSegments frustumCulled={false} raycast={() => null}>

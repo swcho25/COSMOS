@@ -1,0 +1,208 @@
+/* 왼쪽 "Special Link" 레일 — 상단 바(HUD) 아래, 좌측 24px */
+.hud-surprise {
+  left: 24px;
+  top: 92px;
+  width: 300px;
+  max-width: calc(100vw - 48px);
+}
+
+.surprise-card {
+  padding: 14px 14px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: min(64vh, 620px);
+  overflow-y: auto;
+  animation: surprise-in 0.25s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+@keyframes surprise-in {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .surprise-card {
+    animation: none;
+  }
+}
+
+.surprise-head {
+  gap: 8px;
+}
+/* 기본 .kick 은 text-4(중립 회색) — 이 카드만은 경고색 계열로 강조해 "핵심 경험" 임을 알린다 */
+.surprise-kick {
+  color: var(--warn-fg);
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.surprise-head .toggle {
+  padding: 5px 7px;
+  border-radius: 8px;
+}
+.surprise-head .toggle svg {
+  display: block;
+}
+
+.surprise-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text);
+  line-height: 1.35;
+  margin-top: -4px;
+}
+.surprise-lead {
+  line-height: 1.5;
+  margin: -2px 0 0;
+}
+
+.surprise-rows {
+  gap: 8px;
+}
+
+.surprise-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 9px 10px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.03);
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+.surprise-row:hover,
+.surprise-row:focus-visible {
+  background: rgba(245, 166, 35, 0.1);
+  border-color: rgba(245, 166, 35, 0.35);
+}
+.surprise-row:focus-visible {
+  outline: 2px solid var(--warn-fg);
+  outline-offset: 1px;
+}
+
+.surprise-pair-row {
+  gap: 8px;
+}
+.surprise-pair {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  flex-wrap: wrap;
+}
+.surprise-co {
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
+  cursor: pointer;
+  max-width: 108px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.surprise-co:hover,
+.surprise-co:focus-visible {
+  color: var(--primary-2);
+  text-decoration: underline;
+}
+/* 기업 중심 뷰 — 중심 기업 쪽은 흐리게 해 "상대" 가 눈에 들어오게 한다 */
+.surprise-co.is-center {
+  color: var(--text-4);
+  font-weight: 500;
+}
+.surprise-co.is-center:hover,
+.surprise-co.is-center:focus-visible {
+  color: var(--primary-2);
+}
+
+.surprise-score {
+  flex: none;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--warn-fg);
+}
+
+.surprise-reasons {
+  gap: 6px;
+  row-gap: 4px;
+}
+.surprise-reasons .chip {
+  padding: 4px 9px;
+  font-size: 11px;
+}
+
+.surprise-hint {
+  font-size: 11px;
+  text-align: center;
+  opacity: 0.8;
+}
+
+/* ------------------------------ 모바일 바텀시트 ------------------------------
+   900px 이하에서 꼬리표를 누르면 카드가 화면 아래에서 올라온다 — 기업·관계 패널의 바텀시트(galaxy.css .panel)와 같은 결.
+   꼬리표는 제자리(상단 둘째 줄 또는 단독 레일)에 남고 눌린 표시(.on)만 켜진다. 행을 고르면 시트가 닫힌다 */
+@media (max-width: 900px) {
+  .surprise-scrim {
+    position: fixed;
+    top: var(--header-h);
+    right: 0;
+    bottom: 0;
+    left: 0;
+    z-index: 30;
+    background: rgba(3, 5, 12, 0.5);
+  }
+  .surprise-sheet {
+    position: fixed;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    z-index: 31;
+    width: auto;
+    max-height: 62vh;
+    max-height: 62dvh;
+    padding: 10px 16px calc(14px + env(safe-area-inset-bottom, 0px));
+    border-radius: 20px 20px 0 0;
+    border-bottom: 0;
+    background: #0e1420;
+    animation: surprise-sheet-in 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+  /* 손잡이 — .panel::before 와 같은 모양 */
+  .surprise-sheet::before {
+    content: "";
+    display: block;
+    flex: none;
+    width: 38px;
+    height: 4px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.22);
+    margin: 0 auto -2px;
+  }
+  @keyframes surprise-sheet-in {
+    from {
+      transform: translateY(40px);
+      opacity: 0;
+    }
+    to {
+      transform: none;
+      opacity: 1;
+    }
+  }
+  .hud-tag.on {
+    background: rgba(109, 140, 255, 0.18);
+    border-color: rgba(109, 140, 255, 0.5);
+    color: var(--text);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .surprise-sheet {
+    animation: none;
+  }
+}

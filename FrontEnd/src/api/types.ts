@@ -50,6 +50,27 @@ export interface SignupResponse {
   email: string;
   nickname: string;
 }
+/** 가입 전 이메일 인증 — 순서는 코드 발송(send-code) → 코드 확인(verify-code) → 가입. 서버는 이메일을 소문자로 정규화해 돌려준다 */
+export interface EmailSendCodeRequest {
+  email: string;
+}
+export interface EmailSendCodeResponse {
+  email: string;
+  /** 코드 유효 시간(초, 기본 300) — 남은 시간 표시에 쓴다 */
+  expiresInSeconds: number;
+}
+export interface EmailVerifyCodeRequest {
+  email: string;
+  /** 숫자 6자리 */
+  code: string;
+}
+export interface EmailVerifyCodeResponse {
+  email: string;
+  /** 항상 true — 실패는 오류 응답(EMAIL_CODE_INVALID·EMAIL_CODE_EXPIRED)으로 온다 */
+  verified: boolean;
+  /** 인증 완료 상태가 유지되는 시간(초, 기본 1800). 이 안에 가입을 마쳐야 한다 */
+  validForSeconds: number;
+}
 export interface Availability {
   available: boolean;
 }
@@ -63,10 +84,11 @@ export interface Me {
 export interface ScrapItem {
   newsId: UUID;
   title: string;
-  summary: string;
-  publisher: string;
+  /** 뉴스 목록(NewsItem)과 같은 원본 컬럼 — 요약·매체·발행 시각은 NULL 허용 */
+  summary: string | null;
+  publisher: string | null;
   originalUrl: string;
-  publishedAt: ISODateTime;
+  publishedAt: ISODateTime | null;
   scrappedAt: ISODateTime;
 }
 export interface IndustryRef {
@@ -78,15 +100,10 @@ export interface WatchCompanyItem {
   name: string;
   stockCode: string | null;
   market: Market;
-  primaryIndustry: IndustryRef;
+  /** 대표 산업이 지정되지 않은 기업은 null (WatchCompanyItemResponse 주석) */
+  primaryIndustry: IndustryRef | null;
   watchedAt: ISODateTime;
 }
-export interface WeightSetting {
-  newsWeight: number;
-  disclosureWeight: number;
-  updatedAt: ISODateTime | null;
-}
-
 /* ---------------------------- companies ---------------------------- */
 export interface CompanySummary {
   companyId: UUID;
@@ -94,7 +111,8 @@ export interface CompanySummary {
   nameEn: string | null;
   stockCode: string | null;
   market: Market;
-  primaryIndustry: IndustryRef;
+  /** 대표 산업이 지정되지 않은 기업은 null (백엔드 company_industry.is_primary 미지정) */
+  primaryIndustry: IndustryRef | null;
   watched: boolean;
 }
 export interface CompanyIndustry extends IndustryRef {
@@ -111,7 +129,7 @@ export interface CompanyDetail {
   watched: boolean;
   /**
    * 시가총액·상장주식수는 V1 DDL 의 company 테이블에도 명세 응답에도 없다.
-   * 백엔드가 열어 줄 때 화면이 그대로 받을 수 있도록 선택 필드로만 자리를 둔다(목업은 채운다).
+   * 백엔드가 열어 줄 때 화면이 그대로 받을 수 있도록 선택 필드로만 자리를 둔다 — 지금은 항상 undefined 이고 화면은 그 칸을 접는다.
    */
   marketCap?: number | null;
   listedShares?: number | null;
@@ -158,7 +176,8 @@ export interface StockPrices {
   period: PricePeriod;
   /** MVP 는 1D 만 지원하지만 stock_price_history.interval_type 은 자유값이라 확장을 열어 둔다. */
   interval: "1D" | (string & {});
-  asOfAt: ISODateTime;
+  /** 명세는 항상 값이 있다고 하지만 백엔드는 시계열이 없는 기업에 null 을 내려준다 (items: []) */
+  asOfAt: ISODateTime | null;
   items: Candle[];
 }
 export interface Industry {
@@ -188,12 +207,14 @@ export interface NewsItem {
   publisher: string | null;
   originalUrl: string;
   publishedAt: ISODateTime | null;
-  sentiment: Sentiment;
+  /** AI 감성 분석이 아직 돌지 않은 기사는 null 로 온다 (document_analysis 미적재) */
+  sentiment: Sentiment | null;
   relatedCompanies: CompanyRef[];
   scrapped: boolean;
 }
 export interface NewsRelatedCompany extends CompanyRef {
-  sentiment: Sentiment;
+  /** 기업별 감성도 분석 전에는 null */
+  sentiment: Sentiment | null;
   relevanceScore: number | null;
   impactScore: number | null;
 }
@@ -230,8 +251,14 @@ export interface GraphEdge {
   sourceCompanyId: UUID;
   targetCompanyId: UUID;
   relationshipType: RelationshipType;
-  /** 0 ~ 100 */
+  /** 0 ~ 100. 시스템 기본 비율(뉴스 50 · 공시 50)로 계산한 공통 점수 */
   score: number;
+  /**
+   * 사용자가 화면에서 비율을 조절할 때 쓰는 구성 점수 (lib/score 의 blendScore).
+   * 근거가 없으면 null 이고, 서버가 아직 필드를 내려주지 않을 수 있어 선택 필드로 둔다 — 그때는 score 만 쓴다.
+   */
+  newsScore?: number | null;
+  disclosureScore?: number | null;
   impactDirection: ImpactDirection | null;
 }
 /** 은하 뷰가 행성 높이로 쓰는 등락률 기간 */
@@ -241,7 +268,8 @@ export interface LatestGraphNode {
   name: string;
   stockCode: string | null;
   market: Market;
-  industryName: string;
+  /** 대표 산업이 없는 기업은 null — 은하 배치(lib/graph)는 '미분류' 성단으로 모은다 */
+  industryName: string | null;
   /**
    * 기간별 주가 등락률(퍼센트, 예 -3.2). 은하 뷰의 행성 높이가 이 값을 쓴다.
    * 서버가 아직 내려주지 않을 수 있어 선택 필드이고, 시계열이 없는 기업은 null 이다 (README '백엔드에 확인이 필요한 항목').
@@ -265,7 +293,6 @@ export interface LatestGraph {
 export interface LatestGraphParams {
   universe?: string;
   industryId?: UUID;
-  edgesPerCompany?: number;
 }
 export interface CompanyGraphNode {
   companyId: UUID;
@@ -282,9 +309,8 @@ export interface CompanyGraph {
   edges: GraphEdge[];
 }
 export interface CompanyGraphParams {
+  /** 1~3, 기본 3 (명세 Query Params) */
   maxDepth?: number;
-  neighborsPerNode?: number;
-  maxNodes?: number;
 }
 export interface RelationshipDetail {
   relationshipId: UUID;
@@ -293,7 +319,10 @@ export interface RelationshipDetail {
   relationshipType: RelationshipType;
   directionality: Directionality;
   window: MetricWindow;
+  /** 공통 점수 — 구성 점수는 GraphEdge 와 같은 규칙으로 화면에서만 섞는다 */
   score: number;
+  newsScore?: number | null;
+  disclosureScore?: number | null;
   impactDirection: ImpactDirection | null;
   confidence: number | null;
   evidenceCount: number;

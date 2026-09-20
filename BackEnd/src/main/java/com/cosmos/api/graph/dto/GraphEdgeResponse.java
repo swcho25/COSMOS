@@ -9,6 +9,8 @@ public record GraphEdgeResponse(
         UUID targetCompanyId,
         String relationshipType,
         BigDecimal score,
+        BigDecimal newsScore,
+        BigDecimal disclosureScore,
         String impactDirection
 ) {
 }

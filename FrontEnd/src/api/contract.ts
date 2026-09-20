@@ -1,8 +1,8 @@
 import type * as T from "./types";
 
 /**
- * 프론트가 백엔드에 기대하는 호출 계약. live(실 API)와 mock(브라우저 내 생성) 두 구현이 있다.
- * 화면 코드는 이 인터페이스만 의존하므로 백엔드 연동 시 api/index.ts 의 선택만 바뀐다.
+ * 프론트가 백엔드에 기대하는 호출 계약 (docs/api-specification.md). 구현은 api/live.ts 하나다.
+ * 화면 코드는 이 인터페이스만 의존하므로 경로·응답 보정은 live.ts 한 곳에서만 다룬다.
  */
 export interface CosmosApi {
   auth: {
@@ -12,6 +12,8 @@ export interface CosmosApi {
     logout(): Promise<void>;
     refresh(): Promise<T.TokenResponse>;
     signup(body: T.SignupRequest): Promise<T.SignupResponse>;
+    sendEmailCode(body: T.EmailSendCodeRequest): Promise<T.EmailSendCodeResponse>;
+    verifyEmailCode(body: T.EmailVerifyCodeRequest): Promise<T.EmailVerifyCodeResponse>;
   };
   users: {
     me(): Promise<T.Me>;
@@ -22,8 +24,6 @@ export interface CosmosApi {
     watchCompanies(params?: { cursor?: string; size?: number }): Promise<T.Page<T.WatchCompanyItem>>;
     addWatch(companyId: string): Promise<{ companyId: string; watchedAt: string }>;
     removeWatch(companyId: string): Promise<void>;
-    weightSetting(): Promise<T.WeightSetting>;
-    updateWeightSetting(newsWeight: number): Promise<T.WeightSetting>;
   };
   companies: {
     list(params?: T.CompanyListParams): Promise<T.Page<T.CompanySummary>>;

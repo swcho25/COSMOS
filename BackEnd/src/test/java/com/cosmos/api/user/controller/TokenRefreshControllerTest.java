@@ -21,6 +21,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import com.cosmos.api.user.service.EmailVerificationStore;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
@@ -46,6 +47,7 @@ class TokenRefreshControllerTest {
 
     @Autowired
     MockMvc mockMvc;
+@Autowired    EmailVerificationStore emailVerificationStore; // 가입 전 이메일 인증을 마친 것으로 표시하기 위해
 
     @Autowired
     ObjectMapper objectMapper;
@@ -68,6 +70,7 @@ class TokenRefreshControllerTest {
     /** 가입 → 로그인까지 마친 상태에서 각 테스트를 시작한다. */
     @BeforeEach
     void loginFirst() throws Exception {
+        emailVerificationStore.markVerified(EMAIL); // 인증 단계를 거친 것으로 처리
         mockMvc.perform(post("/api/auth/signup")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(new SignupRequest(EMAIL, PASSWORD, "재발급테스트"))))

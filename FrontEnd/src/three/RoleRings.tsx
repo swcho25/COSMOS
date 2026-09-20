@@ -7,6 +7,7 @@ import { useGalaxy } from "@/store/galaxy";
 import { touch } from "./bufferUtil";
 import { liveFor, morphState } from "./morph";
 import { animFor } from "./nodeAnim";
+import { PLANET_RADIUS_K } from "./toon";
 
 interface Props {
   model: SceneModel;
@@ -128,7 +129,7 @@ export default function RoleRings({ model, hoveredId, roles }: Props) {
         anyOn = true;
         const node = model.nodes[ni];
         TMP.fromArray(live.pos, ni * 3);
-        const r = node.size * 1.3 * animFor(node.id).scale * live.scale[ni];
+        const r = node.size * PLANET_RADIUS_K * animFor(node.id).scale * live.scale[ni];
         tmpObj.position.copy(TMP);
         tmpObj.quaternion.copy(cam.quaternion);
         tmpObj.scale.setScalar(r * RING_K);
