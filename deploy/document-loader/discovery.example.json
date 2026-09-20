@@ -8,6 +8,10 @@
       "glob": "hdfs://namenode.example.internal:9000/data-lake/analyzed/news/company-mentions/model_version=dict-v1.3/topic=*/partition=*/start=*/_SUCCESS"
     },
     {
+      "kind": "news-historical-analyzed",
+      "glob": "hdfs://namenode.example.internal:9000/data-lake/analyzed/news/historical-company-mentions/model_version=dict-v1.3/run_id=*/batch=*/_SUCCESS"
+    },
+    {
       "kind": "dart",
       "glob": "hdfs://namenode.example.internal:9000/datasets/opendart/snapshots/*/ready.json"
     },
