@@ -29,3 +29,4 @@ data/company_document_scores.csv
 data/sentiment_inputs.csv
 data/sentiment_filled.csv
 data/sentiment_scores_load.csv
+data/relation_evidence/*.csv
