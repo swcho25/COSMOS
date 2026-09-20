@@ -36,6 +36,16 @@ class DiscoveryTests(unittest.TestCase):
         self.assertEqual(items[0].kind, "news-analyzed")
         self.assertTrue(items[0].input_uri.endswith("start=00000000000000000001"))
 
+    def test_historical_analyzed_batches_are_discovered(self):
+        root = {"kind": "news-historical-analyzed", "glob":
+                "hdfs://cluster:9000/analyzed/model_version=dict-v1.3/run_id=*/batch=*"}
+        marker = "/analyzed/model_version=dict-v1.3/run_id=history-1/batch=00000/_SUCCESS"
+        with patch("services.document_loader.discovery.subprocess.run",
+                   return_value=self.listing([marker])):
+            items = discover(root)
+        self.assertEqual(items[0].kind, "news-historical-analyzed")
+        self.assertTrue(items[0].input_uri.endswith("batch=00000"))
+
     def test_safe_empty_glob_is_not_connectivity_error(self):
         result = self.listing([], 1, b"ls: `hdfs://cluster/missing': No such file or directory\n")
         with patch("services.document_loader.discovery.subprocess.run", return_value=result):

@@ -12,7 +12,8 @@ from urllib.parse import urlsplit, urlunsplit
 from .hdfs import canonical_hdfs_uri, reject_staging
 
 
-MARKERS = {"news": "_manifest.json", "news-analyzed": "_SUCCESS", "dart": "ready.json", "sec": "_SUCCESS",
+MARKERS = {"news": "_manifest.json", "news-analyzed": "_SUCCESS",
+           "news-historical-analyzed": "_SUCCESS", "dart": "ready.json", "sec": "_SUCCESS",
            "sec-incremental": "_SUCCESS", "sec-batch": "_SUCCESS"}
 
 

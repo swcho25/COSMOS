@@ -419,7 +419,7 @@ class PostgreSQLTests(unittest.TestCase):
         row = self.connection.execute("SELECT report_name, report_code, filing_date::text, correction_status FROM disclosure").fetchone()
         self.assertEqual(row, ("New report", "10-K/A", "2026-09-16", "CORRECTED"))
 
-    def test_changed_raw_body_requires_reanalysis_and_rolls_back_whole_batch(self):
+    def test_collector_revision_cannot_replace_protected_body_or_block_batch(self):
         self.load([news()], commit=True)
         protected_states = [("ANALYZED", None, None), ("COLLECTED", "model-7", None),
                             ("COLLECTED", None, "hdfs://fixture/clean/1")]
@@ -428,10 +428,9 @@ class PostgreSQLTests(unittest.TestCase):
                 self.connection.execute("UPDATE source_document SET status=%s, analysis_version=%s, hdfs_clean_uri=%s", state)
                 extra = news(canonical_url="https://kr.example/story/2", original_url="https://kr.example/story/2")
                 changed = news(collected_at="2026-09-16T02:00:00+00:00", content_hash="e" * 64, title="Changed")
-                with self.assertRaisesRegex(LoadError, "requires reanalysis"):
-                    self.load([extra, changed], commit=True, batch_id="changed-content")
-                self.assertEqual(self.count("source_document"), 1)
-                self.assertEqual(self.count("document_load_batch"), 1)
+                self.load([extra, changed], commit=True, batch_id="changed-content-" + str(state))
+                self.assertEqual(self.count("source_document"), 2)
+                self.assertEqual(self.count("document_load_batch"), 2)
                 self.assertEqual(self.connection.execute("SELECT content_hash FROM source_document").fetchone()[0], "b" * 64)
 
     def test_newer_analyzed_revision_atomically_replaces_body_and_company_set(self):

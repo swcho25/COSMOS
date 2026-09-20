@@ -170,9 +170,15 @@ class URLAndRecordValidationTests(unittest.TestCase):
         second = normalized(news(url="https://publisher.example/article?id=18"))
         self.assertNotEqual(first["canonical_url_hash"], second["canonical_url_hash"])
 
-    def test_url_credentials_control_characters_and_non_web_urls_are_rejected(self):
+    def test_path_whitespace_is_encoded_without_changing_query_identity(self):
+        self.assertEqual(
+            canonical_url("https://example.test/a b?q=hello world&id=1&id=2"),
+            "https://example.test/a%20b?q=hello%20world&id=1&id=2",
+        )
+
+    def test_url_credentials_host_whitespace_and_non_web_urls_are_rejected(self):
         for value in ("https://user:secret@example.test/path", "javascript:alert(1)",
-                      "https://example.test/a\nb", "https://example.test:bad/path"):
+                      "https://exa mple.test/path", "https://example.test:bad/path"):
             with self.subTest(value=value), self.assertRaises(ValidationError):
                 canonical_url(value)
 

@@ -28,7 +28,8 @@ def parser():
     for name in ('validate', 'load'):
         command = commands.add_parser(name)
         command.add_argument('--kind', required=True,
-                             choices=('news', 'news-analyzed', 'dart', 'sec', 'sec-incremental', 'sec-batch'))
+                             choices=('news', 'news-analyzed', 'news-historical-analyzed',
+                                      'dart', 'sec', 'sec-incremental', 'sec-batch'))
         command.add_argument('--input', required=True, help='Completed HDFS snapshot URI or local directory')
         command.add_argument('--hdfs-bin', default=os.environ.get('HDFS_BIN', 'hdfs'))
         command.add_argument('--source-uri', help='Original HDFS URI when validating a local mirror')
