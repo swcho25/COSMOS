@@ -55,6 +55,11 @@ class NewsNormalizationTests(unittest.TestCase):
         with self.assertRaisesRegex(ValidationError, "content_hash"):
             normalized(news(content_hash="0" * 64))
 
+    def test_embedded_nul_in_hdfs_only_body_keeps_exact_hash(self):
+        body = "Before NUL\x00after NUL"
+        result = normalized(news(content=body, content_hash=hashlib.sha256(body.encode()).hexdigest()))
+        self.assertEqual(result["content_hash"], hashlib.sha256(body.encode()).hexdigest())
+
     def test_query_ticker_is_not_treated_as_a_company_mention(self):
         result = normalized(news(metadata={"query_tickers": ["005930"]}))
         self.assertEqual(result["company_refs"], [])

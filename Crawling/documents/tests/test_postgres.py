@@ -244,6 +244,24 @@ class PostgreSQLTests(unittest.TestCase):
         self.assertEqual(self.count("company_document"), 0)
         self.assertEqual(self.count("document_load_batch"), 1)
 
+    def test_historical_duplicate_checkpoints_without_replacing_live_analysis(self):
+        self.load([analyzed_news(company_refs=[dict(KR)], confidence=0.8)], commit=True)
+        result = self.load([analyzed_news(company_refs=[dict(US)], confidence=0.95,
+                                          analysis_version="news-historical-company-mentions-1.0",
+                                          analyzed_at="2026-09-20T03:00:00+00:00",
+                                          collected_at="2026-09-20T02:00:00+00:00",
+                                          content_hash="c" * 64)],
+                           commit=True, batch_id="historical-duplicate")
+        self.assertEqual((result["company_links_added"], result["company_links_updated"],
+                          result["company_links_deleted"]), (0, 0, 0))
+        self.assertEqual(self.connection.execute(
+            "SELECT analysis_version FROM source_document").fetchone()[0],
+            "news-company-mentions-1.0")
+        self.assertEqual(self.connection.execute(
+            "SELECT company_id, confidence::text FROM company_document").fetchall(),
+            [(self.kr_id, "0.800000")])
+        self.assertEqual(self.count("document_load_batch"), 2)
+
     def test_analyzed_upsert_preserves_hidden_state_and_clears_derived_scores(self):
         self.load([analyzed_news(confidence=0.7)], commit=True)
         self.connection.execute("""UPDATE company_document SET is_service_visible=FALSE,
