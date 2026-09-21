@@ -50,6 +50,10 @@ class GraphServiceIntegrationTest {
         insertCompany(COMPANY_A, "기업A", "A001", "KOSPI");
         insertCompany(COMPANY_B, "기업B", "B001", "NASDAQ");
         insertCompany(COMPANY_C, "기업C", "C001", "KOSPI");
+        insertStockPrice(COMPANY_A, "2026-06-19T00:00:00Z", "50.0");
+        insertStockPrice(COMPANY_A, "2026-08-19T00:00:00Z", "80.0");
+        insertStockPrice(COMPANY_A, "2026-09-11T00:00:00Z", "100.0");
+        insertStockPrice(COMPANY_A, "2026-09-18T00:00:00Z", "110.0");
         jdbcTemplate.update("INSERT INTO company_industry VALUES (?, ?, TRUE)", COMPANY_A, INDUSTRY_ID);
         jdbcTemplate.update("INSERT INTO company_industry VALUES (?, ?, TRUE)", COMPANY_B, INDUSTRY_ID);
         jdbcTemplate.update("""
@@ -95,6 +99,16 @@ class GraphServiceIntegrationTest {
         assertThat(result.personalized()).isFalse();
         assertThat(result.nodes()).extracting(node -> node.companyId())
                 .containsExactly(COMPANY_A, COMPANY_B, COMPANY_C);
+        assertThat(result.nodes().getFirst().priceChange()).satisfies(priceChange -> {
+            assertThat(priceChange.sevenDays()).isEqualByComparingTo("10.000000");
+            assertThat(priceChange.thirtyDays()).isEqualByComparingTo("37.500000");
+            assertThat(priceChange.ninetyDays()).isEqualByComparingTo("120.000000");
+        });
+        assertThat(result.nodes().get(1).priceChange()).satisfies(priceChange -> {
+            assertThat(priceChange.sevenDays()).isNull();
+            assertThat(priceChange.thirtyDays()).isNull();
+            assertThat(priceChange.ninetyDays()).isNull();
+        });
         assertThat(result.edges()).hasSize(2);
         assertThat(result.edges().getFirst().newsScore()).isEqualByComparingTo("75.000000");
         assertThat(result.edges().getFirst().disclosureScore()).isEqualByComparingTo("90.000000");
@@ -257,6 +271,16 @@ class GraphServiceIntegrationTest {
                 VALUES (?, '30D', ?, CAST(? AS NUMERIC), 75.0, 90.0, 'POSITIVE', 0.88, ?,
                         'formula-v1', '2026-09-07T06:00:00Z')
                 """, relationshipId, SNAPSHOT_ID, score, evidenceCount);
+    }
+
+    private void insertStockPrice(UUID companyId, String tradingAt, String closePrice) {
+        jdbcTemplate.update("""
+                INSERT INTO stock_price_history
+                    (company_id, trading_at, interval_type, open_price, high_price,
+                     low_price, close_price, trading_volume)
+                VALUES (?, CAST(? AS TIMESTAMPTZ), '1D', CAST(? AS NUMERIC),
+                        CAST(? AS NUMERIC), CAST(? AS NUMERIC), CAST(? AS NUMERIC), 1000)
+                """, companyId, tradingAt, closePrice, closePrice, closePrice, closePrice);
     }
 
     private void insertRelationshipScore(
