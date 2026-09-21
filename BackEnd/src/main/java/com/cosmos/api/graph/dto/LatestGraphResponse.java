@@ -8,6 +8,7 @@ public record LatestGraphResponse(
         UUID snapshotId,
         Instant asOfAt,
         Instant nextRefreshAt,
+        String window,
         boolean personalized,
         List<GraphNodeResponse> nodes,
         List<GraphEdgeResponse> edges

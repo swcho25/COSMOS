@@ -7,6 +7,7 @@ import java.util.UUID;
 public record CompanyGraphResponse(
         UUID snapshotId,
         Instant asOfAt,
+        String window,
         UUID centerCompanyId,
         boolean personalized,
         List<CompanyGraphNodeResponse> nodes,
