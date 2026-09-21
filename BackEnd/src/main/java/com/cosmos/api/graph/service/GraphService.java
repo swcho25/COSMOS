@@ -14,6 +14,7 @@ import com.cosmos.api.graph.dto.LatestGraphResponse;
 import com.cosmos.api.graph.dto.RelationshipCompanyResponse;
 import com.cosmos.api.graph.dto.RelationshipDetailResponse;
 import com.cosmos.api.graph.dto.RelationshipEvidenceResponse;
+import com.cosmos.api.graph.dto.StockPriceChangeResponse;
 import com.cosmos.api.graph.error.GraphErrorCode;
 import com.cosmos.api.graph.repository.GraphQueryRepository;
 import com.cosmos.api.graph.repository.GraphQueryRepository.EdgeRow;
@@ -40,7 +41,6 @@ import org.springframework.transaction.annotation.Transactional;
 @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
 public class GraphService {
 
-    private static final String GRAPH_WINDOW = "30D";
     private static final Set<String> SUPPORTED_UNIVERSES = Set.of("KOSPI100", "NASDAQ100");
 
     private final GraphQueryRepository graphRepository;
@@ -57,12 +57,13 @@ public class GraphService {
         this.cursorCodec = cursorCodec;
     }
 
-    public LatestGraphResponse findLatestGraph(String universeValue, UUID industryId) {
+    public LatestGraphResponse findLatestGraph(String universeValue, UUID industryId, String windowValue) {
+        MetricWindow window = MetricWindow.from(windowValue);
         List<String> markets = parseUniverses(universeValue);
         SnapshotRow snapshot = latestSnapshot();
         List<NodeRow> nodeRows = graphRepository.findActiveNodes(markets, industryId);
         Set<UUID> nodeIds = nodeRows.stream().map(NodeRow::companyId).collect(java.util.stream.Collectors.toSet());
-        List<EdgeRow> edges = graphRepository.findEdges(snapshot.snapshotId(), GRAPH_WINDOW).stream()
+        List<EdgeRow> edges = graphRepository.findEdges(snapshot.snapshotId(), window.code()).stream()
                 .filter(edge -> nodeIds.contains(edge.sourceCompanyId())
                         && nodeIds.contains(edge.targetCompanyId()))
                 .toList();
@@ -71,6 +72,7 @@ public class GraphService {
                 snapshot.snapshotId(),
                 snapshot.asOfAt(),
                 snapshot.asOfAt().plus(1, ChronoUnit.HOURS),
+                window.code(),
                 false,
                 nodeRows.stream().map(this::toNode).toList(),
                 edges.stream().map(this::toEdge).toList());
@@ -78,8 +80,10 @@ public class GraphService {
 
     public CompanyGraphResponse findCompanyGraph(
             UUID companyId,
-            int maxDepth
+            int maxDepth,
+            String windowValue
     ) {
+        MetricWindow window = MetricWindow.from(windowValue);
         if (maxDepth < 1 || maxDepth > 3) {
             throw new BusinessException(CommonErrorCode.VALIDATION_FAILED);
         }
@@ -87,7 +91,7 @@ public class GraphService {
             throw new BusinessException(CompanyErrorCode.COMPANY_NOT_FOUND);
         }
         SnapshotRow snapshot = latestSnapshot();
-        List<EdgeRow> allEdges = graphRepository.findEdges(snapshot.snapshotId(), GRAPH_WINDOW);
+        List<EdgeRow> allEdges = graphRepository.findEdges(snapshot.snapshotId(), window.code());
         Map<UUID, List<EdgeRow>> adjacency = adjacency(allEdges);
         LinkedHashMap<UUID, Integer> depths = traverse(companyId, adjacency, maxDepth);
         List<NodeRow> nodeRows = graphRepository.findActiveNodesByIds(new ArrayList<>(depths.keySet()));
@@ -106,7 +110,7 @@ public class GraphService {
                 .toList();
 
         return new CompanyGraphResponse(
-                snapshot.snapshotId(), snapshot.asOfAt(), companyId, false, nodes, edges);
+                snapshot.snapshotId(), snapshot.asOfAt(), window.code(), companyId, false, nodes, edges);
     }
 
     public RelationshipDetailResponse findRelationship(UUID relationshipId, String windowValue) {
@@ -229,7 +233,9 @@ public class GraphService {
 
     private GraphNodeResponse toNode(NodeRow row) {
         return new GraphNodeResponse(
-                row.companyId(), row.name(), row.stockCode(), row.market(), row.industryName());
+                row.companyId(), row.name(), row.stockCode(), row.market(), row.industryName(),
+                new StockPriceChangeResponse(
+                        row.priceChange7d(), row.priceChange30d(), row.priceChange90d()));
     }
 
     private GraphEdgeResponse toEdge(EdgeRow row) {

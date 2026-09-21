@@ -7,7 +7,7 @@ import hashlib
 import json
 import re
 from pathlib import PurePosixPath
-from urllib.parse import urlsplit, urlunsplit, unquote
+from urllib.parse import quote, urlsplit, urlunsplit, unquote
 
 
 class ValidationError(ValueError):
@@ -37,8 +37,6 @@ def timestamp(value, field, *, nullable=False):
 
 def canonical_url(value):
     value = text(value, 'URL', 16384)
-    if any(ord(ch) < 32 or ch.isspace() for ch in value):
-        raise ValidationError('URL must not contain whitespace or control characters')
     try:
         parsed = urlsplit(value)
         parsed.port  # Validate malformed/out-of-range ports as well.
@@ -47,8 +45,16 @@ def canonical_url(value):
     if (parsed.scheme.lower() not in {'http', 'https'} or not parsed.hostname
             or parsed.username is not None or parsed.password is not None):
         raise ValidationError('URL must be absolute HTTP(S) without credentials')
+    if any(ord(ch) < 32 or ch.isspace() for ch in parsed.netloc):
+        raise ValidationError('URL host must not contain whitespace or control characters')
+    # Several providers return otherwise valid article URLs with literal spaces
+    # or Unicode in the path/query. Preserve their identity by percent-encoding
+    # those components instead of dropping the whole document. Existing escapes
+    # and query ordering (including duplicate keys) are intentionally retained.
+    path = quote(parsed.path, safe="/%:@-._~!$&'()*+,;=")
+    query = quote(parsed.query, safe="=&?/:;+,%@-._~!$'()*")
     # Query parameters contain article IDs. Never remove or reorder them.
-    return urlunsplit((parsed.scheme.lower(), parsed.netloc.lower(), parsed.path, parsed.query, ''))
+    return urlunsplit((parsed.scheme.lower(), parsed.netloc.lower(), path, query, ''))
 
 
 def company_ref(value):
@@ -235,15 +241,21 @@ def normalize_batch(batch, *, company_map=None):
         collected = raw.get('collected_at', raw.get('collectedAt')) or provenance.get('collected_at') or provenance.get('captured_at') or provenance.get('completed_at')
         common = {'summary': None, 'company_refs': [], 'status': 'COLLECTED',
                   'collected_at': collected, 'hdfs_raw_uri': envelope['raw_uri']}
-        if kind in {'news', 'news-analyzed'}:
+        if kind in {'news', 'news-analyzed', 'news-historical-analyzed'}:
             region, provider = raw.get('region'), raw.get('source')
             if region not in {'domestic', 'overseas'}:
                 raise ValidationError('news region must be domestic or overseas')
             provider = text(provider, 'news source', 70)
             source_key = f'news:{region}:{provider}'
-            text(raw.get('content'), 'news content')
-            # Hash exactly the preserved bytes, not a trimmed body.
-            digest = hashlib.sha256(raw['content'].encode('utf-8')).hexdigest()
+            body = raw.get('content')
+            # The body remains in HDFS and is not written to PostgreSQL. Some
+            # archived pages contain embedded NUL bytes, which PostgreSQL text
+            # cannot store but which are valid in the immutable Parquet source.
+            # Accept them here while still requiring real text and validating
+            # the hash over the exact, unmodified source bytes.
+            if not isinstance(body, str) or not body.strip():
+                raise ValidationError('news content must be nonempty text')
+            digest = hashlib.sha256(body.encode('utf-8')).hexdigest()
             if raw.get('content_hash') not in (None, digest):
                 raise ValidationError('news content_hash does not match preserved body')
             metadata = raw.get('metadata') or {}
@@ -277,7 +289,7 @@ def normalize_batch(batch, *, company_map=None):
                           published_at=raw.get('published_at'), content_hash=digest,
                           publisher=publisher, author=raw.get('author') or None,
                           company_refs=refs)
-            if kind == 'news-analyzed':
+            if kind in {'news-analyzed', 'news-historical-analyzed'}:
                 common.update(status='ANALYZED', analysis_version=raw.get('analysis_version'),
                               model_version=raw.get('model_version'), analyzed_at=raw.get('analyzed_at'),
                               company_links=links)

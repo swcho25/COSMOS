@@ -146,7 +146,7 @@ def _fair_new(candidates, attempts, cursor):
     def age(item):
         return attempts.get(item.input_uri, {}).get("last_attempt", 0)
     for kind, items in list(groups.items()):
-        if kind not in {"news", "news-analyzed"}:
+        if kind not in {"news", "news-analyzed", "news-historical-analyzed"}:
             groups[kind] = deque(sorted(items, key=lambda item: (age(item), item.input_uri)))
             continue
         partitions = {}

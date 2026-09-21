@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
 import type { ImpactDirection, Market, RelationshipType, Sentiment } from "@/api/types";
-import { IMPACT_META, RELATIONSHIP_ORDER, SENTIMENT_META, SENTIMENT_PENDING, UNCLASSIFIED_INDUSTRY, industryColor, relationshipMeta } from "@/lib/meta";
+import { IMPACT_META, RELATIONSHIP_ORDER, SENTIMENT_META, UNCLASSIFIED_INDUSTRY, industryColor, relationshipMeta } from "@/lib/meta";
 import { initials } from "@/lib/format";
 import { logoUrl, useCompanyLogoRef } from "@/lib/logos";
 import { ROLE_META, roleColor, type RoleKey } from "@/lib/roles";
@@ -49,9 +49,9 @@ export function CompanyAvatar({
 }
 
 /* ------------------------------ 배지 ------------------------------ */
-/** sentiment 는 분석 전이면 null 이다 — 그때는 중립이 아니라 '분석 전' 톤으로 그린다 */
+/** sentiment 가 아직 분석 전(null)이어도 '분석 전' 대신 중립으로 보여준다 (제품 결정) */
 export function SentimentBadge({ value, compact = false }: { value: Sentiment | null | undefined; compact?: boolean }) {
-  const m = (value && SENTIMENT_META[value]) ?? SENTIMENT_PENDING;
+  const m = (value && SENTIMENT_META[value]) ?? SENTIMENT_META.NEUTRAL;
   return (
     <span className="badge" style={{ background: m.bg, color: m.fg }}>
       <i className="dot" style={{ background: m.color }} />

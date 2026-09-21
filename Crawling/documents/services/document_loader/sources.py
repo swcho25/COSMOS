@@ -385,6 +385,93 @@ def news_analyzed(source):
     return "news-analyzed", records
 
 
+def news_historical_analyzed(source):
+    """Read one bounded historical company-mention output batch."""
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+
+    if source.read("_SUCCESS", limit=1) != b"":
+        raise ValueError("Invalid historical analyzed completion marker")
+    manifest = source.json("_manifest.json")
+    contract = "news-historical-company-mentions-1.0"
+    if (manifest.get("version") != 1 or manifest.get("dataset") != "news-historical-company-mentions"
+            or manifest.get("schema_version") != contract or manifest.get("minimum_confidence") != 0.5):
+        raise ValueError("Unsupported historical analyzed manifest")
+    identity, raw_input, output = manifest.get("identity"), manifest.get("input"), manifest.get("output")
+    if not all(isinstance(value, dict) for value in (identity, raw_input, output)):
+        raise ValueError("Historical analyzed manifest objects are missing")
+    model, analysis, run_id = manifest.get("model_version"), manifest.get("analysis_version"), raw_input.get("run_id")
+    batch_index, start_row, count = raw_input.get("batch_index"), raw_input.get("start_row"), raw_input.get("records")
+    for value, label in ((batch_index, "batch_index"), (start_row, "start_row"), (count, "records")):
+        integer(value, label)
+    if (not isinstance(model, str) or not re.fullmatch(r"[A-Za-z0-9._-]+", model)
+            or analysis != contract or not isinstance(run_id, str)
+            or not re.fullmatch(r"[A-Za-z0-9._-]+", run_id)):
+        raise ValueError("Historical analyzed identity is invalid")
+    expected_suffix = f"/model_version={quote(model, safe='')}/run_id={quote(run_id, safe='')}/batch={batch_index:05d}"
+    if not unquote(urlsplit(source.reader.source_uri).path).endswith(expected_suffix):
+        raise ValueError("Historical analyzed output path identity mismatch")
+    aliases_hash, companies_hash = hash_value(manifest.get("aliases_sha256")), hash_value(manifest.get("companies_sha256"))
+    expected_identity = {"contract_version": contract, "input_uri": raw_input.get("uri"),
+                         "input_manifest_sha256": raw_input.get("manifest_sha256"),
+                         "input_success_sha256": raw_input.get("success_sha256"),
+                         "raw_parquet_sha256": raw_input.get("raw_file_sha256"), "run_id": run_id,
+                         "batch_index": batch_index, "start_row": start_row, "records": count,
+                         "aliases_sha256": aliases_hash, "companies_sha256": companies_hash,
+                         "model_version": model, "analysis_version": analysis}
+    for field in ("input_manifest_sha256", "input_success_sha256", "raw_parquet_sha256"):
+        hash_value(expected_identity[field])
+    if identity != expected_identity or manifest.get("analysis_id") != digest(_canonical_json(identity)):
+        raise ValueError("Historical analyzed manifest identity mismatch")
+    files = inventory(output.get("files"))
+    if set(files) != {"data.parquet"} or integer(files["data.parquet"].get("records"), "file records") != count:
+        raise ValueError("Historical analyzed output inventory is invalid")
+    data = source.read("data.parquet", files["data.parquet"])
+    parquet = pq.ParquetFile(pa.BufferReader(data))
+    if parquet.metadata.num_rows != count or output.get("records") != count:
+        raise ValueError("Historical analyzed Parquet row count mismatch")
+    rows, records, ids, links, with_companies = parquet.read().to_pylist(), [], set(), 0, 0
+    analyzed_at = manifest.get("created_at")
+    for offset, row in enumerate(rows):
+        if row.get("schema_version") != 1 or row.get("raw_row_number") != start_row + offset:
+            raise ValueError("Historical analyzed row position mismatch")
+        article_id, url, content = row.get("article_id"), row.get("url"), row.get("content")
+        if (not isinstance(url, str) or row.get("url_hash") != digest(url.encode())
+                or article_id != row.get("url_hash") or article_id in ids
+                or not isinstance(content, str) or not content
+                or row.get("content_hash") != digest(content.encode())):
+            raise ValueError("Historical analyzed article identity/hash mismatch")
+        ids.add(article_id)
+        if (row.get("run_id") != run_id or row.get("raw_manifest_sha256") != raw_input.get("manifest_sha256")
+                or row.get("raw_file_uri") != raw_input.get("raw_file_uri")
+                or row.get("analysis_version") != analysis or row.get("model_version") != model
+                or row.get("aliases_sha256") != aliases_hash or row.get("companies_sha256") != companies_hash
+                or row.get("analyzed_at") != analyzed_at or row.get("region") != "overseas"):
+            raise ValueError("Historical analyzed row provenance differs from manifest")
+        companies = [_analyzed_company(item, "overseas") for item in row.get("companies", [])]
+        tickers = [item["stock_code"] for item in companies]
+        if tickers != sorted(set(tickers)):
+            raise ValueError("Historical analyzed companies must be unique and sorted")
+        with_companies += bool(companies)
+        links += len(companies)
+        record = dict(row)
+        record["companies"] = companies
+        record["metadata"] = {"archive_collection": row.get("archive_collection"),
+                              "archive_timestamp": row.get("archive_timestamp"),
+                              "discovery_tickers": row.get("discovery_tickers"),
+                              "discovery_company_ids": row.get("discovery_company_ids"),
+                              "historical_time_basis": "gdelt_first_seen"}
+        records.append(source.envelope("news-historical-analyzed", record, "data.parquet",
+                                      article_id=article_id, raw_row_number=row["raw_row_number"]))
+        records[-1]["raw_uri"] = row["raw_file_uri"]
+    if output.get("docs_with_companies") != with_companies or output.get("company_links") != links:
+        raise ValueError("Historical analyzed aggregate counts differ from manifest")
+    source.verification.update(completion="_SUCCESS", metadata_hashes_verified=True,
+                               records=count, docs_with_companies=with_companies,
+                               company_links=links, physical_manifest_sha256=source.consumed["_manifest.json"])
+    return "news-historical-analyzed", records
+
+
 def dart(source):
     ready = source.json("ready.json")
     if ready.get("status") != "ready" or ready.get("credential_text_check") != "passed":
@@ -535,7 +622,8 @@ def sec_batch(source, expected_index_sha256):
 def load_source(kind, root, *, hdfs_bin=None, expected_index_sha256=None, source_uri=None):
     """Load one published unit; ``sec`` denotes the incremental filing format.
 
-    Kinds: news, news-analyzed, dart, sec/sec-incremental, sec-batch. For local fixture copies,
+    Kinds: news, news-analyzed, news-historical-analyzed, dart,
+    sec/sec-incremental, sec-batch. For local fixture copies,
     source_uri can retain their original HDFS provenance and final-directory name.
     """
     reader = SnapshotReader(root, hdfs_bin=hdfs_bin, source_uri=source_uri)
@@ -545,6 +633,8 @@ def load_source(kind, root, *, hdfs_bin=None, expected_index_sha256=None, source
             format_name, records = news(source)
         elif kind == "news-analyzed":
             format_name, records = news_analyzed(source)
+        elif kind == "news-historical-analyzed":
+            format_name, records = news_historical_analyzed(source)
         elif kind == "dart":
             format_name, records = dart(source)
         elif kind in ("sec", "sec-incremental"):

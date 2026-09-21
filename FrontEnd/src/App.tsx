@@ -14,6 +14,7 @@ const NewsPage = lazy(() => import("@/features/news/NewsPage"));
 const CompaniesPage = lazy(() => import("@/features/companies/CompaniesPage"));
 const CommunityPage = lazy(() => import("@/features/community/CommunityPage"));
 const MePage = lazy(() => import("@/features/profile/MePage"));
+const MyItemsPage = lazy(() => import("@/features/profile/MyItemsPage"));
 const ArtLabPage = lazy(() => import("@/features/lab/ArtLabPage"));
 
 /** 지연 로드 청크가 오는 동안(보통 100ms 안팎) 헤더 아래를 비워 두지 않는다 */
@@ -111,6 +112,8 @@ export default function App() {
                 <Route path="/companies" element={<CompaniesPage />} />
                 <Route path="/community" element={<CommunityPage />} />
                 <Route path="/me" element={<MePage />} />
+                {/* 관심 기업·스크랩한 뉴스 — 내 정보와 분리된 별도 화면. 지금은 분리만, 레이아웃 재설계는 다음 단계 */}
+                <Route path="/me/watchlist" element={<MyItemsPage />} />
                 {/* 아트 디렉션 실험 페이지 — 내비게이션 미노출 */}
                 <Route path="/lab/art" element={<ArtLabPage />} />
                 <Route path="*" element={<Navigate to="/" replace />} />

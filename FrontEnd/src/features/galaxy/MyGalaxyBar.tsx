@@ -9,8 +9,6 @@ export interface MissingWatch {
 interface Props {
   watchCount: number;
   neighborCount: number;
-  includeNeighbors: boolean;
-  onToggleNeighbors: () => void;
   onSearch: () => void;
   /** 우주 스냅샷 밖이라 은하에 자리가 없는 관심 기업 */
   missing: MissingWatch[];
@@ -20,8 +18,10 @@ interface Props {
 /**
  * 내 은하 도구 줄 — 산업 칩 자리에 들어간다 (내 은하에서는 산업 필터를 쓰지 않는다).
  * GalaxyPage 가 이미 충분히 크므로 개인 은하 전용 HUD 는 여기로 떼어 둔다.
+ * 이웃(1홉) 포함은 항상 켜져 있다 — 끄면 관심 기업끼리 어떻게 이어지는지 알 수 없어 혼란을 준다는
+ * 판단으로 켜고 끄는 토글은 없앴다(store/galaxy.ts includeNeighbors 는 항상 true).
  */
-export default function MyGalaxyBar({ watchCount, neighborCount, includeNeighbors, onToggleNeighbors, onSearch, missing, onPick }: Props) {
+export default function MyGalaxyBar({ watchCount, neighborCount, onSearch, missing, onPick }: Props) {
   const [open, setOpen] = useState(false);
   const missingRef = useClickOutside<HTMLDivElement>(() => setOpen(false), open);
 
@@ -30,9 +30,6 @@ export default function MyGalaxyBar({ watchCount, neighborCount, includeNeighbor
       <span className="mg-sum">
         관심 기업 <b className="num">{watchCount}</b> · 이웃 <b className="num">{neighborCount}</b>
       </span>
-      <button type="button" className={`chip ${includeNeighbors ? "on" : ""}`} aria-pressed={includeNeighbors} onClick={onToggleNeighbors} title="관심 기업과 직접 이어진 기업까지 함께 올립니다">
-        이웃 관계 포함
-      </button>
       <button type="button" className="chip" onClick={onSearch} title="검색해서 관심 기업으로 담습니다">
         <Icon.Search /> 기업 추가
       </button>
@@ -77,7 +74,7 @@ export function MyGalaxyEmpty({ outOfSnapshot, onSearch, onBack }: { outOfSnapsh
         )}
         <div className="row mt-16">
           <button type="button" className="btn btn-p" onClick={onSearch}>
-            <Icon.Search /> 기업 검색 <span className="kbd">/</span>
+            <Icon.Search /> 기업 검색
           </button>
           <button type="button" className="btn btn-g" onClick={onBack}>
             전체 은하 보기

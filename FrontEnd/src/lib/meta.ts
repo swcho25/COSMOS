@@ -39,6 +39,13 @@ export function industryColor(name: string | undefined | null) {
   return FALLBACK_COLORS[h % FALLBACK_COLORS.length];
 }
 
+/**
+ * 내 은하에서 "관심 등록하지 않은, 이웃으로 딸려 온" 기업의 행성 색 — 산업색 대신 이 어두운 단색을 쓴다.
+ * 관심 기업과 이웃이 같은 산업색으로 섞여 보여 혼란을 준다는 지적에 따라(lib/graph layoutMyGalaxy),
+ * 우주 배경(#05070f)보다는 밝아 식별은 되면서도 관심 기업의 화려한 산업색과는 확실히 구분되는 무채색을 골랐다.
+ */
+export const NEIGHBOR_NODE_COLOR = "#454f63";
+
 /* ------------------------------ 관계 유형 ------------------------------ */
 export interface RelationshipMeta {
   code: RelationshipType;
@@ -98,8 +105,8 @@ export const IMPACT_META: Record<ImpactDirection, ToneMeta> = {
   NEUTRAL: { label: "중립", color: "#8B95A1", fg: "#AAB3C2", bg: "rgba(255,255,255,.06)" },
 };
 export const SENTIMENTS: Sentiment[] = ["POSITIVE", "NEGATIVE", "NEUTRAL"];
-/** 감성 분석이 아직 없는 기사·기업(sentiment: null) — 중립으로 속이지 않고 '분석 전' 으로 보여 준다 */
-export const SENTIMENT_PENDING: ToneMeta = { label: "분석 전", color: "#5B6472", fg: "#8B95A1", bg: "rgba(255,255,255,.04)" };
+// 예전엔 감성 분석이 아직 없는 기사(sentiment: null)를 SENTIMENT_PENDING("분석 전")으로 따로 표시했으나,
+// 제품 결정으로 분석 전 상태도 그냥 중립으로 보여주기로 했다 (components/ui.tsx SentimentBadge 참고).
 
 export function marketLabel(market: Market) {
   if (market === "KOSPI" || market === "KOSDAQ") return "KRX";

@@ -128,6 +128,37 @@ export function josa(word: string, withBatchim: string, withoutBatchim: string) 
   return hasBatchim(word) ? withBatchim : withoutBatchim;
 }
 
+/**
+ * 뉴스 요약(summary)이 크롤링 원문을 거의 그대로 담고 있어, 앞뒤에 기사 확인에 방해가 되는
+ * 잡음이 붙어 오는 경우가 많다 — 표시 직전에만 걷어내고 원본 데이터(백엔드 summary)는 바꾸지 않는다.
+ *  - 앞: "[포인트데일리 송가영 기자]", "(서울=뉴시스)", "【전남광주=뉴시스】" 같은 괄호 크레딧을 최대 3개까지 반복해서 뗀다
+ *  - 뒤: "저작권자 ⓒ …", "무단전재", "재배포 금지" 같은 저작권 고지가 나오는 지점부터는 통째로 자른다
+ *  - 뒤: 문장 끝에 그대로 붙어 온 언론사 URL 을 제거한다
+ */
+const LEADING_CREDIT = /^\s*[[［(（【][^\]）)】]{1,40}[\])）】]\s*/;
+const TRAILING_COPYRIGHT = /(저작권자\s*[ⓒ©]|무단\s*전재|재배포\s*금지|Copyright\s*[ⓒ©]).*$/is;
+const TRAILING_URL = /\s*https?:\/\/\S+\s*$/gi;
+
+export function cleanNewsSummary(text: string | null | undefined): string {
+  if (!text) return "";
+  let out = text;
+  for (let i = 0; i < 3 && LEADING_CREDIT.test(out); i += 1) {
+    out = out.replace(LEADING_CREDIT, "");
+  }
+  out = out.replace(TRAILING_COPYRIGHT, "").replace(TRAILING_URL, "").trim();
+  return out;
+}
+
+/** 뉴스 목록을 최신순(발행일 내림차순)으로 — publishedAt 이 없는 기사는 맨 뒤로 보낸다 */
+export function sortNewsByLatest<T extends { publishedAt: string | null }>(items: T[]): T[] {
+  return [...items].sort((a, b) => {
+    if (!a.publishedAt && !b.publishedAt) return 0;
+    if (!a.publishedAt) return 1;
+    if (!b.publishedAt) return -1;
+    return new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime();
+  });
+}
+
 export function initials(name: string) {
   const latin = name.match(/[A-Za-z0-9]+/g);
   if (latin && latin.length > 1) return latin.slice(0, 2).map((w) => w[0]).join("").toUpperCase();

@@ -179,21 +179,63 @@ def _write_document(cursor, record, source_id, companies):
         stored_type, last_collected_at, stored_hash, status, analysis_version, clean_uri = cursor.fetchone()
         if stored_type != record["document_type"]:
             raise LoadError("existing document type conflicts with its detail table")
-        if (kind == "NEWS" and status == "ANALYZED" and record.get("status") == "ANALYZED"
-                and analysis_version != record.get("analysis_version")):
+        collected_at = datetime.fromisoformat(record["collected_at"])
+        version_conflict = (kind == "NEWS" and status == "ANALYZED"
+                            and record.get("status") == "ANALYZED"
+                            and analysis_version != record.get("analysis_version"))
+        historical_duplicate = (version_conflict
+                                and str(record.get("analysis_version", "")).startswith("news-historical-"))
+        if version_conflict and not historical_duplicate:
             raise LoadError("a different analysis_version requires an explicit NEWS reanalysis workflow")
+        if historical_duplicate:
+            # A historical backfill can rediscover a URL that the live
+            # pipeline already analyzed under its realtime contract. Archive
+            # and live renderings may have different hashes, while the schema
+            # intentionally keeps one canonical document per URL.
+            # Preserve that authoritative analysis and checkpoint this input;
+            # do not silently turn the historical contract into reanalysis.
+            accept_content = False
+            accept_links = False
+            cursor.execute("""UPDATE source_document SET first_collected_at = %s,
+                              updated_at = CURRENT_TIMESTAMP
+                              WHERE document_id = %s AND first_collected_at > %s""",
+                           (collected_at, document_id, collected_at))
+            updated = cursor.rowcount > 0
         if kind == "NEWS" and status == "ANALYZED" and record.get("status") == "COLLECTED":
             # Collection hints must never recreate links removed by the
             # authoritative analyzed company set.
             accept_links = False
-        collected_at = datetime.fromisoformat(record["collected_at"])
-        accept_content = collected_at >= last_collected_at
+        accept_content = accept_content and collected_at >= last_collected_at
         if accept_content:
             incoming_hash = record.get("content_hash")
-            if (collected_at == last_collected_at and incoming_hash is not None
+            protected_news_revision = (
+                kind == "NEWS"
+                and record.get("status") == "COLLECTED"
+                and incoming_hash is not None
+                and stored_hash is not None
+                and incoming_hash != stored_hash
+                and (status != "COLLECTED" or analysis_version is not None or clean_uri is not None)
+            )
+            if protected_news_revision:
+                # A raw collector is not an authoritative reanalysis.  It may
+                # rediscover an older/different rendering of a URL after the
+                # article has already been analyzed.  Keep the analyzed body
+                # and links, but allow this immutable input batch to receive a
+                # successful checkpoint so unrelated rows are not retried
+                # forever with it.
+                accept_content = False
+                accept_links = False
+                cursor.execute("""UPDATE source_document SET first_collected_at = %s,
+                                  updated_at = CURRENT_TIMESTAMP
+                                  WHERE document_id = %s AND first_collected_at > %s""",
+                               (collected_at, document_id, collected_at))
+                updated = cursor.rowcount > 0
+            if not accept_content:
+                incoming_hash = None
+            if (accept_content and collected_at == last_collected_at and incoming_hash is not None
                     and stored_hash is not None and incoming_hash != stored_hash):
                 raise LoadError("same collected_at has conflicting content_hash; batch requires a consistent source revision")
-            analyzed_revision = (kind == "NEWS" and incoming_hash is not None and stored_hash is not None
+            analyzed_revision = (accept_content and kind == "NEWS" and incoming_hash is not None and stored_hash is not None
                                  and incoming_hash != stored_hash and record.get("status") == "ANALYZED")
             if analyzed_revision:
                 cursor.execute("""SELECT max(analyzed_at) FROM company_document
@@ -202,22 +244,22 @@ def _write_document(cursor, record, source_id, companies):
                 incoming_analysis = datetime.fromisoformat(record["analyzed_at"])
                 if latest_analysis is not None and latest_analysis > incoming_analysis:
                     raise LoadError("an older analysis cannot replace the current analyzed NEWS revision")
-            if (incoming_hash is not None and incoming_hash != stored_hash
+            if (accept_content and incoming_hash is not None and incoming_hash != stored_hash
                     and (status != "COLLECTED" or analysis_version is not None or clean_uri is not None)
                     and not analyzed_revision):
                 raise LoadError("changed content_hash on an analyzed document requires reanalysis before replacement")
-            if (kind == "NEWS" and incoming_hash is not None and stored_hash is not None
+            if (accept_content and kind == "NEWS" and incoming_hash is not None and stored_hash is not None
                     and incoming_hash != stored_hash and not analyzed_revision):
                 # Existing company links describe the stored body. Replacing it
                 # requires a revision workflow that also rebuilds those links.
                 raise LoadError("changed news content_hash requires an explicit revision/reanalysis workflow before replacement")
-            values = (record["title"], record.get("summary"), record.get("published_at"),
-                      record["collected_at"], record.get("content_hash"), record["hdfs_raw_uri"], record["collected_at"])
-            # Keep the original source and URL. A changed collected-only body is
-            # rejected above; a newer analyzed revision replaces its derived links
-            # in the same transaction below.
-            cursor.execute(COMMON_UPDATE, (*values, document_id, *values))
-            if analyzed_revision and clean_uri is not None:
+            if accept_content:
+                values = (record["title"], record.get("summary"), record.get("published_at"),
+                          record["collected_at"], record.get("content_hash"), record["hdfs_raw_uri"], record["collected_at"])
+                # Keep the original source and URL. A newer analyzed revision
+                # replaces its derived links in the same transaction below.
+                cursor.execute(COMMON_UPDATE, (*values, document_id, *values))
+            if accept_content and analyzed_revision and clean_uri is not None:
                 # A clean artifact belongs to the previous body. The incoming
                 # analyzed record carries a complete authoritative link set for
                 # the new body, so publish both changes in this transaction.

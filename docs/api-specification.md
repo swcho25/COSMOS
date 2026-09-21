@@ -1416,12 +1416,17 @@ HDFS의 기사 본문 전체는 제공하지 않으며 사용자는 `originalUrl
 <tr>
 <td>필드</td>
 <td>기본</td>
-<td>최대</td>
+<td>규칙</td>
 </tr>
 <tr>
 <td>maxDepth</td>
 <td>3</td>
-<td>3</td>
+<td>1~3</td>
+</tr>
+<tr>
+<td>window</td>
+<td>30D</td>
+<td>7D·30D·90D 중 하나</td>
 </tr>
 </table>
 #### Response — 200 OK
@@ -1429,6 +1434,7 @@ HDFS의 기사 본문 전체는 제공하지 않으며 사용자는 `originalUrl
 {
   "snapshotId": "550e8400-e29b-41d4-a716-446655440030",
   "asOfAt": "2026-09-07T06:00:00Z",
+  "window": "30D",
   "centerCompanyId": "550e8400-e29b-41d4-a716-446655440010",
   "personalized": false,
   "nodes": [
@@ -1459,6 +1465,7 @@ HDFS의 기사 본문 전체는 제공하지 않으며 사용자는 `originalUrl
 ```
 #### Notes
 - `depth`는 중심 기업 0, 직접 관계 1, 간접 관계 2·3이다.
+- `window`는 응답 관계선에 적용된 집계 기간이다. 기간에 따라 관계선의 점수와 개수가 달라질 수 있다.
 - 단계별 흐림 효과는 프론트엔드가 `depth`를 이용해 표현한다.
 - `score`는 시스템 기본 비율의 공통 점수다. 사용자가 비율을 조절하면 프론트엔드는 `newsScore`와 `disclosureScore`를 현재 화면에서만 조합한다.
 #### Errors
@@ -1471,7 +1478,7 @@ HDFS의 기사 본문 전체는 제공하지 않으며 사용자는 `originalUrl
 <tr>
 <td>400</td>
 <td>VALIDATION_FAILED</td>
-<td>경로 또는 깊이 값 오류</td>
+<td>경로·깊이 또는 window 값 오류</td>
 </tr>
 <tr>
 <td>404</td>
@@ -1513,6 +1520,11 @@ HDFS의 기사 본문 전체는 제공하지 않으며 사용자는 `originalUrl
 <td>아니요</td>
 <td>선택 산업에 속한 기업만 조회</td>
 </tr>
+<tr>
+<td>window</td>
+<td>아니요</td>
+<td>7D·30D·90D, 기본 30D</td>
+</tr>
 </table>
 #### Response — 200 OK
 ```json
@@ -1520,6 +1532,7 @@ HDFS의 기사 본문 전체는 제공하지 않으며 사용자는 `originalUrl
   "snapshotId": "550e8400-e29b-41d4-a716-446655440030",
   "asOfAt": "2026-09-07T06:00:00Z",
   "nextRefreshAt": "2026-09-07T07:00:00Z",
+  "window": "30D",
   "personalized": false,
   "nodes": [
     {
@@ -1527,7 +1540,12 @@ HDFS의 기사 본문 전체는 제공하지 않으며 사용자는 `originalUrl
       "name": "삼성전자",
       "stockCode": "005930",
       "market": "KOSPI",
-      "industryName": "반도체"
+      "industryName": "반도체",
+      "priceChange": {
+        "7D": 1.25,
+        "30D": -3.42,
+        "90D": 7.81
+      }
     }
   ],
   "edges": [
@@ -1546,6 +1564,10 @@ HDFS의 기사 본문 전체는 제공하지 않으며 사용자는 `originalUrl
 ```
 #### Notes
 - 전체 그래프의 노드 수에는 고정 상한을 두지 않는다.
+- `priceChange`는 기업별 최신 일봉 종가를 기준으로 계산한 7일·30일·90일 등락률(%)이다.
+- 휴장일에는 각 기준일 이전의 가장 가까운 거래일 종가를 사용한다. 주가가 없거나 비교 기준 종가가 없으면 해당 값은 `null`이다.
+- `priceChange`는 전체 은하의 주가 고도 표현에 사용하며 기업 중심 그래프에는 포함하지 않는다.
+- `window`는 응답 관계선에 적용된 집계 기간이다. 기간에 따라 관계선의 점수와 개수가 달라질 수 있다.
 - 그래프는 1시간 단위로 검증 후 교체한다.
 - 화면은 새 `snapshotId`를 확인한 뒤 사용자 선택으로 갱신할 수 있다.
 - 사용자가 조절한 가중치는 같은 탭의 새로고침에서는 유지되며, 탭 세션 종료 후 다시 접속하면 기본 `score`를 사용한다.
@@ -1559,7 +1581,7 @@ HDFS의 기사 본문 전체는 제공하지 않으며 사용자는 `originalUrl
 <tr>
 <td>400</td>
 <td>VALIDATION_FAILED</td>
-<td>지원하지 않는 universe 또는 잘못된 산업 식별자</td>
+<td>지원하지 않는 universe·window 또는 잘못된 산업 식별자</td>
 </tr>
 <tr>
 <td>404</td>

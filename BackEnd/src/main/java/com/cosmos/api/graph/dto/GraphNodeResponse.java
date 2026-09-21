@@ -7,6 +7,7 @@ public record GraphNodeResponse(
         String name,
         String stockCode,
         String market,
-        String industryName
+        String industryName,
+        StockPriceChangeResponse priceChange
 ) {
 }

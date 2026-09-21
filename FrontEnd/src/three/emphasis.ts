@@ -21,8 +21,8 @@ export interface EmphasisInput {
   minScore: number;
   activeTypes: Set<string>;
   /**
-   * 간선 예산: 기본 상태에서는 점수 상위 일부(+각 노드의 최강 간선)만 그리고,
-   * 나머지는 노드를 호버했을 때만 나타난다. 관계가 많아도 화면이 읽히게 한다.
+   * 간선 예산: 기업 중심 뷰에서는 점수 상위 일부(+각 노드의 최강 간선)만 기본으로 그리고,
+   * 나머지는 노드를 호버했을 때만 나타난다. 전체 은하 뷰는 BUDGET_RATIO.galaxy가 1이라 이 옵션과 무관하게 전부 그려진다.
    */
   budget?: boolean;
   /** 경로 기준 → 호버 노드의 최단 경로 (Scene 이 계산). 있으면 호버 강조보다 우선한다 */
@@ -32,8 +32,13 @@ export interface EmphasisInput {
 }
 
 const DEPTH_DIM = [1, 1, 0.74, 0.56];
-/** 뷰별 기본 표시 비율 — 은하는 핵심만(상위 8%), 기업 중심 뷰는 간선이 적으니 절반 이상 */
-const BUDGET_RATIO: Record<SceneModel["kind"], number> = { galaxy: 0.08, system: 0.55 };
+/**
+ * 뷰별 기본 표시 비율 — 전체 은하는 이제 필터를 통과한 관계선을 전부 보여준다(1.0).
+ * 예전엔 은하 뷰가 상위 8%만 그리고 나머지는 호버해야 보였는데, 기업 사이 연결이 일부만 보여 오해를 줄 수 있다는
+ * 판단으로 전체 표시로 바꿨다 — 대신 굵기를 크게 낮춰(edgeCurve.radiusOf) 화면이 빽빽해 보이지 않게 했다.
+ * 기업 중심 뷰는 간선 수 자체가 적어 예산을 유지한다.
+ */
+const BUDGET_RATIO: Record<SceneModel["kind"], number> = { galaxy: 1, system: 0.55 };
 /** 각 노드의 가장 강한 간선 하나를 항상 남길지 — 기업 중심 뷰에서만. 은하에서는 노드 수만큼 간선이 깔려 화면을 덮는다 */
 const KEEP_BEST_PER_NODE: Record<SceneModel["kind"], boolean> = { galaxy: false, system: true };
 

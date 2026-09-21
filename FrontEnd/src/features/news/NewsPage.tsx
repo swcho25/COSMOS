@@ -1,8 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
-import { useQueryClient } from "@tanstack/react-query";
+import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import type { GraphEdge, LatestGraph, LatestGraphNode, NewsDetail, NewsRelatedCompany, RelationshipType, Sentiment } from "@/api/types";
-import { fmtDateTime, fmtRelative, josa } from "@/lib/format";
+import { cleanNewsSummary, fmtDateTime, fmtRelative, josa, sortNewsByLatest } from "@/lib/format";
 import { SENTIMENTS, SENTIMENT_META, UNCLASSIFIED_INDUSTRY, marketLabel, relationshipMeta } from "@/lib/meta";
 import { useCompany, useIndustries, useLatestGraph, useNewsDetail, useNewsFeed, useToggleScrap, useToggleWatch, useWatchedSet } from "@/lib/queries";
 import { useSession } from "@/store/session";
@@ -20,7 +19,7 @@ import "./news.css";
 export default function NewsPage() {
   const [params, setParams] = useSearchParams();
   const navigate = useNavigate();
-  const qc = useQueryClient();
+  const location = useLocation();
   const toast = useUi((s) => s.toast);
   const authed = useSession((s) => s.status === "authed");
   const openAuth = useUi((s) => s.openAuth);
@@ -28,11 +27,15 @@ export default function NewsPage() {
   const companyId = params.get("company");
   const [industryId, setIndustryId] = useState<string | null>(null);
   const [sentiment, setSentiment] = useState<Sentiment | null>(null);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  // ?news= 로 URL에 동기화한다 — 은하 페이지의 관계선 보기로 이탈했다가 돌아왔을 때 같은 기사가 다시 열리도록
+  const [selectedId, setSelectedId] = useState<string | null>(() => params.get("news"));
   /* 목록에서 뉴스를 고르면 — 1100px 이하(목록 아래에 분석이 세로로 쌓이는 레이아웃)에서는 선택 뉴스 카드(.map-card)로 바로 내려간다.
      넓은 화면은 두 컬럼이 나란히 보여 스크롤할 것이 없다. 스크롤 여백은 news.css 의 scroll-margin-top(헤더 높이) */
   const pickNews = (id: string) => {
     setSelectedId(id);
+    const next = new URLSearchParams(params);
+    next.set("news", id);
+    setParams(next, { replace: true });
     if (!window.matchMedia("(max-width: 1100px)").matches) return;
     // .map-card 는 늘 그려져 있어 렌더를 기다릴 필요가 없다 (rAF 에 미루면 숨겨진 탭에서는 실행되지 않는다)
     document.querySelector(".map-card")?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -52,7 +55,8 @@ export default function NewsPage() {
   const universe = useLatestGraph(null);
   const company = useCompany(companyId);
   const feed = useNewsFeed({ companyId: companyId ?? undefined, industryId: companyId ? undefined : industryId ?? undefined, sentiment: sentiment ?? undefined, keyword: keyword || undefined, size: 20 });
-  const items = useMemo(() => feed.data?.pages.flatMap((p) => p.items) ?? [], [feed.data]);
+  // API가 준 순서를 신뢰하지 않고 발행일 내림차순(최신 먼저)으로 다시 정렬한다
+  const items = useMemo(() => sortNewsByLatest(feed.data?.pages.flatMap((p) => p.items) ?? []), [feed.data]);
 
   // 목록이 바뀌거나(필터 변경 등) 선택된 기사가 새 목록에 없으면 첫 기사를 기본값으로 본다.
   // effect에서 setState로 동기화하면 렌더가 한 번 더 캐스케이드되므로, 렌더링 중 파생값으로 계산한다.
@@ -69,8 +73,11 @@ export default function NewsPage() {
     const next = new URLSearchParams(params);
     if (id) next.set("company", id);
     else next.delete("company");
+    // 기업 문맥이 바뀌면 이전에 고른 기사는 새 목록에 없을 수 있다 — 선택도 함께 비운다
+    next.delete("news");
     setParams(next);
     setSentiment(null);
+    setSelectedId(null);
   };
 
   /* 관계 지도 모델: 선택 뉴스가 직접 언급한 기업들. 1홉 확장은 관련 기업이 많은 뉴스에서 선이 한 점에
@@ -133,17 +140,6 @@ export default function NewsPage() {
           <i className="dot" />
           {universe.data ? `스냅샷 ${fmtDateTime(universe.data.asOfAt)} 기준 · 1시간 단위 갱신` : universe.isError ? "공개된 관계 스냅샷 없음 — 관계 지도는 분석 결과 게시 후 나타납니다" : "스냅샷 확인 중"}
         </span>
-        <button
-          type="button"
-          className="btn btn-g btn-sm"
-          onClick={() => {
-            qc.invalidateQueries({ queryKey: ["news"] });
-            qc.invalidateQueries({ queryKey: ["graph", "latest"] });
-            toast("최신 뉴스·관계 데이터로 새로고침했습니다.", "success");
-          }}
-        >
-          <Icon.Refresh /> 새로고침
-        </button>
       </div>
 
       <div className="news-page">
@@ -229,7 +225,7 @@ export default function NewsPage() {
                   <span className="meta num">{[n.publisher, fmtRelative(n.publishedAt)].filter(Boolean).join(" · ")}</span>
                 </div>
                 <div className="title clamp-2">{n.title}</div>
-                <div className="summary clamp-2">{n.summary}</div>
+                <div className="summary clamp-2">{cleanNewsSummary(n.summary)}</div>
               </article>
             ))}
             {feed.hasNextPage && (
@@ -278,7 +274,7 @@ export default function NewsPage() {
                     <>
                       <div className="ttl">{detail.data?.title ?? <Skeleton h={22} w={360} />}</div>
                       <div className="meta num mt-8">{detail.data ? [detail.data.publisher, fmtDateTime(detail.data.publishedAt), detail.data.author].filter(Boolean).join(" · ") : ""}</div>
-                      {detail.data?.summary && <p className="map-summary">{detail.data.summary}</p>}
+                      {detail.data?.summary && <p className="map-summary">{cleanNewsSummary(detail.data.summary)}</p>}
                     </>
                   )}
                 </div>
@@ -350,7 +346,11 @@ export default function NewsPage() {
                   related={detail.data?.relatedCompanies}
                   highlightId={companyId}
                   onPickCompany={(id) => setCompany(id)}
-                  onOpenInGalaxy={(relationshipId) => navigate(`/?edge=${relationshipId}`)}
+                  onOpenInGalaxy={(relationshipId) =>
+                    // 은하 쪽 관계 화면에서 "뉴스로 돌아가기"를 누르면 지금 보고 있던 이 위치(선택 기사·기업 문맥)로 돌아올 수 있도록
+                    // 현재 경로를 함께 넘긴다 (GalaxyPage.tsx newsReturnTo)
+                    navigate(`/?edge=${relationshipId}`, { state: { newsReturnTo: `${location.pathname}${location.search}` } })
+                  }
                 />
               ) : (
                 <div className="stage-loading">
