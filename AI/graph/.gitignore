@@ -30,3 +30,6 @@ data/sentiment_inputs.csv
 data/sentiment_filled.csv
 data/sentiment_scores_load.csv
 data/relation_evidence/*.csv
+
+# 영문 관계 추출 중간물 (DB 에서 재추출 가능, 14MB)
+data/en_sentences.csv
