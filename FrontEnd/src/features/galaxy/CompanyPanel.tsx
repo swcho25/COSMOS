@@ -1,8 +1,9 @@
 import { useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import type { CompanyComment, MetricWindow, PricePeriod, Sentiment } from "@/api/types";
 import { CompanyAvatar, Empty, Icon, IndustryBadge, SentimentBadge, Skeleton } from "@/components/ui";
 import PriceChart, { Sparkbars } from "@/components/PriceChart";
-import { fmtCompact, fmtCompactPrice, fmtDateTime, fmtNumber, fmtPct, fmtPctFrom01, fmtPrice, fmtRelative, fmtTradingDate } from "@/lib/format";
+import { cleanNewsSummary, fmtCompact, fmtCompactPrice, fmtDateTime, fmtNumber, fmtPct, fmtPctFrom01, fmtPrice, fmtRelative, fmtTradingDate, josa, sortNewsByLatest } from "@/lib/format";
 import type { SceneModel } from "@/lib/graph";
 import { PREVIEW_UI } from "@/lib/guide";
 import { SENTIMENTS, SENTIMENT_META, marketCurrency } from "@/lib/meta";
@@ -44,6 +45,7 @@ const TABS: { key: PanelTab; label: string }[] = [
 
 /** 기업 인텔리전스 패널 — 뉴스 · 주가 · 게시판 (화면구성도 ②~⑥) */
 export default function CompanyPanel({ companyId, model = null, onWarp, onClose, onPickCompany }: Props) {
+  const navigate = useNavigate();
   const company = useCompany(companyId);
   const tab = useGalaxy((s) => s.panelTab);
   const setTab = useGalaxy((s) => s.setPanelTab);
@@ -64,6 +66,8 @@ export default function CompanyPanel({ companyId, model = null, onWarp, onClose,
   // stepsPin 은 머리줄을 직접 눌러 고정한 상태(null = 스크롤에 맡김)이고, 본문이 맨 위로 돌아오면 다시 풀린다
   const [bodyScrolled, setBodyScrolled] = useState(false);
   const [stepsPin, setStepsPin] = useState<boolean | null>(null);
+  /** 관심 등록 직후 내 은하로 바로 이동할 수 있는 선택지 — 토스트만으로는 "그래서 어디서 보나"가 안 보였다 */
+  const [justWatched, setJustWatched] = useState(false);
 
   return (
     <aside className="card panel panel-company" aria-label="기업 인텔리전스">
@@ -107,7 +111,13 @@ export default function CompanyPanel({ companyId, model = null, onWarp, onClose,
                 if (!authed) return openAuth("login");
                 toggleWatch.mutate(
                   { companyId, watched: watched },
-                  { onSuccess: (now) => toast(now ? "관심 기업에 추가했습니다." : "관심 기업에서 해제했습니다.", "success"), onError: () => toast("처리하지 못했습니다.", "error") },
+                  {
+                    onSuccess: (now) => {
+                      toast(now ? "관심 기업에 추가했습니다." : "관심 기업에서 해제했습니다.", "success");
+                      if (now) setJustWatched(true);
+                    },
+                    onError: () => toast("처리하지 못했습니다.", "error"),
+                  },
                 );
               }}
               aria-pressed={watched}
@@ -138,6 +148,32 @@ export default function CompanyPanel({ companyId, model = null, onWarp, onClose,
         {tab === "price" && c && <PriceTab companyId={companyId} market={c.market} marketCap={c.marketCap ?? null} listedShares={c.listedShares ?? null} />}
         {tab === "board" && c && <BoardTab companyId={companyId} companyName={c.name} />}
       </div>
+      {justWatched && (
+        <div className="scrim" onMouseDown={(e) => e.target === e.currentTarget && setJustWatched(false)} role="presentation">
+          <div className="card" style={{ padding: 20, maxWidth: 320, display: "grid", gap: 12 }} role="dialog" aria-modal="true" aria-label="관심 기업 등록 완료">
+            <div className="kick">관심 기업 등록</div>
+            <p style={{ margin: 0, lineHeight: 1.6 }}>
+              {c?.name ?? "이 기업"}
+              {josa(c?.name ?? "이 기업", "을", "를")} 관심 기업으로 등록했습니다. 내 은하에서 관심 기업만 모아 볼 수 있습니다.
+            </p>
+            <div className="row" style={{ gap: 8, justifyContent: "flex-end" }}>
+              <button type="button" className="btn btn-g btn-sm" onClick={() => setJustWatched(false)}>
+                닫기
+              </button>
+              <button
+                type="button"
+                className="btn btn-p btn-sm"
+                onClick={() => {
+                  setJustWatched(false);
+                  navigate("/?scope=mine");
+                }}
+              >
+                <Icon.Galaxy /> 내 은하로 이동
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </aside>
   );
 }
@@ -151,7 +187,8 @@ function NewsTab({ companyId, onPickCompany }: { companyId: string; onPickCompan
   const authed = useSession((s) => s.status === "authed");
   const openAuth = useUi((s) => s.openAuth);
   const toggleScrap = useToggleScrap();
-  const items = feed.data?.pages.flatMap((p) => p.items) ?? [];
+  // API가 준 순서를 신뢰하지 않고 발행일 내림차순(최신 먼저)으로 다시 정렬해 보여준다
+  const items = sortNewsByLatest(feed.data?.pages.flatMap((p) => p.items) ?? []);
 
   return (
     <>
@@ -187,7 +224,7 @@ function NewsTab({ companyId, onPickCompany }: { companyId: string; onPickCompan
               </button>
             </div>
             <div className="title">{n.title}</div>
-            <div className="summary clamp-2">{n.summary}</div>
+            <div className="summary clamp-2">{cleanNewsSummary(n.summary)}</div>
             <div className="foot">
               <div className="co">
                 {n.relatedCompanies

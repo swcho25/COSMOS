@@ -117,8 +117,8 @@ function DesktopAccount({ status, user, pathname, nWatch, nScrap, openAuth, togg
                     <Icon.Galaxy /> 내 은하
                   </span>
                 </button>
-                {/* 관심 기업과 스크랩은 내 페이지 한 화면에 나란히 있어 어느 쪽을 눌러도 같은 곳이었다 — 한 줄로 합친다 */}
-                <button type="button" className="item" role="menuitem" onClick={() => (close(), navigate("/me#watch"))} title={`관심 기업 ${nWatch}개 · 스크랩한 뉴스 ${nScrap}개`}>
+                {/* 관심 기업·스크랩은 내 정보와 분리된 별도 화면(/me/watchlist)이다 — 한 줄로 합쳐 이동만 같이 한다 */}
+                <button type="button" className="item" role="menuitem" onClick={() => (close(), navigate("/me/watchlist"))} title={`관심 기업 ${nWatch}개 · 스크랩한 뉴스 ${nScrap}개`}>
                   <span>관심 기업 · 스크랩한 뉴스</span>
                   <span className="num">{`${nWatch} · ${nScrap}`}</span>
                 </button>
@@ -218,7 +218,7 @@ function MobileMenu({ status, user, pathname, nWatch, nScrap, openAuth, toggleHe
                     <Icon.Galaxy /> 내 은하
                   </span>
                 </button>
-                <button type="button" className="item" onClick={run(() => navigate("/me#watch"))} title={`관심 기업 ${nWatch}개 · 스크랩한 뉴스 ${nScrap}개`}>
+                <button type="button" className="item" onClick={run(() => navigate("/me/watchlist"))} title={`관심 기업 ${nWatch}개 · 스크랩한 뉴스 ${nScrap}개`}>
                   <span>관심 기업 · 스크랩한 뉴스</span>
                   <span className="num">{`${nWatch} · ${nScrap}`}</span>
                 </button>

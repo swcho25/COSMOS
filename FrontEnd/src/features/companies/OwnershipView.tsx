@@ -45,17 +45,19 @@ export default function OwnershipView({ graph, onPick }: Props) {
 
   const tree = useMemo(() => {
     if (!root) return null;
-    return invest
-      .filter((e) => e.sourceCompanyId === root)
-      .sort((a, b) => b.score - a.score)
-      .map((e) => ({
-        id: e.targetCompanyId,
-        score: e.score,
-        children: invest
-          .filter((x) => x.sourceCompanyId === e.targetCompanyId && x.targetCompanyId !== root)
-          .sort((a, b) => b.score - a.score)
-          .map((x) => ({ id: x.targetCompanyId, score: x.score })),
-      }));
+    const level1 = invest.filter((e) => e.sourceCompanyId === root).sort((a, b) => b.score - a.score);
+    // 현대차그룹처럼 계열사끼리 서로 지분을 나눠 가진 경우(상호출자), 2단계(예: 기아가 보유) 목록에
+    // root가 이미 "직접 보유"로 보여준 회사가 다시 나타날 수 있다 — 같은 회사가 두 자리에 중복 표시돼
+    // 헷갈리므로, 이미 1단계에 있는 회사는 2단계 목록에서 뺀다
+    const level1Ids = new Set(level1.map((e) => e.targetCompanyId));
+    return level1.map((e) => ({
+      id: e.targetCompanyId,
+      score: e.score,
+      children: invest
+        .filter((x) => x.sourceCompanyId === e.targetCompanyId && x.targetCompanyId !== root && !level1Ids.has(x.targetCompanyId))
+        .sort((a, b) => b.score - a.score)
+        .map((x) => ({ id: x.targetCompanyId, score: x.score })),
+    }));
   }, [invest, root]);
 
   /**

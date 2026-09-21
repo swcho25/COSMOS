@@ -1,6 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ApiError } from "@/api";
-import { useSearchParams } from "react-router-dom";
+import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { capScale, layoutGalaxy, layoutMyGalaxy, layoutSystemCached, type CompanyLookup } from "@/lib/graph";
 import { fmtDateTime } from "@/lib/format";
@@ -52,9 +52,17 @@ function HoverPrefetch({ focusId }: { focusId: string | null }) {
  */
 export default function GalaxyPage() {
   const [params, setParams] = useSearchParams();
+  const location = useLocation();
+  const navigate = useNavigate();
+  /**
+   * 뉴스 페이지의 관계 줄 "전체 은하에서 보기"에서 온 경우, 그 뉴스 화면(선택했던 기사·필터)으로
+   * 되돌아갈 경로를 함께 받는다(NewsPage.tsx 의 navigate state). 마운트 시점 값만 기억해 두고,
+   * 이후 이 화면 안에서 URL 이 계속 바뀌어도(?edge= 소비 등) 사라지지 않게 state 에 한 번만 담는다.
+   * (렌더 중 읽어야 하므로 ref 대신 지연 초기화 state 를 쓴다 — ref.current 를 렌더 중에 읽는 것은 React 규칙 위반이다)
+   */
+  const [newsReturnTo] = useState((location.state as { newsReturnTo?: string } | null)?.newsReturnTo ?? null);
 
   const scope = useGalaxy((s) => s.scope);
-  const includeNeighbors = useGalaxy((s) => s.includeNeighbors);
   const industryId = useGalaxy((s) => s.industryId);
   const focusId = useGalaxy((s) => s.focusId);
   const phase = useGalaxy((s) => s.phase);
@@ -62,7 +70,6 @@ export default function GalaxyPage() {
   const selectedId = useGalaxy((s) => s.selectedId);
   const selectCompany = useGalaxy((s) => s.selectCompany);
   const setScope = useGalaxy((s) => s.setScope);
-  const toggleNeighbors = useGalaxy((s) => s.toggleNeighbors);
   const setIndustry = useGalaxy((s) => s.setIndustry);
   const warpTo = useGalaxy((s) => s.warpTo);
   const selectEdge = useGalaxy((s) => s.selectEdge);
@@ -89,8 +96,9 @@ export default function GalaxyPage() {
   // 시가총액 척도는 전체 우주 기준으로 한 번 만들어 은하 배치와 기업 중심 배치(lookup)에 같이 준다 — 산업 필터가 켜져도 같은 기업은 같은 크기
   const capT = useMemo(() => capScale(universe.data?.nodes ?? []), [universe.data]);
   const fullModel = useMemo(() => (latest.data ? layoutGalaxy(latest.data, capT) : null), [latest.data, capT]);
-  // 내 은하는 전체 우주에서 관심 기업 주변만 잘라 같은 배치로 만든다 — 산업 필터(latest)가 아니라 우주(universe)가 재료다
-  const mine = useMemo(() => (mineScope && universe.data ? layoutMyGalaxy(universe.data, watchIds, includeNeighbors, capT) : null), [mineScope, universe.data, watchIds, includeNeighbors, capT]);
+  // 내 은하는 전체 우주에서 관심 기업 주변만 잘라 같은 배치로 만든다 — 산업 필터(latest)가 아니라 우주(universe)가 재료다.
+  // 이웃(1홉) 포함은 항상 켜져 있다 — 끄는 기능은 없앴다(관심 기업만 보면 어떻게 이어지는지 알 수 없어 혼란을 줬다)
+  const mine = useMemo(() => (mineScope && universe.data ? layoutMyGalaxy(universe.data, watchIds, true, capT) : null), [mineScope, universe.data, watchIds, capT]);
   // 별이 하나도 없으면 씬에 null 을 준다 — 빈 원반을 그리는 대신 빈 상태 카드가 화면을 설명한다
   const galaxyModel = mineScope ? (mine && mine.model.nodes.length ? mine.model : null) : fullModel;
   const lookup = useMemo<CompanyLookup>(() => {
@@ -373,10 +381,9 @@ export default function GalaxyPage() {
       {!focusId && (
       <div className="hud hud-top">
         {/* 모바일에서는 글자를 감추고 돋보기 아이콘만 남는다(galaxy.css) — 라벨은 aria-label 로 유지 */}
-        <button type="button" className="field search-trigger" onClick={() => setSearchOpen(true)} aria-label="기업 검색 (/)" title="기업명 또는 종목코드 검색 (/)">
+        <button type="button" className="field search-trigger" onClick={() => setSearchOpen(true)} aria-label="기업 검색" title="기업명 또는 종목코드 검색">
           <Icon.Search />
           <span>기업명 또는 종목코드를 검색하세요</span>
-          <span className="kbd">/</span>
         </button>
         {/* 카메라 시점 — 둘러보기 / 거리 비교 / 고도 비교 */}
         <CameraPresets />
@@ -393,9 +400,7 @@ export default function GalaxyPage() {
         {mineScope ? (
           <MyGalaxyBar
             watchCount={watchIds.length}
-            neighborCount={includeNeighbors ? mine?.neighborIds.length ?? 0 : 0}
-            includeNeighbors={includeNeighbors}
-            onToggleNeighbors={toggleNeighbors}
+            neighborCount={mine?.neighborIds.length ?? 0}
             onSearch={() => setSearchOpen(true)}
             missing={(mine?.missing ?? []).map((id) => ({ companyId: id, name: watchItems.find((w) => w.companyId === id)?.name ?? id }))}
             onPick={pickCompany}
@@ -411,6 +416,14 @@ export default function GalaxyPage() {
       </div>
       )}
 
+      {/* 좌상단: 뉴스 페이지에서 관계선 보기로 들어온 경우 되돌아가는 길 — 은하 뷰(focusId 없음)에서만 의미가 있다 */}
+      {!focusId && newsReturnTo && (
+        <div className="hud hud-crumb">
+          <button type="button" className="crumb" onClick={() => navigate(newsReturnTo)} title="보고 있던 뉴스로 돌아가기">
+            <Icon.Back /> 뉴스로 돌아가기
+          </button>
+        </div>
+      )}
       {/* 좌상단: 기업 중심 뷰 브레드크럼 (넓은 화면) */}
       {focusId && !narrow && (
         <div className="hud hud-crumb">
@@ -423,7 +436,7 @@ export default function GalaxyPage() {
             <span className="meta">중심 관계망 · 최대 3단계</span>
           </div>
           <button type="button" className="crumb" onClick={() => setSearchOpen(true)} title="다른 기업 검색">
-            <Icon.Search /> <span className="kbd">/</span>
+            <Icon.Search />
           </button>
           <CameraPresets />
         </div>

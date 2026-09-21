@@ -4,7 +4,7 @@
  */
 import type { CompanyGraph, GraphEdge, LatestGraph, LatestGraphNode, Market, RelationshipType } from "@/api/types";
 import { ARMS, ARM_SPREAD, CORE_Y, DISC_Y, R_CORE, R_MAX, armTheta, nearestArm } from "./galaxyShape";
-import { INDUSTRY_COLORS, UNCLASSIFIED_INDUSTRY, industryColor, relationshipMeta } from "./meta";
+import { INDUSTRY_COLORS, NEIGHBOR_NODE_COLOR, UNCLASSIFIED_INDUSTRY, industryColor, relationshipMeta } from "./meta";
 import { gaussian, hashString, seededRandom } from "./rng";
 
 export type Vec3 = [number, number, number];
@@ -665,6 +665,15 @@ export function layoutSystem(graph: CompanyGraph, lookup: CompanyLookup): SceneM
   });
 
   const angle = new Map<string, number>([[graph.centerCompanyId, 0]]);
+  /**
+   * 각 노드가 "제 자식들을 부채꼴로 펼치는 데 쓸 수 있는" 로컬 각도 폭.
+   * depth 1은 전체 원에 고르게 퍼지므로 폭이 2π/개수로 균일하지만, depth 2부터는 부모의 좁은 부채꼴
+   * 안에서만 자리를 나눠 가지므로 전체 원 기준으로 균일하지 않다. 예전엔 depth d의 부채꼴 폭을 항상
+   * "2π / (depth d-1 개수)"로 계산해, depth 1→2는 맞지만 depth 2→3부터는 실제 여유 각도보다 넓게
+   * 잡혀 손자 기업이 실제 연결과 무관한 다른 가지 쪽으로 번질 수 있었다. 부모의 실제 폭을 그대로
+   * 물려받아야 몇 단계를 내려가도 "연결된 기업 근처"에 머무른다.
+   */
+  const angleSpan = new Map<string, number>([[graph.centerCompanyId, Math.PI * 2]]);
   const byDepth = new Map<number, string[]>();
   graph.nodes.forEach((n) => {
     const d = depthOf.get(n.companyId)!;
@@ -676,22 +685,28 @@ export function layoutSystem(graph: CompanyGraph, lookup: CompanyLookup): SceneM
     const ids = (byDepth.get(d) ?? []).slice();
     if (d === 1) {
       ids.sort((a, b) => (deg.get(b) ?? 0) - (deg.get(a) ?? 0));
-      ids.forEach((id, i) => angle.set(id, (i / ids.length) * Math.PI * 2 - Math.PI / 2));
+      const span = (Math.PI * 2) / ids.length;
+      ids.forEach((id, i) => {
+        angle.set(id, i * span - Math.PI / 2);
+        angleSpan.set(id, span);
+      });
       continue;
     }
-    // 부모 각도 주변에 자식을 부채꼴로 배치
+    // 부모 각도 주변에 자식을 부채꼴로 배치 — 부모가 물려받은 로컬 폭(angleSpan)을 그대로 쓴다
     const byParent = new Map<string, string[]>();
     ids.forEach((id) => {
       const p = parent.get(id) ?? graph.centerCompanyId;
       if (!byParent.has(p)) byParent.set(p, []);
       byParent.get(p)!.push(id);
     });
-    const sector = (Math.PI * 2) / Math.max(1, byDepth.get(d - 1)?.length ?? 1);
     byParent.forEach((children, p) => {
       const base = angle.get(p) ?? rng() * Math.PI * 2;
+      const sector = angleSpan.get(p) ?? (Math.PI * 2) / Math.max(1, byDepth.get(d - 1)?.length ?? 1);
+      const childSpan = (sector * 0.85) / children.length;
       children.forEach((c, i) => {
         const t = children.length === 1 ? 0 : i / (children.length - 1) - 0.5;
         angle.set(c, base + t * sector * 0.85);
+        angleSpan.set(c, childSpan);
       });
     });
   }
@@ -821,6 +836,8 @@ export function layoutMyGalaxy(
   const model = layoutGalaxy(sub, capT);
   model.nodes.forEach((nd) => {
     nd.tier = seed.has(nd.id) ? 0 : Math.max(2, nd.tier);
+    // 관심 기업은 산업색 그대로, 딸려 온 이웃은 어두운 단색으로 — 둘을 한눈에 구분할 수 있게 한다
+    if (!seed.has(nd.id)) nd.color = NEIGHBOR_NODE_COLOR;
   });
   return { model, missing, neighborIds };
 }

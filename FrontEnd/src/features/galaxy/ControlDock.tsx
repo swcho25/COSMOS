@@ -1,4 +1,4 @@
-import { type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from "react";
+import { useState, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from "react";
 import type { AltitudeWindow } from "@/api/types";
 import { Icon } from "@/components/ui";
 import { DOCK_UI } from "@/lib/guide";
@@ -52,6 +52,12 @@ export default function ControlDock() {
   const newsWeight = useWeight((s) => s.newsWeight);
   const setNewsWeight = useWeight((s) => s.setNewsWeight);
   const narrow = useNarrowViewport();
+  /**
+   * 뉴스·공시 비율 슬라이더의 드래그 중 표시값 — 드래그하는 동안은 이 값만 바뀌고(라벨만 갱신),
+   * 실제 store(useWeight)·씬 재계산은 손을 떼거나(pointerUp) 키를 놓을 때(keyUp)만 한 번 커밋한다.
+   * 매 onChange마다 커밋하면 은하 씬의 간선 지오메트리가 매 틱 다시 만들어져 드래그 중 렉이 생긴다.
+   */
+  const [draftNewsWeightPct, setDraftNewsWeightPct] = useState<number | null>(null);
 
   if (!dockOpen) {
     return (
@@ -86,6 +92,11 @@ export default function ControlDock() {
   function handleReset() {
     resetControls();
     useWeight.getState().reset();
+    setDraftNewsWeightPct(null);
+  }
+  function releaseNewsWeight(e: ReactPointerEvent<HTMLInputElement> | ReactKeyboardEvent<HTMLInputElement>) {
+    setNewsWeight(Number(e.currentTarget.value) / 100);
+    setDraftNewsWeightPct(null);
   }
 
   /* ---- 조절 수단 조각 — 넓은 화면과 모바일 두 장이 같은 조각을 다른 자리에 놓는다 ---- */
@@ -130,13 +141,28 @@ export default function ControlDock() {
     );
   });
 
+  const displayNewsWeightPct = draftNewsWeightPct ?? newsWeightPct;
   const mixRow = (
     <div className="dock-row dock-mix">
-      {/* 라벨이 곧 값이다 — "뉴스 50 · 공시 50" 한 줄로 비율을 읽는다 */}
+      {/* 라벨이 곧 값이다 — "뉴스 50 · 공시 50" 한 줄로 비율을 읽는다. 드래그 중에는 draft 값을 보여 주고, 실제 반영은 놓을 때 한 번뿐이다 */}
       <span className="lab num dock-mix-val" title={DOCK_UI.mixTitle}>
-        뉴스 <b>{newsWeightPct}</b> · 공시 <b>{100 - newsWeightPct}</b>
+        뉴스 <b>{displayNewsWeightPct}</b> · 공시 <b>{100 - displayNewsWeightPct}</b>
       </span>
-      <input type="range" min={0} max={100} step={1} value={newsWeightPct} onChange={(e) => setNewsWeight(Number(e.target.value) / 100)} onPointerUp={releaseFocus} title={DOCK_UI.mixTitle} aria-label={DOCK_UI.mix} />
+      <input
+        type="range"
+        min={0}
+        max={100}
+        step={1}
+        value={displayNewsWeightPct}
+        onChange={(e) => setDraftNewsWeightPct(Number(e.target.value))}
+        onPointerUp={(e) => {
+          releaseNewsWeight(e);
+          releaseFocus(e);
+        }}
+        onKeyUp={releaseNewsWeight}
+        title={DOCK_UI.mixTitle}
+        aria-label={DOCK_UI.mix}
+      />
     </div>
   );
 
