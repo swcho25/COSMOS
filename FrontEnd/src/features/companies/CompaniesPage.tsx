@@ -13,7 +13,6 @@ import "./companies.css";
 const MARKETS: { v: Market | ""; label: string }[] = [
   { v: "", label: "전체 시장" },
   { v: "KOSPI", label: "KOSPI" },
-  { v: "KOSDAQ", label: "KOSDAQ" },
   { v: "NASDAQ", label: "NASDAQ" },
 ];
 

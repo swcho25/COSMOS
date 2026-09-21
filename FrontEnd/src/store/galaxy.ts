@@ -37,8 +37,6 @@ interface GalaxyState {
   /* ---- 필터 ---- */
   /** 은하에 무엇을 올릴지 — 전체 우주냐 내 관심 기업이냐. 같은 화면을 두 범위로 쓴다 */
   scope: GalaxyScope;
-  /** 내 은하에서 관심 기업의 1홉 이웃까지 함께 올릴지 (끄면 관심 기업끼리의 관계만 남는다) */
-  includeNeighbors: boolean;
   industryId: string | null;
   minScore: number;
   activeTypes: Set<RelationshipType>;
@@ -92,7 +90,6 @@ interface GalaxyState {
   selectCompany(id: string | null): void;
   setRoleFilter(r: RoleKey | null): void;
   setScope(scope: GalaxyScope): void;
-  toggleNeighbors(): void;
   setIndustry(id: string | null): void;
   setMinScore(v: number): void;
   toggleType(t: RelationshipType): void;
@@ -132,7 +129,6 @@ export const useGalaxy = create<GalaxyState>((set, get) => ({
   roleFilter: null,
 
   scope: "all",
-  includeNeighbors: true,
   industryId: null,
   minScore: 0,
   activeTypes: new Set(RELATIONSHIP_ORDER),
@@ -219,9 +215,6 @@ export const useGalaxy = create<GalaxyState>((set, get) => ({
   setScope(scope) {
     // 범위가 바뀌면 모델이 통째로 갈린다 — 새 모델에 없을 수 있는 상태(선택 간선·경로 핀·역할 필터)를 setIndustry 와 같게 턴다
     set({ scope, selectedEdgeId: null, selectedId: null, roleFilter: null, industryOpen: false });
-  },
-  toggleNeighbors() {
-    set((s) => ({ includeNeighbors: !s.includeNeighbors }));
   },
   setIndustry(id) {
     // 새 모델에는 없을 수 있는 상태(선택 간선·경로 핀·역할 필터)를 함께 턴다 — 핀이 남으면 crosshair 커서만 남고 경로가 잡히지 않는다

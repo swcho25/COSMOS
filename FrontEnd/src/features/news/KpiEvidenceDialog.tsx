@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import type { NewsDetail, NewsRelatedCompany, Sentiment } from "@/api/types";
 import { fmtPctFrom01 } from "@/lib/format";
-import { SENTIMENT_META, SENTIMENT_PENDING, type ToneMeta } from "@/lib/meta";
+import { SENTIMENT_META, type ToneMeta } from "@/lib/meta";
 import { CompanyAvatar, Empty, Icon, SentimentBadge } from "@/components/ui";
 
 export type KpiEvidenceKind = "companies" | "sentiment" | "evidence" | "confidence";
@@ -95,31 +95,26 @@ function CompaniesBasis({ news, onPick }: { news: NewsDetail; onPick: (id: strin
 const SENTIMENT_ORDER: Sentiment[] = ["POSITIVE", "NEGATIVE", "NEUTRAL"];
 
 interface SentimentBucket {
-  key: Sentiment | "PENDING";
+  key: Sentiment;
   tone: ToneMeta;
   rows: NewsRelatedCompany[];
 }
 
 function SentimentBasis({ news, onPick }: { news: NewsDetail; onPick: (id: string) => void }) {
-  // 감성 분석 전(sentiment: null) 기업도 한 묶음으로 센다 — 연결 기업 수와 이 모달의 합이 어긋나지 않게
-  const groups: SentimentBucket[] = [
-    ...SENTIMENT_ORDER.map((s) => ({ key: s, tone: SENTIMENT_META[s], rows: news.relatedCompanies.filter((r) => r.sentiment === s) })),
-    { key: "PENDING", tone: SENTIMENT_PENDING, rows: news.relatedCompanies.filter((r) => r.sentiment == null) },
-  ];
-  const [pos, neg, neu, pending] = groups.map((g) => g.rows.length);
+  // 감성 분석 전(sentiment: null) 기업은 중립으로 합산한다 — components/ui.tsx SentimentBadge 와 같은 제품 결정
+  const groups: SentimentBucket[] = SENTIMENT_ORDER.map((s) => ({
+    key: s,
+    tone: SENTIMENT_META[s],
+    rows: news.relatedCompanies.filter((r) => (s === "NEUTRAL" ? r.sentiment === s || r.sentiment == null : r.sentiment === s)),
+  }));
+  const [pos, neg, neu] = groups.map((g) => g.rows.length);
   const shown = groups.filter((g) => g.rows.length > 0);
   if (!news.relatedCompanies.length) return <Empty>이 뉴스에 연결된 기업이 없습니다.</Empty>;
   return (
     <>
       <div className="meta mt-8">
         연결 기업 각각에 매겨진 감성 태그를 센 값입니다 — 긍정 <b className="num">{pos}</b> · 부정 <b className="num">{neg}</b> · 중립{" "}
-        <b className="num">{neu}</b>
-        {pending > 0 && (
-          <>
-            {" "}· 분석 전 <b className="num">{pending}</b>
-          </>
-        )}
-        .
+        <b className="num">{neu}</b>.
       </div>
       {shown.map((g) => (
         <div key={g.key} className="mt-12">
