@@ -247,9 +247,15 @@ def normalize_batch(batch, *, company_map=None):
                 raise ValidationError('news region must be domestic or overseas')
             provider = text(provider, 'news source', 70)
             source_key = f'news:{region}:{provider}'
-            text(raw.get('content'), 'news content')
-            # Hash exactly the preserved bytes, not a trimmed body.
-            digest = hashlib.sha256(raw['content'].encode('utf-8')).hexdigest()
+            body = raw.get('content')
+            # The body remains in HDFS and is not written to PostgreSQL. Some
+            # archived pages contain embedded NUL bytes, which PostgreSQL text
+            # cannot store but which are valid in the immutable Parquet source.
+            # Accept them here while still requiring real text and validating
+            # the hash over the exact, unmodified source bytes.
+            if not isinstance(body, str) or not body.strip():
+                raise ValidationError('news content must be nonempty text')
+            digest = hashlib.sha256(body.encode('utf-8')).hexdigest()
             if raw.get('content_hash') not in (None, digest):
                 raise ValidationError('news content_hash does not match preserved body')
             metadata = raw.get('metadata') or {}

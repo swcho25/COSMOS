@@ -179,15 +179,33 @@ def _write_document(cursor, record, source_id, companies):
         stored_type, last_collected_at, stored_hash, status, analysis_version, clean_uri = cursor.fetchone()
         if stored_type != record["document_type"]:
             raise LoadError("existing document type conflicts with its detail table")
-        if (kind == "NEWS" and status == "ANALYZED" and record.get("status") == "ANALYZED"
-                and analysis_version != record.get("analysis_version")):
+        collected_at = datetime.fromisoformat(record["collected_at"])
+        version_conflict = (kind == "NEWS" and status == "ANALYZED"
+                            and record.get("status") == "ANALYZED"
+                            and analysis_version != record.get("analysis_version"))
+        historical_duplicate = (version_conflict
+                                and str(record.get("analysis_version", "")).startswith("news-historical-"))
+        if version_conflict and not historical_duplicate:
             raise LoadError("a different analysis_version requires an explicit NEWS reanalysis workflow")
+        if historical_duplicate:
+            # A historical backfill can rediscover a URL that the live
+            # pipeline already analyzed under its realtime contract. Archive
+            # and live renderings may have different hashes, while the schema
+            # intentionally keeps one canonical document per URL.
+            # Preserve that authoritative analysis and checkpoint this input;
+            # do not silently turn the historical contract into reanalysis.
+            accept_content = False
+            accept_links = False
+            cursor.execute("""UPDATE source_document SET first_collected_at = %s,
+                              updated_at = CURRENT_TIMESTAMP
+                              WHERE document_id = %s AND first_collected_at > %s""",
+                           (collected_at, document_id, collected_at))
+            updated = cursor.rowcount > 0
         if kind == "NEWS" and status == "ANALYZED" and record.get("status") == "COLLECTED":
             # Collection hints must never recreate links removed by the
             # authoritative analyzed company set.
             accept_links = False
-        collected_at = datetime.fromisoformat(record["collected_at"])
-        accept_content = collected_at >= last_collected_at
+        accept_content = accept_content and collected_at >= last_collected_at
         if accept_content:
             incoming_hash = record.get("content_hash")
             protected_news_revision = (
