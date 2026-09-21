@@ -36,7 +36,16 @@ public class GraphQueryRepository {
     public List<NodeRow> findActiveNodes(List<String> markets, UUID industryId) {
         String sql = """
                 SELECT c.company_id, c.name, c.stock_code, c.market,
-                       primary_industry.name AS industry_name
+                       primary_industry.name AS industry_name,
+                       CASE WHEN price_7d.close_price IS NULL OR price_7d.close_price = 0 THEN NULL
+                            ELSE ROUND((latest_price.close_price / price_7d.close_price - 1) * 100, 6)
+                       END AS price_change_7d,
+                       CASE WHEN price_30d.close_price IS NULL OR price_30d.close_price = 0 THEN NULL
+                            ELSE ROUND((latest_price.close_price / price_30d.close_price - 1) * 100, 6)
+                       END AS price_change_30d,
+                       CASE WHEN price_90d.close_price IS NULL OR price_90d.close_price = 0 THEN NULL
+                            ELSE ROUND((latest_price.close_price / price_90d.close_price - 1) * 100, 6)
+                       END AS price_change_90d
                 FROM company c
                 LEFT JOIN LATERAL (
                     SELECT i.name
@@ -46,6 +55,41 @@ public class GraphQueryRepository {
                     ORDER BY ci.is_primary DESC, i.name, i.industry_id
                     LIMIT 1
                 ) primary_industry ON TRUE
+                LEFT JOIN LATERAL (
+                    SELECT sph.trading_at, sph.close_price
+                    FROM stock_price_history sph
+                    WHERE sph.company_id = c.company_id
+                      AND sph.interval_type = '1D'
+                    ORDER BY sph.trading_at DESC
+                    LIMIT 1
+                ) latest_price ON TRUE
+                LEFT JOIN LATERAL (
+                    SELECT sph.close_price
+                    FROM stock_price_history sph
+                    WHERE sph.company_id = c.company_id
+                      AND sph.interval_type = '1D'
+                      AND sph.trading_at <= latest_price.trading_at - INTERVAL '7 days'
+                    ORDER BY sph.trading_at DESC
+                    LIMIT 1
+                ) price_7d ON TRUE
+                LEFT JOIN LATERAL (
+                    SELECT sph.close_price
+                    FROM stock_price_history sph
+                    WHERE sph.company_id = c.company_id
+                      AND sph.interval_type = '1D'
+                      AND sph.trading_at <= latest_price.trading_at - INTERVAL '30 days'
+                    ORDER BY sph.trading_at DESC
+                    LIMIT 1
+                ) price_30d ON TRUE
+                LEFT JOIN LATERAL (
+                    SELECT sph.close_price
+                    FROM stock_price_history sph
+                    WHERE sph.company_id = c.company_id
+                      AND sph.interval_type = '1D'
+                      AND sph.trading_at <= latest_price.trading_at - INTERVAL '90 days'
+                    ORDER BY sph.trading_at DESC
+                    LIMIT 1
+                ) price_90d ON TRUE
                 WHERE c.status = 'ACTIVE'
                   AND c.market IN (:markets)
                   AND (CAST(:industryId AS UUID) IS NULL OR EXISTS (
@@ -63,7 +107,10 @@ public class GraphQueryRepository {
                 rs.getString("name"),
                 rs.getString("stock_code"),
                 rs.getString("market"),
-                rs.getString("industry_name")));
+                rs.getString("industry_name"),
+                rs.getBigDecimal("price_change_7d"),
+                rs.getBigDecimal("price_change_30d"),
+                rs.getBigDecimal("price_change_90d")));
     }
 
     public List<NodeRow> findActiveNodesByIds(List<UUID> companyIds) {
@@ -72,7 +119,10 @@ public class GraphQueryRepository {
         }
         return jdbcTemplate.query("""
                         SELECT c.company_id, c.name, c.stock_code, c.market,
-                               primary_industry.name AS industry_name
+                               primary_industry.name AS industry_name,
+                               NULL::NUMERIC AS price_change_7d,
+                               NULL::NUMERIC AS price_change_30d,
+                               NULL::NUMERIC AS price_change_90d
                         FROM company c
                         LEFT JOIN LATERAL (
                             SELECT i.name
@@ -90,7 +140,10 @@ public class GraphQueryRepository {
                         rs.getString("name"),
                         rs.getString("stock_code"),
                         rs.getString("market"),
-                        rs.getString("industry_name")));
+                        rs.getString("industry_name"),
+                        rs.getBigDecimal("price_change_7d"),
+                        rs.getBigDecimal("price_change_30d"),
+                        rs.getBigDecimal("price_change_90d")));
     }
 
     public List<EdgeRow> findEdges(UUID snapshotId, String window) {
@@ -232,7 +285,16 @@ public class GraphQueryRepository {
     public record SnapshotRow(UUID snapshotId, Instant asOfAt) {
     }
 
-    public record NodeRow(UUID companyId, String name, String stockCode, String market, String industryName) {
+    public record NodeRow(
+            UUID companyId,
+            String name,
+            String stockCode,
+            String market,
+            String industryName,
+            BigDecimal priceChange7d,
+            BigDecimal priceChange30d,
+            BigDecimal priceChange90d
+    ) {
     }
 
     public record EdgeRow(

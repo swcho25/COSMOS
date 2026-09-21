@@ -14,6 +14,7 @@ import com.cosmos.api.graph.dto.LatestGraphResponse;
 import com.cosmos.api.graph.dto.RelationshipCompanyResponse;
 import com.cosmos.api.graph.dto.RelationshipDetailResponse;
 import com.cosmos.api.graph.dto.RelationshipEvidenceResponse;
+import com.cosmos.api.graph.dto.StockPriceChangeResponse;
 import com.cosmos.api.graph.error.GraphErrorCode;
 import com.cosmos.api.graph.repository.GraphQueryRepository;
 import com.cosmos.api.graph.repository.GraphQueryRepository.EdgeRow;
@@ -232,7 +233,9 @@ public class GraphService {
 
     private GraphNodeResponse toNode(NodeRow row) {
         return new GraphNodeResponse(
-                row.companyId(), row.name(), row.stockCode(), row.market(), row.industryName());
+                row.companyId(), row.name(), row.stockCode(), row.market(), row.industryName(),
+                new StockPriceChangeResponse(
+                        row.priceChange7d(), row.priceChange30d(), row.priceChange90d()));
     }
 
     private GraphEdgeResponse toEdge(EdgeRow row) {

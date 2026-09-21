@@ -17,6 +17,7 @@ import com.cosmos.api.graph.dto.LatestGraphResponse;
 import com.cosmos.api.graph.dto.RelationshipCompanyResponse;
 import com.cosmos.api.graph.dto.RelationshipDetailResponse;
 import com.cosmos.api.graph.dto.RelationshipEvidenceResponse;
+import com.cosmos.api.graph.dto.StockPriceChangeResponse;
 import com.cosmos.api.graph.service.GraphService;
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -55,7 +56,10 @@ class GraphControllerTest {
                 AS_OF_AT.plusSeconds(3600),
                 "30D",
                 false,
-                List.of(new GraphNodeResponse(COMPANY_A, "기업A", "A001", "KOSPI", "반도체")),
+                List.of(new GraphNodeResponse(
+                        COMPANY_A, "기업A", "A001", "KOSPI", "반도체",
+                        new StockPriceChangeResponse(
+                                new BigDecimal("1.25"), new BigDecimal("-3.42"), new BigDecimal("7.81")))),
                 List.of(edge())));
 
         mockMvc.perform(get("/api/graphs/latest"))
@@ -65,6 +69,9 @@ class GraphControllerTest {
                 .andExpect(jsonPath("$.window").value("30D"))
                 .andExpect(jsonPath("$.personalized").value(false))
                 .andExpect(jsonPath("$.nodes[0].industryName").value("반도체"))
+                .andExpect(jsonPath("$.nodes[0].priceChange.7D").value(1.25))
+                .andExpect(jsonPath("$.nodes[0].priceChange.30D").value(-3.42))
+                .andExpect(jsonPath("$.nodes[0].priceChange.90D").value(7.81))
                 .andExpect(jsonPath("$.edges[0].relationshipType").value("SUPPLY"))
                 .andExpect(jsonPath("$.edges[0].newsScore").value(75.0))
                 .andExpect(jsonPath("$.edges[0].disclosureScore").value(90.0));
