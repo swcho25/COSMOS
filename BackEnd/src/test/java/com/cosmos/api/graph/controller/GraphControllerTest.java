@@ -49,10 +49,11 @@ class GraphControllerTest {
 
     @Test
     void returnsLatestGraphUsingDocumentedDefaults() throws Exception {
-        when(graphService.findLatestGraph(null, null)).thenReturn(new LatestGraphResponse(
+        when(graphService.findLatestGraph(null, null, "30D")).thenReturn(new LatestGraphResponse(
                 SNAPSHOT_ID,
                 AS_OF_AT,
                 AS_OF_AT.plusSeconds(3600),
+                "30D",
                 false,
                 List.of(new GraphNodeResponse(COMPANY_A, "기업A", "A001", "KOSPI", "반도체")),
                 List.of(edge())));
@@ -61,21 +62,23 @@ class GraphControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.snapshotId").value(SNAPSHOT_ID.toString()))
                 .andExpect(jsonPath("$.nextRefreshAt").value("2026-09-07T07:00:00Z"))
+                .andExpect(jsonPath("$.window").value("30D"))
                 .andExpect(jsonPath("$.personalized").value(false))
                 .andExpect(jsonPath("$.nodes[0].industryName").value("반도체"))
                 .andExpect(jsonPath("$.edges[0].relationshipType").value("SUPPLY"))
                 .andExpect(jsonPath("$.edges[0].newsScore").value(75.0))
                 .andExpect(jsonPath("$.edges[0].disclosureScore").value(90.0));
 
-        verify(graphService).findLatestGraph(null, null);
+        verify(graphService).findLatestGraph(null, null, "30D");
     }
 
     @Test
     void returnsCompanyGraphUsingDocumentedDefaults() throws Exception {
-        when(graphService.findCompanyGraph(COMPANY_A, 3))
+        when(graphService.findCompanyGraph(COMPANY_A, 3, "30D"))
                 .thenReturn(new CompanyGraphResponse(
                         SNAPSHOT_ID,
                         AS_OF_AT,
+                        "30D",
                         COMPANY_A,
                         false,
                         List.of(new CompanyGraphNodeResponse(COMPANY_A, "기업A", 0)),
@@ -83,12 +86,31 @@ class GraphControllerTest {
 
         mockMvc.perform(get("/api/graphs/companies/{companyId}", COMPANY_A))
                 .andExpect(status().isOk())
+                .andExpect(jsonPath("$.window").value("30D"))
                 .andExpect(jsonPath("$.centerCompanyId").value(COMPANY_A.toString()))
                 .andExpect(jsonPath("$.nodes[0].depth").value(0))
                 .andExpect(jsonPath("$.edges[0].newsScore").value(75.0))
                 .andExpect(jsonPath("$.edges[0].disclosureScore").value(90.0));
 
-        verify(graphService).findCompanyGraph(COMPANY_A, 3);
+        verify(graphService).findCompanyGraph(COMPANY_A, 3, "30D");
+    }
+
+    @Test
+    void forwardsRequestedWindowToGraphQueries() throws Exception {
+        when(graphService.findLatestGraph(null, null, "7D")).thenReturn(new LatestGraphResponse(
+                SNAPSHOT_ID, AS_OF_AT, AS_OF_AT.plusSeconds(3600), "7D", false, List.of(), List.of()));
+        when(graphService.findCompanyGraph(COMPANY_A, 3, "90D")).thenReturn(new CompanyGraphResponse(
+                SNAPSHOT_ID, AS_OF_AT, "90D", COMPANY_A, false, List.of(), List.of()));
+
+        mockMvc.perform(get("/api/graphs/latest").param("window", "7D"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.window").value("7D"));
+        mockMvc.perform(get("/api/graphs/companies/{companyId}", COMPANY_A).param("window", "90D"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.window").value("90D"));
+
+        verify(graphService).findLatestGraph(null, null, "7D");
+        verify(graphService).findCompanyGraph(COMPANY_A, 3, "90D");
     }
 
     @Test

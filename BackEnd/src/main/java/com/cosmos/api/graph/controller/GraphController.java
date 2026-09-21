@@ -31,17 +31,19 @@ public class GraphController {
     @GetMapping("/graphs/latest")
     public LatestGraphResponse findLatestGraph(
             @RequestParam(required = false) @Size(max = 100) String universe,
-            @RequestParam(required = false) UUID industryId
+            @RequestParam(required = false) UUID industryId,
+            @RequestParam(defaultValue = "30D") String window
     ) {
-        return graphService.findLatestGraph(universe, industryId);
+        return graphService.findLatestGraph(universe, industryId, window);
     }
 
     @GetMapping("/graphs/companies/{companyId}")
     public CompanyGraphResponse findCompanyGraph(
             @PathVariable UUID companyId,
-            @RequestParam(defaultValue = "3") @Min(1) @Max(3) int maxDepth
+            @RequestParam(defaultValue = "3") @Min(1) @Max(3) int maxDepth,
+            @RequestParam(defaultValue = "30D") String window
     ) {
-        return graphService.findCompanyGraph(companyId, maxDepth);
+        return graphService.findCompanyGraph(companyId, maxDepth, window);
     }
 
     @GetMapping("/relationships/{relationshipId}")

@@ -64,6 +64,9 @@ class GraphServiceIntegrationTest {
                 """, SNAPSHOT_ID);
         insertRelationship(RELATIONSHIP_AB, COMPANY_A, COMPANY_B, "82.4", 16);
         insertRelationship(RELATIONSHIP_BC, COMPANY_B, COMPANY_C, "60.0", 4);
+        insertRelationshipScore(RELATIONSHIP_AB, "7D", "91.0", 8);
+        insertRelationshipScore(RELATIONSHIP_AB, "90D", "78.0", 24);
+        insertRelationshipScore(RELATIONSHIP_BC, "90D", "64.0", 7);
         jdbcTemplate.update("""
                 INSERT INTO data_source (source_id, name, source_type)
                 VALUES (?, '그래프 테스트 출처', 'NEWS')
@@ -83,11 +86,12 @@ class GraphServiceIntegrationTest {
 
     @Test
     void returnsLatestPublishedGraphForDefaultUniverse() {
-        LatestGraphResponse result = graphService.findLatestGraph(null, null);
+        LatestGraphResponse result = graphService.findLatestGraph(null, null, "30D");
 
         assertThat(result.snapshotId()).isEqualTo(SNAPSHOT_ID);
         assertThat(result.asOfAt()).hasToString("2026-09-07T06:00:00Z");
         assertThat(result.nextRefreshAt()).hasToString("2026-09-07T07:00:00Z");
+        assertThat(result.window()).isEqualTo("30D");
         assertThat(result.personalized()).isFalse();
         assertThat(result.nodes()).extracting(node -> node.companyId())
                 .containsExactly(COMPANY_A, COMPANY_B, COMPANY_C);
@@ -98,7 +102,7 @@ class GraphServiceIntegrationTest {
 
     @Test
     void filtersLatestGraphByIndustry() {
-        LatestGraphResponse result = graphService.findLatestGraph(null, INDUSTRY_ID);
+        LatestGraphResponse result = graphService.findLatestGraph(null, INDUSTRY_ID, "30D");
 
         assertThat(result.nodes()).extracting(node -> node.companyId())
                 .containsExactly(COMPANY_A, COMPANY_B);
@@ -108,7 +112,7 @@ class GraphServiceIntegrationTest {
 
     @Test
     void returnsCompanyGraphWithBreadthFirstDepths() {
-        CompanyGraphResponse result = graphService.findCompanyGraph(COMPANY_A, 3);
+        CompanyGraphResponse result = graphService.findCompanyGraph(COMPANY_A, 3, "30D");
 
         assertThat(result.centerCompanyId()).isEqualTo(COMPANY_A);
         assertThat(result.nodes()).extracting(node -> node.companyId(), node -> node.depth())
@@ -117,6 +121,21 @@ class GraphServiceIntegrationTest {
                         org.assertj.core.groups.Tuple.tuple(COMPANY_B, 1),
                         org.assertj.core.groups.Tuple.tuple(COMPANY_C, 2));
         assertThat(result.edges()).hasSize(2);
+    }
+
+    @Test
+    void filtersWholeAndCompanyGraphsByRequestedWindow() {
+        LatestGraphResponse latest = graphService.findLatestGraph(null, null, "7d");
+        CompanyGraphResponse company = graphService.findCompanyGraph(COMPANY_A, 3, "7D");
+
+        assertThat(latest.window()).isEqualTo("7D");
+        assertThat(latest.edges()).singleElement()
+                .satisfies(edge -> assertThat(edge.relationshipId()).isEqualTo(RELATIONSHIP_AB));
+        assertThat(company.window()).isEqualTo("7D");
+        assertThat(company.nodes()).extracting(node -> node.companyId())
+                .containsExactly(COMPANY_A, COMPANY_B);
+        assertThat(company.edges()).singleElement()
+                .satisfies(edge -> assertThat(edge.score()).isEqualByComparingTo("91.000000"));
     }
 
     @Test
@@ -169,7 +188,10 @@ class GraphServiceIntegrationTest {
     @Test
     void rejectsUnsupportedUniverseWindowAndCursor() {
         assertError(
-                () -> graphService.findLatestGraph("KOSDAQ100", null),
+                () -> graphService.findLatestGraph("KOSDAQ100", null, "30D"),
+                CommonErrorCode.VALIDATION_FAILED);
+        assertError(
+                () -> graphService.findLatestGraph(null, null, "14D"),
                 CommonErrorCode.VALIDATION_FAILED);
         assertError(
                 () -> graphService.findRelationship(RELATIONSHIP_AB, "14D"),
@@ -178,7 +200,7 @@ class GraphServiceIntegrationTest {
                 () -> graphService.findRelationshipEvidence(RELATIONSHIP_AB, "invalid", 10),
                 CommonErrorCode.INVALID_CURSOR);
         assertError(
-                () -> graphService.findCompanyGraph(COMPANY_A, 4),
+                () -> graphService.findCompanyGraph(COMPANY_A, 4, "30D"),
                 CommonErrorCode.VALIDATION_FAILED);
         assertError(
                 () -> graphService.findRelationshipEvidence(RELATIONSHIP_AB, null, 21),
@@ -197,7 +219,7 @@ class GraphServiceIntegrationTest {
 
         jdbcTemplate.update("UPDATE graph_snapshot SET status = 'ARCHIVED' WHERE snapshot_id = ?", SNAPSHOT_ID);
         assertError(
-                () -> graphService.findLatestGraph(null, null),
+                () -> graphService.findLatestGraph(null, null, "30D"),
                 GraphErrorCode.GRAPH_SNAPSHOT_NOT_FOUND);
     }
 
@@ -235,6 +257,22 @@ class GraphServiceIntegrationTest {
                 VALUES (?, '30D', ?, CAST(? AS NUMERIC), 75.0, 90.0, 'POSITIVE', 0.88, ?,
                         'formula-v1', '2026-09-07T06:00:00Z')
                 """, relationshipId, SNAPSHOT_ID, score, evidenceCount);
+    }
+
+    private void insertRelationshipScore(
+            UUID relationshipId,
+            String window,
+            String score,
+            int evidenceCount
+    ) {
+        jdbcTemplate.update("""
+                INSERT INTO relationship_score_current
+                    (relationship_id, window_type, snapshot_id, score, news_score,
+                     disclosure_score, impact_direction,
+                     confidence, evidence_count, formula_version, as_of_at)
+                VALUES (?, ?, ?, CAST(? AS NUMERIC), 75.0, 90.0, 'POSITIVE', 0.88, ?,
+                        'formula-v1', '2026-09-07T06:00:00Z')
+                """, relationshipId, window, SNAPSHOT_ID, score, evidenceCount);
     }
 
     private void insertNews(UUID newsId, String title, String publishedAt) {
