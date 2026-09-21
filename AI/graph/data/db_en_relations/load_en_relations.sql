@@ -72,6 +72,15 @@ DO UPDATE SET snapshot_id = EXCLUDED.snapshot_id, score = EXCLUDED.score,
 
 -- 3) 근거 연결. 문서가 이 run 에 없으면 그 근거는 건너뛴다 (없는 문서를 가리키지 않는다).
 INSERT INTO cosmos_analysis.relationship_evidence
+-- ⚠️ evidence_id 를 넣지 않는다 — 알려진 결함이다 (2026-09-21 백엔드 지적).
+-- 화면은 relationship_evidence.evidence_id 로 document_evidence 의 **근거 문장**을 찾는다.
+-- 이 로더는 document_id 까지만 연결하므로 문장이 안 뜬다 (이 적재분 1,031행이 해당).
+--
+-- 고치는 방법: 관계를 만든 그 문장을 document_evidence 에서 찾아 evidence_id 를 함께 넣는다.
+--   국내  artifacts/.../temporal_evidence.jsonl 의 quote
+--   영문  data/en_rel_hits.jsonl 의 sentence
+-- 원문 문장을 이미 갖고 있으므로 재추출이 아니라 매칭이면 된다.
+-- 같은 문서의 아무 문장이나 붙이면 관계와 무관한 문장이 노출되므로 그렇게 하면 안 된다.
     (run_id, relationship_evidence_id, relationship_id, document_id, formula_version)
 SELECT t.run_id, gen_random_uuid(), cr.relationship_id, e.document_id, 'rel-v0.4-en-news'
 FROM _ev e CROSS JOIN _t t
