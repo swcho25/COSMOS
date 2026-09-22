@@ -48,6 +48,33 @@ from relevance_sentence_evidence import build_sentence_catalog
 # field describes the publication, which is a different question.
 HANGUL = re.compile(r"[가-힣]")
 
+# What counts as a sentence, set from what the live feed actually produced
+# (3,057 evidence sentences, 2026-09-22: median 68 characters, p10 33, p90 127).
+#
+# The floor is 12 because that is where the data changes character. Every
+# segment of 11 characters or fewer was page furniture sitting next to a company
+# name - a bare "카카오", "네이버 채널구독", "[사진=현대로템]", "SK하이닉스 전경." -
+# and from 12 up real sentences start ("한화도 법원으로 갔다."). 27 of 3,057, 0.9%.
+# A wider floor costs real evidence: "삼성전자는 이익이 늘었다." is 14 characters.
+#
+# The ceiling catches unsegmented blocks. One 1,036-character stock table with no
+# full stop in it parsed as a single sentence. Those are worse than useless: the
+# classifier truncates at 128 tokens, so the company would be labelled from an
+# arbitrary prefix of a price list.
+#
+# Deliberately no digit-ratio rule. The most numeric sentences turned out to be
+# the best evidence ("매출액 1.02조원(전년동기대비 +16.33%), 영업이익 3,010.36억원").
+MIN_EVIDENCE_CHARS = 12
+MAX_EVIDENCE_CHARS = 400
+
+# Photo credits survive the floor when the outlet writes a longer one
+# ("사진=현대자동차 홈페이지", "(사진=기아 제공) 2025.01.09."). They name the company
+# but say nothing about it. Only applied to short segments: in a full sentence a
+# trailing credit is a tail on real content, and dropping the whole thing would
+# cost more than it saves.
+PHOTO_CREDIT = re.compile(r"(?:사진|이미지|자료)\s*=|\[\s*사진")
+CAPTION_MAX_CHARS = 30
+
 STATUS_PENDING = "pending"
 STATUS_NO_EVIDENCE = "no_attributed_sentence"
 
@@ -194,7 +221,10 @@ def article_evidence(title: str, content: str, companies) -> list[dict]:
             if clipped is None:
                 continue
             end, scan_text = clipped
-            if not scan_text.strip():
+            stripped = scan_text.strip()
+            if not MIN_EVIDENCE_CHARS <= len(stripped) <= MAX_EVIDENCE_CHARS:
+                continue
+            if len(stripped) < CAPTION_MAX_CHARS and PHOTO_CREDIT.search(stripped):
                 continue
             # Attribution is decided on the masked, trimmed copy; the sentence
             # stored and shown is the original text of the same range.

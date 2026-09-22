@@ -113,7 +113,7 @@ class ScannableRegionTest(unittest.TestCase):
 
     def test_ordinary_article_is_untouched_by_the_cut(self):
         result = article_evidence(
-            "삼성전자 실적", "삼성전자는 영업이익이 늘었다고 밝혔다.",
+            "삼성전자, 3분기 실적 발표…영업이익 개선", "삼성전자는 영업이익이 늘었다고 밝혔다.",
             [company("005930", "삼성전자")])
         self.assertEqual(result[0]["n_sentences"], 2)
 
@@ -125,11 +125,54 @@ class ScannableRegionTest(unittest.TestCase):
             self.assertEqual(item["text"], field[item["source"]][item["start"]:item["end"]])
 
 
+class EvidenceLengthTest(unittest.TestCase):
+    """Page furniture and unsegmented blocks are not sentences about a company."""
+
+    def test_bare_name_and_page_furniture_are_not_evidence(self):
+        """Every observed segment of 11 characters or fewer was furniture."""
+        for fragment in ("카카오", "SK하이닉스 전경.", "네이버 채널구독", "[사진=현대로템]"):
+            result = article_evidence("제목", fragment, [company("035720", "카카오"),
+                                                        company("000660", "SK하이닉스"),
+                                                        company("035420", "네이버"),
+                                                        company("064350", "현대로템")])
+            self.assertEqual(sum(item["n_sentences"] for item in result), 0,
+                             f"{fragment!r} should not be evidence")
+
+    def test_a_longer_photo_credit_is_dropped(self):
+        result = article_evidence("제목", "사진=현대자동차 홈페이지",
+                                  [company("005380", "현대자동차")])
+        self.assertEqual(result[0]["n_sentences"], 0)
+
+    def test_a_short_real_sentence_survives_the_floor(self):
+        result = article_evidence("제목", "한화도 법원으로 갔다.", [company("000880", "한화")])
+        self.assertEqual(result[0]["n_sentences"], 1)
+
+    def test_an_unsegmented_price_table_is_dropped(self):
+        table = "LG Corp. 116,500 UP 5,200" + "POSCO FUTURE M 184,200 UP 6,100" * 20
+        self.assertGreater(len(table), 400)
+        result = article_evidence("제목", table, [company("003550", "LG Corp.",
+                                                          market="KOSPI")])
+        self.assertEqual(result[0]["n_sentences"], 0)
+
+    def test_a_numeric_earnings_sentence_is_kept(self):
+        """The most numeric sentences are the best evidence, so no digit rule."""
+        body = ("셀트리온은 25년3분기 연결기준 매출액 1.02조원(전년동기대비 +16.33%), "
+                "영업이익 3,010.36억원(전년동기대비 +44.94%)을 기록했다.")
+        result = article_evidence("제목", body, [company("068270", "셀트리온")])
+        self.assertEqual(result[0]["n_sentences"], 1)
+
+    def test_an_ordinary_sentence_is_unaffected(self):
+        result = article_evidence(
+            "제목", "삼성전자는 3분기 영업이익이 크게 늘었다고 밝혔다.",
+            [company("005930", "삼성전자")])
+        self.assertEqual(result[0]["n_sentences"], 1)
+
+
 class CatalogTest(unittest.TestCase):
     def test_offsets_address_their_own_field(self):
         """Offsets are per field with an explicit source, never into a joined
         title + body string, which is where the shifted-evidence bug came from."""
-        title = "삼성전자 실적 발표"
+        title = "삼성전자, 3분기 실적 발표…영업이익 개선"
         body = "삼성전자는 영업이익이 늘었다고 밝혔다."
         result = article_evidence(title, body, [company("005930", "삼성전자")])
         field = {"title": title, "body": body}
@@ -138,7 +181,8 @@ class CatalogTest(unittest.TestCase):
 
     def test_reading_order_is_title_then_body(self):
         result = article_evidence(
-            "삼성전자 실적 발표", "삼성전자는 이익이 늘었다.", [company("005930", "삼성전자")])
+            "삼성전자, 3분기 실적 발표…영업이익 개선", "삼성전자는 이익이 늘었다.",
+            [company("005930", "삼성전자")])
         evidence = result[0]["evidence"]
         self.assertEqual([item["source"] for item in evidence], ["title", "body"])
         self.assertLess(evidence[0]["sentence_order"], evidence[1]["sentence_order"])

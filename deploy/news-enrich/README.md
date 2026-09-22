@@ -122,6 +122,31 @@ sudo install -m 0644 deploy/news-enrich/cosmos-*.service \
 sudo systemctl daemon-reload
 ```
 
+## Database privileges
+
+The loader needs rights no existing service role has. Verified on the production
+database 2026-09-22:
+
+| role | company_document | document_evidence |
+| --- | --- | --- |
+| `cosmos_document_loader` | DELETE, INSERT, SELECT, UPDATE | **none** |
+| `cosmos_loader` | none | **none** |
+
+Both tables are owned by `cosmos`, so the owner has to grant this before the
+loader can run at all — it fails with `permission denied for table
+document_evidence` on the first batch:
+
+```sql
+GRANT SELECT, INSERT, DELETE ON document_evidence TO cosmos_document_loader;
+```
+
+DELETE is needed because evidence is replaced per (document, company) rather
+than merged; a re-run must not leave the previous run's sentences beside this
+run's verdict.
+
+A dedicated `cosmos_sentiment_loader` role would be cleaner than widening the
+document loader's reach. The env file's DSN is the only thing that changes.
+
 ## Prove one pass before enabling the timers
 
 ```bash
