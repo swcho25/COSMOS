@@ -86,8 +86,9 @@ export function bezier(from: ArrayLike<number>, to: ArrayLike<number>, ctrl: THR
 /**
  * 점수(0~1) → 튜브 반지름(월드 단위). 가까이 가면 굵어지고 멀면 가늘어진다.
  * 전체 은하 뷰가 이제 간선 예산(budget) 없이 모든 관계선을 그리므로(three/emphasis.ts BUDGET_RATIO.galaxy),
- * 화면에 뜨는 선 수가 예전(상위 8%)보다 훨씬 많다 — 굵기를 절반 이하로 낮춰 전체가 겹쳐 보여도 부담이 없게 한다.
+ * 화면에 뜨는 선 수가 예전(상위 8%)보다 훨씬 많아 굵기를 크게 낮췄었다. 다만 그 값은 너무 얇아 오히려
+ * 눈에 잘 안 들어온다는 피드백을 받아 소폭 다시 올렸다 — 전체 표시 이전(0.09 + s²×0.4)보다는 여전히 얇다.
  */
 export function radiusOf(s: number) {
-  return 0.035 + s * s * 0.16;
+  return 0.05 + s * s * 0.22;
 }

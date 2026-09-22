@@ -52,6 +52,7 @@ import collections
 import csv
 import datetime as dt
 import json
+import math
 import re
 from pathlib import Path
 
@@ -77,6 +78,19 @@ FORMULA = "rel-v0.3-expanded"
 
 def norm(s: str) -> str:
     return re.sub(r"[()（）\[\]주식회사㈜\s\.,'\"-]", "", s or "")
+
+
+# 신뢰도: 근거가 많을수록 100%에 수렴하되 포화되지 않게 한다.
+# 이전 식(0.5 + 0.1n)은 근거 5건에서 이미 100% 라 245개 중 28%가 만점에 몰렸다.
+# 근거 5건과 150건이 같은 값이 되어 변별력이 없었다. 이 식은 만점이 2.4% 다.
+# 하한 0.5 는 의도한 것이다 — 근거 1건이어도 원문 인용이 있는 확인된 관계라
+# 18% 같은 값을 주면 화면에서 '틀린 관계'로 읽힌다.
+# 여전히 확률이 아니다. 근거량을 0.5~1.0 으로 옮긴 값이며 검증된 적 없다.
+CONF_SCALE = 8.0
+
+
+def confidence_of(n_docs: int) -> float:
+    return round(0.5 + 0.5 * (1.0 - math.exp(-n_docs / CONF_SCALE)), 6)
 
 
 def main() -> None:
@@ -141,7 +155,12 @@ def main() -> None:
     if DIRECTION_CSV.exists():
         with DIRECTION_CSV.open(encoding="utf-8-sig", newline="") as f:
             for r in csv.DictReader(f):
-                key = frozenset((r["source_stock_code"], r["target_stock_code"]))
+                # 키는 (무순서 쌍, 유형) 이다 — build_relationship_seed.py 와 같아야 한다.
+                # 쌍만으로 잡으면 한 쌍에 여러 유형이 있을 때 부호가 서로 번진다.
+                # 실측: 005490-003670 의 INVEST(r=-0.0568) 부호가 SUPPLY 에 붙어
+                # 같은 그룹 계열사가 '부정 전이' 로 표시됐다.
+                key = (tuple(sorted((r["source_stock_code"], r["target_stock_code"]))),
+                       r["relationship_type_code"])
                 direction[key] = r["impact_direction"]
 
     rels, scores, skipped = [], [], collections.Counter()
@@ -176,8 +195,8 @@ def main() -> None:
         scores.append({**nat, "window_type": WINDOW, "score": score,
                        "news_score": "" if news_score is None else news_score,
                        "disclosure_score": "" if disc_score is None else disc_score,
-                       "impact_direction": direction.get(frozenset((a, b)), "POSITIVE"),
-                       "confidence": round(min(1.0, 0.5 + 0.1 * n_docs), 6),
+                       "impact_direction": direction.get((tuple(sorted((a, b))), rt), "POSITIVE"),
+                       "confidence": confidence_of(n_docs),
                        "evidence_count": n_docs,
                        "formula_version": FORMULA, "as_of_at": as_of_at})
 

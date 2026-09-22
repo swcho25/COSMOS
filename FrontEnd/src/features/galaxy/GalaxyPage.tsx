@@ -61,6 +61,8 @@ export default function GalaxyPage() {
    * (렌더 중 읽어야 하므로 ref 대신 지연 초기화 state 를 쓴다 — ref.current 를 렌더 중에 읽는 것은 React 규칙 위반이다)
    */
   const [newsReturnTo] = useState((location.state as { newsReturnTo?: string } | null)?.newsReturnTo ?? null);
+  /** 위 안내 팝업을 사용자가 X 로 닫았는지 — 닫으면 이번 방문 동안은 다시 띄우지 않는다 */
+  const [newsReturnDismissed, setNewsReturnDismissed] = useState(false);
 
   const scope = useGalaxy((s) => s.scope);
   const industryId = useGalaxy((s) => s.industryId);
@@ -416,12 +418,19 @@ export default function GalaxyPage() {
       </div>
       )}
 
-      {/* 좌상단: 뉴스 페이지에서 관계선 보기로 들어온 경우 되돌아가는 길 — 은하 뷰(focusId 없음)에서만 의미가 있다 */}
-      {!focusId && newsReturnTo && (
+      {/* 좌상단: 뉴스 페이지에서 관계선 보기로 들어온 경우 되돌아가는 길 — 은하 뷰(focusId 없음)에서만 의미가 있다.
+          예전엔 다른 브레드크럼과 같은 옅은 알약 버튼이라 눈에 잘 안 띈다는 피드백을 받았다 — 사용자가 X 로 직접
+          닫기 전까지는 화면에 계속 남아 있는, 더 도드라진 팝업 카드로 바꿨다(자동으로 사라지지 않는다) */}
+      {!focusId && newsReturnTo && !newsReturnDismissed && (
         <div className="hud hud-crumb">
-          <button type="button" className="crumb" onClick={() => navigate(newsReturnTo)} title="보고 있던 뉴스로 돌아가기">
-            <Icon.Back /> 뉴스로 돌아가기
-          </button>
+          <div className="news-return-toast" role="status">
+            <button type="button" className="news-return-go" onClick={() => navigate(newsReturnTo)} title="보고 있던 뉴스로 돌아가기">
+              <Icon.Back /> 뉴스로 돌아가기
+            </button>
+            <button type="button" className="news-return-close" onClick={() => setNewsReturnDismissed(true)} aria-label="이 안내 닫기" title="닫기">
+              <Icon.Close />
+            </button>
+          </div>
         </div>
       )}
       {/* 좌상단: 기업 중심 뷰 브레드크럼 (넓은 화면) */}

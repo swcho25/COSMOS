@@ -132,12 +132,39 @@ export function josa(word: string, withBatchim: string, withoutBatchim: string) 
  * 뉴스 요약(summary)이 크롤링 원문을 거의 그대로 담고 있어, 앞뒤에 기사 확인에 방해가 되는
  * 잡음이 붙어 오는 경우가 많다 — 표시 직전에만 걷어내고 원본 데이터(백엔드 summary)는 바꾸지 않는다.
  *  - 앞: "[포인트데일리 송가영 기자]", "(서울=뉴시스)", "【전남광주=뉴시스】" 같은 괄호 크레딧을 최대 3개까지 반복해서 뗀다
- *  - 뒤: "저작권자 ⓒ …", "무단전재", "재배포 금지" 같은 저작권 고지가 나오는 지점부터는 통째로 자른다
+ *  - 뒤: "저작권자 ⓒ …", "무단전재", "재배포 금지" 같은 저작권 고지가 실제로 글 끝부분에 나오는 경우에만
+ *    그 지점부터 통째로 자른다. 단순히 "첫 번째로 매칭되는 지점부터 끝까지"를 자르면, 기사 본문
+ *    중간에 우연히 같은 문구(예: 저작권 정책을 다루는 기사에서 "무단 전재"라는 단어 자체가 본문
+ *    내용인 경우)가 나올 때 본문이 심하게 잘려나가거나, 요약 전체가 저작권 고지만으로 이뤄진 경우
+ *    빈 문자열로 사라져 버리는 문제가 있었다 — 매칭된 문구 뒤에 남은 글자 수가 짧을 때만(=진짜
+ *    말미의 저작권 고지일 때만) 잘라낸다.
  *  - 뒤: 문장 끝에 그대로 붙어 온 언론사 URL 을 제거한다
  */
 const LEADING_CREDIT = /^\s*[[［(（【][^\]）)】]{1,40}[\])）】]\s*/;
-const TRAILING_COPYRIGHT = /(저작권자\s*[ⓒ©]|무단\s*전재|재배포\s*금지|Copyright\s*[ⓒ©]).*$/is;
+const TRAILING_MARK = /저작권자\s*[ⓒ©]|무단\s*전재|재배포\s*금지|Copyright\s*[ⓒ©]/gi;
 const TRAILING_URL = /\s*https?:\/\/\S+\s*$/gi;
+/** 저작권 고지 문구 뒤에 이 글자 수보다 적게 남아 있어야 "말미의 고지"로 보고 잘라낸다 */
+const TRAILING_MARK_TAIL_LIMIT = 40;
+
+/**
+ * 저작권/재배포 고지 문구 중 실제로 글 말미에 붙어 있는 것만 그 지점부터 잘라낸다.
+ * 문구가 여러 번 나오면 앞에서부터 훑어, 그 뒤에 남는 글자 수가 짧은 첫 매칭 지점을 자르는
+ * 시작점으로 삼는다 — 그래야 "저작권자 ⓒ 연합뉴스, 무단 전재 및 재배포 금지." 처럼 고지 문구가
+ * 이어질 때 앞부분("저작권자 ⓒ …")부터 통째로 걷어낼 수 있다. 뒤에 남는 글자 수가 길면(=본문
+ * 내용 중 우연히 등장한 단어로 판단) 잘라내지 않고 그대로 둔다.
+ */
+function stripTrailingMark(text: string): string {
+  const matches = Array.from(text.matchAll(TRAILING_MARK));
+  for (const m of matches) {
+    if (m.index === undefined) continue;
+    const end = m.index + m[0].length;
+    const tail = text.slice(end).replace(TRAILING_URL, "").trim();
+    if (tail.length <= TRAILING_MARK_TAIL_LIMIT) {
+      return text.slice(0, m.index).trim();
+    }
+  }
+  return text;
+}
 
 export function cleanNewsSummary(text: string | null | undefined): string {
   if (!text) return "";
@@ -145,7 +172,13 @@ export function cleanNewsSummary(text: string | null | undefined): string {
   for (let i = 0; i < 3 && LEADING_CREDIT.test(out); i += 1) {
     out = out.replace(LEADING_CREDIT, "");
   }
-  out = out.replace(TRAILING_COPYRIGHT, "").replace(TRAILING_URL, "").trim();
+  const beforeTrailingCut = out;
+  out = stripTrailingMark(out).replace(TRAILING_URL, "").trim();
+  // 저작권 고지 판정이 너무 공격적으로 걸려 결과가 거의 남지 않으면(=요약 전체가 고지문 뿐이었던
+  // 경우), 빈 화면보다는 고지 문구가 섞여 있더라도 원문 그대로 보여주는 쪽을 택한다.
+  if (out.length < 5 && beforeTrailingCut.trim().length >= 5) {
+    out = beforeTrailingCut.replace(TRAILING_URL, "").trim();
+  }
   return out;
 }
 

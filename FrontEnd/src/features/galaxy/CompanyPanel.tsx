@@ -52,8 +52,6 @@ export default function CompanyPanel({ companyId, model = null, onWarp, onClose,
   const setSheetExpanded = useGalaxy((s) => s.setSheetExpanded);
   // 모바일(900px 이하)에서는 바텀시트 살짝 보기로 열리므로 연결 단계는 접힌 채 시작하고, 탭을 누르면 시트를 전체로 올린다
   const narrow = useNarrowViewport();
-  const window = useGalaxy((s) => s.window);
-  const metrics = useCompanyMetrics(companyId, window);
   const authed = useSession((s) => s.status === "authed");
   const openAuth = useUi((s) => s.openAuth);
   const toast = useUi((s) => s.toast);
@@ -132,7 +130,6 @@ export default function CompanyPanel({ companyId, model = null, onWarp, onClose,
         {TABS.map((t) => (
           <button key={t.key} type="button" role="tab" aria-selected={tab === t.key} className={tab === t.key ? "on" : ""} onClick={() => (setTab(t.key), setSheetExpanded(true))}>
             {t.label}
-            {t.key === "news" && metrics.data?.newsMentionCount != null && <b className="num">{metrics.data.newsMentionCount}</b>}
           </button>
         ))}
       </div>

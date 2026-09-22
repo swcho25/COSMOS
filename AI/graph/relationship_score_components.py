@@ -4,7 +4,8 @@ rel-v0.3-components uses the SAME bounded support formula for NEWS and DISCLOSUR
 100 * (1 - exp(-sum(per-document confidence) / 5)). Five confidence-1 documents
 score 63.212056. This is a transparent display heuristic, not a calibrated probability
 or measured price impact. Ownership percentage is NOT comparable to article counts,
-so it is not used as the disclosure score. Price/sector signals are not mixed in.
+so it is not used as the disclosure score. Sector signals are not mixed in.
+Pair price correlation adds at most PRICE_BONUS_MAX points on top (see price_bonus).
 
 Windows are [as_of - N calendar days, as_of), UTC. Date-only evidence is available at
 the END of that UTC date; no accounting date is substituted for DART receipt date.
@@ -106,10 +107,55 @@ def ownership_evidence(path: Path):
                    "confidence": 1.0}
 
 
+# ── 미적용 결정 (2026-09-22, 사용자 합의) ────────────────────────────────
+# 전수 재처리 때 INVEST 를 지분율로 매긴다. 지금은 근거 **개수**로 매겨서
+# 지분 79.38%(LG화학->LG엔솔) 가 신고 1건이라 18.1점이고, 5% 턱걸이인데 신고를
+# 세 번 한 쪽이 45.1점이다. 신고 횟수가 지배력처럼 보인다.
+#
+#   INVEST                    -> 지분율 (edges_ownership.csv 의 weight, 실측 44행)
+#   SUPPLY/PARTNER/COMPETE    -> 근거 개수 (강도를 잴 지표가 없다)
+#
+# 머리말의 "Ownership percentage is NOT comparable to article counts" 는 여전히
+# 맞다 — 같은 100점 눈금에 다른 척도가 섞인다. 그래도 지분율을 통째로 버리는
+# 지금보다 낫다고 판단했다. 화면에 근거를 "지분 79.38%" 로 같이 띄워 완화한다.
+#
+# 창(window) 정책도 같이 고친다. INVEST 는 신고일 기준으로 만료시키면 안 된다 —
+# 해지 신고 전까지 유효한 **상태**다. 실측: 근거 1,530건 중 최근 7일 0건,
+# 30일 11건이라 지금 정책으로는 7D 에서 INVEST 가 통째로 사라진다.
+
+
 def component(documents: list[dict]) -> float | None:
     if not documents:
         return None
     return round(100 * -math.expm1(-math.fsum(d["confidence"] for d in documents) / 5), 6)
+
+
+# 주가 동조 가산점 (2026-09-22, 사용자 요청)
+# 관계 점수는 "근거가 얼마나 쌓였나" 다. 주가 상관은 그 증거가 아니다 — 같은 업종이면
+# 관계가 없어도 같이 움직인다(같은 업종 730쌍의 평균 43.7%가 한쪽 오르고 한쪽 내림).
+# 그래서 **근거 순위를 뒤집지 못하는 크기**로만 얹는다.
+#
+#   최대 +3점. 실측 상관은 0.303~0.994(중앙 0.420) 이라 실제 가산은 1~3점이다.
+#   근거 1건(18.1)과 2건(33.0)의 간격이 15점이므로 근거 순위를 넘지 못한다.
+#
+# 누설 주의: edges_correlation.csv 의 창은 2025-09-19~2026-09-11 이다. as_of 가 그 창
+# 안이면 미래 가격으로 만든 값이 점수에 들어간다. 예전 build_relationship_seed.py 가
+# 이 때문에 지적됐다(317관계 중 21개에서 보강항이 max, rank-IC 0.0298->0.0297).
+# **창 종료일이 as_of 이전인 상관만 넘길 것.** 그래서 호출 측이 값을 주게 했다.
+PRICE_BONUS_MAX = 3.0
+
+
+def price_bonus(corr):
+    """|상관| 에 비례한 가산점. 없으면 0. 이 항만으로 점수가 생기지는 않는다."""
+    if corr is None:
+        return 0.0
+    try:
+        c = float(corr)
+    except (TypeError, ValueError):
+        return 0.0
+    if not math.isfinite(c):
+        return 0.0
+    return round(PRICE_BONUS_MAX * min(abs(c), 1.0), 6)
 
 
 def blend(news: float | None, disclosure: float | None) -> float | None:
@@ -120,7 +166,9 @@ def blend(news: float | None, disclosure: float | None) -> float | None:
     return round((news + disclosure) / 2, 6)
 
 
-def aggregate(evidence, markets: dict, as_of: dt.datetime, overrides=None):
+def aggregate(evidence, markets: dict, as_of: dt.datetime, overrides=None,
+              price_corr=None):
+    """price_corr: {(정렬된 티커쌍): 상관} — 창 종료일이 as_of 이전인 것만 넘긴다."""
     docs = {}
     unknown = set()
     for item in evidence:
@@ -149,6 +197,9 @@ def aggregate(evidence, markets: dict, as_of: dt.datetime, overrides=None):
             score = blend(news, disclosure)
             if score is None:
                 continue
+            # 근거가 있는 관계에만 얹는다. 이 항만으로 관계가 생기지는 않는다.
+            bonus = price_bonus((price_corr or {}).get(tuple(sorted((src, dst)))))
+            score = round(min(100.0, score + bonus), 6)
             rows.append(dict(zip(NATURAL_FIELDS, [markets[src], src, markets[dst], dst, rel])) | {
                 "window_type": f"{days}D", "news_score": news, "disclosure_score": disclosure,
                 "score": score, "impact_direction": (overrides or {}).get((tuple(sorted((src, dst))), rel)),

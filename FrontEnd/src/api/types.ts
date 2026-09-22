@@ -261,8 +261,8 @@ export interface GraphEdge {
   disclosureScore?: number | null;
   impactDirection: ImpactDirection | null;
 }
-/** 은하 뷰가 행성 높이로 쓰는 등락률 기간 */
-export type AltitudeWindow = "1D" | "1M" | "3M";
+/** 은하 뷰가 행성 높이로 쓰는 등락률 기간 — 뉴스·관계 지표의 MetricWindow(7D/30D/90D)와 표기를 맞췄다 */
+export type AltitudeWindow = "7D" | "30D" | "90D";
 export interface LatestGraphNode {
   companyId: UUID;
   name: string;
@@ -273,8 +273,9 @@ export interface LatestGraphNode {
   /**
    * 기간별 주가 등락률(퍼센트, 예 -3.2). 은하 뷰의 행성 높이가 이 값을 쓴다.
    * 서버가 아직 내려주지 않을 수 있어 선택 필드이고, 시계열이 없는 기업은 null 이다 (README '백엔드에 확인이 필요한 항목').
+   * 키를 7D/30D/90D 로 맞췄다 — 서버 응답도 이 키로 내려줘야 은하 고도가 실제로 반영된다(백엔드 확인 필요).
    */
-  priceChange?: { "1D"?: number | null; "1M"?: number | null; "3M"?: number | null };
+  priceChange?: { "7D"?: number | null; "30D"?: number | null; "90D"?: number | null };
   /**
    * 원화 환산 시가총액. 은하 뷰의 행성 크기가 연결 가중치와 함께 이 값을 쓴다.
    * 시장 통화가 달라도 한 척도로 비교해야 하므로 서버가 환산해 준다고 가정한다(README '백엔드에 확인이 필요한 항목').

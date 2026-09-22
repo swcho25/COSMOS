@@ -19,7 +19,7 @@ import "./dock.css";
  * 열림·고급 여부는 로컬 상태 없이 store/galaxy 의 dockOpen·dockAdvanced 를 그대로 쓴다.
  */
 
-const ALTITUDE_WINDOWS: AltitudeWindow[] = ["1D", "1M", "3M"];
+const ALTITUDE_WINDOWS: AltitudeWindow[] = ["7D", "30D", "90D"];
 /** 펼치기 슬라이더 스냅 지점과 허용 오차 — 손을 떼거나 키를 놓았을 때만 스냅한다 (드래그 중에는 그대로 따라간다) */
 const SNAP_ANCHORS = [0, 50, 100];
 const SNAP_TOLERANCE = 6;
