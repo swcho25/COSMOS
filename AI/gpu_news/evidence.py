@@ -180,12 +180,14 @@ def _company_key(company) -> tuple:
     return market, stock_code
 
 
-def article_evidence(title: str, content: str, companies) -> list[dict]:
-    """Return one entry per company with the sentences attributed to it.
+def sentence_view(title: str, content: str, companies):
+    """The article cut into usable sentences, with each company's surface forms.
 
-    Companies keep their entry even when no sentence survives attribution, so
-    the caller can tell "analysed and found nothing" apart from "not analysed"
-    and leave those rows NULL rather than guessing a neutral label.
+    Shared by the two readers of the same article. Sentiment wants the sentences
+    naming exactly one company; relation extraction wants the ones naming two,
+    which is precisely what the attribution guard here throws away. Splitting,
+    boilerplate trimming and name rejoining are identical for both, so they are
+    done once and in one place.
     """
     if not isinstance(title, str) or not isinstance(content, str):
         raise EvidenceError("title and content must be strings")
@@ -205,6 +207,32 @@ def article_evidence(title: str, content: str, companies) -> list[dict]:
                    field[source], every_name)]
     for position, entry in enumerate(catalog, 1):
         entry["id"] = position
+    return companies, catalog, names, field, scannable
+
+
+def usable_sentences(catalog, field, scannable):
+    """Yield (entry, text) for segments that pass the length and caption rules."""
+    for entry in catalog:
+        clipped = scannable.usable(entry["source"], entry["start"], entry["end"])
+        if clipped is None:
+            continue
+        end, scan_text = clipped
+        stripped = scan_text.strip()
+        if not MIN_EVIDENCE_CHARS <= len(stripped) <= MAX_EVIDENCE_CHARS:
+            continue
+        if len(stripped) < CAPTION_MAX_CHARS and PHOTO_CREDIT.search(stripped):
+            continue
+        yield entry, end, stripped, field[entry["source"]][entry["start"]:end]
+
+
+def article_evidence(title: str, content: str, companies) -> list[dict]:
+    """Return one entry per company with the sentences attributed to it.
+
+    Companies keep their entry even when no sentence survives attribution, so
+    the caller can tell "analysed and found nothing" apart from "not analysed"
+    and leave those rows NULL rather than guessing a neutral label.
+    """
+    companies, catalog, names, field, scannable = sentence_view(title, content, companies)
 
     results = []
     for company in companies:
@@ -216,23 +244,13 @@ def article_evidence(title: str, content: str, companies) -> list[dict]:
         other_names = [name for name in other_names if name not in target_names]
 
         evidence = []
-        for entry in catalog:
-            clipped = scannable.usable(entry["source"], entry["start"], entry["end"])
-            if clipped is None:
-                continue
-            end, scan_text = clipped
-            stripped = scan_text.strip()
-            if not MIN_EVIDENCE_CHARS <= len(stripped) <= MAX_EVIDENCE_CHARS:
-                continue
-            if len(stripped) < CAPTION_MAX_CHARS and PHOTO_CREDIT.search(stripped):
-                continue
+        for entry, end, stripped, text in usable_sentences(catalog, field, scannable):
             # Attribution is decided on the masked, trimmed copy; the sentence
             # stored and shown is the original text of the same range.
-            if not any(_surface(name, scan_text) for name in target_names):
+            if not any(_surface(name, stripped) for name in target_names):
                 continue
-            if any(_surface(name, scan_text) for name in other_names):
+            if any(_surface(name, stripped) for name in other_names):
                 continue
-            text = field[entry["source"]][entry["start"]:end]
             evidence.append({
                 # The catalog id is the article's own reading order and is stable
                 # across re-runs, so a stored sentence can always be traced back

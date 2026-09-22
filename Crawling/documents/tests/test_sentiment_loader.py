@@ -4,6 +4,7 @@ from __future__ import annotations
 import os
 from pathlib import Path
 import unittest
+import unittest.mock
 from uuid import uuid4
 
 from services.sentiment_loader.metrics import WINDOWS, rebuild_metrics
@@ -363,3 +364,48 @@ class SentimentPostgreSQLTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ConnectRetryTests(unittest.TestCase):
+    """A busy shared role must cost seconds, not a whole ten-minute tick."""
+
+    def setUp(self):
+        import psycopg
+        from services.sentiment_loader import runner
+        self.runner, self.psycopg = runner, psycopg
+
+    def test_waits_out_a_busy_role_then_succeeds(self):
+        calls = []
+
+        def connect(dsn):
+            calls.append(dsn)
+            if len(calls) < 3:
+                raise self.psycopg.OperationalError(
+                    'connection failed: FATAL:  too many connections for role "x"')
+            return "connection"
+
+        with unittest.mock.patch.object(self.psycopg, "connect", connect), \
+             unittest.mock.patch("time.sleep") as sleep:
+            self.assertEqual(
+                self.runner.connect_when_free("dsn", attempts=4, backoff=0.01), "connection")
+        self.assertEqual(len(calls), 3)
+        self.assertEqual(sleep.call_count, 2)
+
+    def test_other_failures_are_not_retried(self):
+        def connect(dsn):
+            raise self.psycopg.OperationalError("password authentication failed")
+
+        with unittest.mock.patch.object(self.psycopg, "connect", connect), \
+             unittest.mock.patch("time.sleep") as sleep:
+            with self.assertRaises(self.psycopg.OperationalError):
+                self.runner.connect_when_free("dsn", attempts=4, backoff=0.01)
+        self.assertEqual(sleep.call_count, 0)
+
+    def test_gives_up_after_the_last_attempt(self):
+        def connect(dsn):
+            raise self.psycopg.OperationalError("too many connections for role")
+
+        with unittest.mock.patch.object(self.psycopg, "connect", connect), \
+             unittest.mock.patch("time.sleep"):
+            with self.assertRaises(self.psycopg.OperationalError):
+                self.runner.connect_when_free("dsn", attempts=2, backoff=0.01)
