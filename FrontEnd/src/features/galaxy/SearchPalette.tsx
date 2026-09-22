@@ -50,13 +50,16 @@ function SearchPaletteDialog({ onPick, onClose }: Props & { onClose: () => void 
   const input = useRef<HTMLInputElement>(null);
   const results = useCompanySearch(q);
   const items = results.data?.items ?? [];
+  // ControlDock 의 관계선 기준 기간(전역) — 여기서 추천하는 관계도 같은 기준으로 다시 계산된 간선을 써야,
+  // 추천을 골라 넘어가는 관계 경로 화면(PathGalaxyPage)의 관계선과 어긋나지 않는다
+  const edgeWindow = useGalaxy((s) => s.edgeWindow);
 
   /**
    * 관계 검색 1단계에서 기업을 고르면, 그 기업과 관계 점수가 가장 높은 기업들을 연관 검색어처럼 바로 보여준다 —
    * 두 번째 기업명을 몰라도 여기서 바로 골라 경로 검색으로 이어갈 수 있다. 기업 중심 그래프(최대 3단계) 중
    * relFrom 에 직접 붙은 간선(depth 1)만 추려 점수 내림차순 상위 몇 개만 남긴다.
    */
-  const relGraph = useCompanyGraph(mode === "relation" && relFrom ? relFrom.companyId : null);
+  const relGraph = useCompanyGraph(mode === "relation" && relFrom ? relFrom.companyId : null, edgeWindow);
   const relSuggestions = useMemo(() => {
     if (!relGraph.data) return [];
     const { edges, centerCompanyId, nodes } = relGraph.data;

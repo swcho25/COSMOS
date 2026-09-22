@@ -182,6 +182,14 @@
   padding: 4px 8px;
   font-size: 11px;
 }
+/* 관계선 기준 기간 — 주가 고도의 세그 버튼과 같은 결로 맞춘다 */
+.dock-edge-window .seg {
+  padding: 3px;
+}
+.dock-edge-window .seg button {
+  padding: 4px 8px;
+  font-size: 11px;
+}
 
 /* E. 접기 — 카드 위 가장자리 가운데에서 볼록 튀어나온 손잡이 (카드와 같은 재질, 아래 테두리는 카드에 잇는다) */
 .dock-close {

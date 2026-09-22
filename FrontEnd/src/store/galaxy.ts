@@ -48,6 +48,14 @@ interface GalaxyState {
   /** 고도의 기준 기간 */
   altitudeWindow: AltitudeWindow;
   /**
+   * 관계선(간선) 자체를 계산하는 기준 기간 — ControlDock 의 주가 고도 옆 새 버튼이 고른다.
+   * 이 값이 바뀌면 lib/queries 의 useLatestGraph·useCompanyGraph 가 백엔드에 다른 window 로 다시 물어 edges 가
+   * 통째로 달라진다(관계 유무·점수가 기간마다 다르게 나올 수 있다). CompanyPanel/RelationshipPanel 의 `window`
+   * (이미 고른 관계 하나의 지표를 보는 기간), altitudeWindow(주가 고도)와는 값 체계만 같고 완전히 별개 상태다.
+   * 메인 은하·기업 중심 뷰·관계 경로(PathGalaxyPage)·관계 검색 추천(SearchPalette)이 모두 이 값을 함께 쓴다.
+   */
+  edgeWindow: MetricWindow;
+  /**
    * 펼치기 0~1 — 0 나선 은하 · 0.5 평면 · 1 행성 크기순 격자 (lib/spread). 은하 뷰 전용이라 워프하면 0 으로 돌아간다.
    * 서버·저장소에 두지 않는 이 화면의 표시 설정이다
    */
@@ -97,9 +105,11 @@ interface GalaxyState {
   toggleEdgeBudget(): void;
   setAltitude(on: boolean): void;
   setAltitudeWindow(w: AltitudeWindow): void;
+  setEdgeWindow(w: MetricWindow): void;
   setSpread(v: number): void;
   setDockOpen(v: boolean): void;
-  /** 도크가 다루는 표시 설정을 기본값으로 — 펼치기 0 · 관계 종류 전부 · 최소 점수 0 · 주가 고도 켬(1M). 뉴스·공시 비율은 store/weight 가 따로 되돌린다 */
+  /** 도크가 다루는 표시 설정을 기본값으로 — 펼치기 0 · 관계 종류 전부 · 최소 점수 0 · 주가 고도 켬(1M) · 관계선 기준 기간 1M.
+      뉴스·공시 비율은 store/weight 가 따로 되돌린다 */
   resetControls(): void;
   setPanelTab(t: PanelTab): void;
   setWindow(w: MetricWindow): void;
@@ -135,6 +145,7 @@ export const useGalaxy = create<GalaxyState>((set, get) => ({
   edgeBudget: true,
   altitudeOn: true,
   altitudeWindow: "30D",
+  edgeWindow: "30D",
   spread: 0,
 
   panelTab: "news",
@@ -238,6 +249,9 @@ export const useGalaxy = create<GalaxyState>((set, get) => ({
   setAltitudeWindow(w) {
     set({ altitudeWindow: w });
   },
+  setEdgeWindow(w) {
+    set({ edgeWindow: w });
+  },
   setSpread(v) {
     set({ spread: Math.max(0, Math.min(1, v)) });
   },
@@ -245,7 +259,7 @@ export const useGalaxy = create<GalaxyState>((set, get) => ({
     set({ dockOpen: v });
   },
   resetControls() {
-    set({ spread: 0, activeTypes: new Set(RELATIONSHIP_ORDER), minScore: 0, altitudeOn: true, altitudeWindow: "30D" });
+    set({ spread: 0, activeTypes: new Set(RELATIONSHIP_ORDER), minScore: 0, altitudeOn: true, altitudeWindow: "30D", edgeWindow: "30D" });
   },
   toggleLabels() {
     set((s) => ({ showLabels: !s.showLabels }));

@@ -8,9 +8,13 @@ export type ISODateTime = string;
 export type UserId = number;
 
 export type Market = "KOSPI" | "KOSDAQ" | "NASDAQ" | (string & {});
-/** 기업 연결 선(관계)·기업 인텔리전스의 뉴스·관계 지표가 쓰는 기간 — api 요청 값은 그대로 30D/1Y/10Y 이고,
-    화면 표기(1M/1Y/10Y)는 lib/meta 의 METRIC_WINDOW_LABEL 이 맡는다. 주가 고도(AltitudeWindow, 아래)와는
-    값·목적이 다른 완전히 별개 기간이다 — 서로 다른 화면 조각(ControlDock ↔ CompanyPanel/RelationshipPanel)이 각자 고른다 */
+/** 기업 인텔리전스의 뉴스·관계 지표(CompanyMetrics·MetricsHistory)와 단일 관계 상세(RelationshipDetail)가 쓰는 기간 —
+    api 요청 값은 그대로 30D/1Y/10Y 이고, 화면 표기(1M/1Y/10Y)는 lib/meta 의 METRIC_WINDOW_LABEL 이 맡는다.
+    주가 고도(AltitudeWindow, 아래)와는 값·목적이 다른 완전히 별개 기간이다 — 서로 다른 화면 조각
+    (ControlDock 의 주가 고도 ↔ CompanyPanel/RelationshipPanel) 이 각자 고른다.
+    그래프 간선(LatestGraphParams·CompanyGraphParams 의 window, 아래)도 같은 값 체계를 쓰지만 store/galaxy 의
+    별도 상태(edgeWindow) 가 고른다 — "관계선 자체를 어느 기간 기준으로 계산할지" 는 "이미 고른 관계의 지표를
+    어느 기간으로 볼지" 와는 다른 선택이라 서로 영향을 주지 않는다 */
 export type MetricWindow = "30D" | "1Y" | "10Y";
 export type PricePeriod = "1M" | "3M" | "6M" | "1Y";
 export type Sentiment = "POSITIVE" | "NEGATIVE" | "NEUTRAL";
@@ -299,6 +303,8 @@ export interface LatestGraph {
 export interface LatestGraphParams {
   universe?: string;
   industryId?: UUID;
+  /** 관계선(간선) 계산의 기준 기간 — 주면 그 기간 기준으로 점수·관계를 다시 계산해 edges 가 달라질 수 있다 (백엔드 확인됨, 2026-09-22) */
+  window?: MetricWindow;
 }
 export interface CompanyGraphNode {
   companyId: UUID;
@@ -317,6 +323,8 @@ export interface CompanyGraph {
 export interface CompanyGraphParams {
   /** 1~3, 기본 3 (명세 Query Params) */
   maxDepth?: number;
+  /** 관계선(간선) 계산의 기준 기간 — LatestGraphParams.window 와 같은 값 체계 (백엔드 확인됨, 2026-09-22) */
+  window?: MetricWindow;
 }
 export interface RelationshipDetail {
   relationshipId: UUID;

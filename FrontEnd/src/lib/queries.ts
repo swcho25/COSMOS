@@ -33,30 +33,37 @@ function useWeightedEdges<G extends { edges: T.GraphEdge[] }>() {
   return useCallback((g: G): G => ({ ...g, edges: weightedEdges(g.edges, w) }), [w]);
 }
 
-export function useLatestGraph(industryId: string | null) {
+/**
+ * @param window 관계선(간선) 계산의 기준 기간(store/galaxy 의 edgeWindow) — 주지 않으면 백엔드 기본값을 쓴다.
+ * 대부분의 호출부(NewsPage·CommunityPage·CompaniesPage 등 "전체 우주" 조회용)는 노드(색·시장·시가총액)만 쓰고
+ * 간선을 화면에 그리지 않으므로 생략한다 — 쿼리 키가 같아 캐시도 그대로 공유된다. 실제로 관계선을 그리는
+ * GalaxyPage(메인 은하)·PathGalaxyPage(관계 경로)·SearchPalette(관계 검색 추천)만 넘긴다.
+ */
+export function useLatestGraph(industryId: string | null, window?: T.MetricWindow) {
   const k = useKey();
   const booted = useBooted();
   const select = useWeightedEdges<T.LatestGraph>();
   return useQuery({
-    queryKey: ["graph", "latest", k, industryId],
-    queryFn: () => api.graphs.latest({ industryId: industryId ?? undefined }),
+    queryKey: ["graph", "latest", k, industryId, window],
+    queryFn: () => api.graphs.latest({ industryId: industryId ?? undefined, window }),
     enabled: booted,
     staleTime: 5 * 60_000,
     placeholderData: keepPreviousData,
     select,
   });
 }
-/** 기업 그래프 쿼리 옵션 — 훅과 prefetch(호버 선로딩)가 같은 키·함수를 공유하도록 팩토리로 둔다 */
-export const companyGraphQuery = (k: string, companyId: string) => ({
-  queryKey: ["graph", "company", k, companyId] as const,
-  queryFn: () => api.graphs.company(companyId),
+/** 기업 그래프 쿼리 옵션 — 훅과 prefetch(호버 선로딩)가 같은 키·함수를 공유하도록 팩토리로 둔다.
+    window 는 useLatestGraph 와 같은 관계선 기준 기간(store/galaxy 의 edgeWindow) — 생략하면 백엔드 기본값 */
+export const companyGraphQuery = (k: string, companyId: string, window?: T.MetricWindow) => ({
+  queryKey: ["graph", "company", k, companyId, window] as const,
+  queryFn: () => api.graphs.company(companyId, { window }),
   staleTime: 5 * 60_000,
 });
-export function useCompanyGraph(companyId: string | null) {
+export function useCompanyGraph(companyId: string | null, window?: T.MetricWindow) {
   const k = useKey();
   const booted = useBooted();
   const select = useWeightedEdges<T.CompanyGraph>();
-  return useQuery({ ...companyGraphQuery(k, companyId ?? ""), enabled: booted && Boolean(companyId), select });
+  return useQuery({ ...companyGraphQuery(k, companyId ?? "", window), enabled: booted && Boolean(companyId), select });
 }
 export function useRelationship(relationshipId: string | null, window: T.MetricWindow) {
   const k = useKey();

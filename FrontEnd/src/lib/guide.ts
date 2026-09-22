@@ -150,8 +150,10 @@ export const DOCK_UI = {
   altitude: "주가 고도",
   altitudeTitle: "기간 등락률만큼 행성을 원반 위·아래로 띄웁니다",
   altitudeSuspended: "펼친 상태에서는 고도를 쓰지 않습니다 — 펼치기를 0 으로 되돌리세요",
+  edgeWindow: "관계선 기준",
+  edgeWindowTitle: "이 기간을 기준으로 관계선(간선)을 다시 계산합니다 — 기업 간 관계 유무·점수가 기간마다 달라질 수 있습니다",
   reset: "초기화",
-  resetTitle: "펼치기 · 관계 종류 · 비율 · 최소 점수 · 고도를 기본값으로",
+  resetTitle: "펼치기 · 관계 종류 · 비율 · 최소 점수 · 고도 · 관계선 기준을 기본값으로",
 };
 
 /** 기업 툴팁의 한 줄 힌트 — 조작법 표(CONTROL_HINTS)의 클릭·더블클릭 항목과 같은 문구 */
