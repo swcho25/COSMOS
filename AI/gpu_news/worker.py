@@ -258,6 +258,37 @@ def _safe_parts(path: str, input_type: str) -> tuple[list[str], str]:
     return names, batch_root
 
 
+def _stream_key(input_root: str) -> str:
+    """The Kafka partition (or historical run) a batch belongs to."""
+    return "/".join(part for part in PurePosixPath(input_root).parts
+                    if part.startswith(("topic=", "partition=", "run_id=")))
+
+
+def _round_robin(pending: list, newest_first: bool) -> list:
+    """Order pending batches so no one partition can starve the others.
+
+    Sorting the whole list by path looks like "newest first" and is not: the
+    path sorts by partition before it sorts by offset, so partition=2 has to
+    drain entirely before partition=1 gets a single batch. With a backlog of
+    11,828 batches that starved two of three partitions for a day - two thirds
+    of the live feed stayed unanalysed while the worker reported success.
+
+    Sort within a partition, then take one from each in turn. This is the same
+    guarantee AI/ner/realtime_runner.py keeps with its round-robin cursor.
+    """
+    streams: dict[str, list] = {}
+    for item in pending:
+        streams.setdefault(_stream_key(item[2]), []).append(item)
+    for batches in streams.values():
+        batches.sort(key=lambda item: item[2], reverse=newest_first)
+    ordered = []
+    while any(streams.values()):
+        for key in sorted(streams):
+            if streams[key]:
+                ordered.append(streams[key].pop(0))
+    return ordered
+
+
 def open_bridge(config: dict, transport: str):
     hdfs_bin = config.get("hdfs_bin", "/opt/hadoop/bin/hdfs")
     if transport == "local":
@@ -288,7 +319,7 @@ def run_pass(config: dict, engine: FinbertEngine, maximum: int | None = None,
             output_path = output_root + "/" + "/".join(parts)
             if output_path + "/_SUCCESS" not in completed:
                 source_pending.append((source_index, source["type"], input_root, output_path))
-        source_pending.sort(key=lambda item: item[2], reverse=source.get("newest_first", False))
+        source_pending = _round_robin(source_pending, source.get("newest_first", False))
         source_limit = source.get("max_per_pass")
         if source_limit is not None:
             source_pending = source_pending[:source_limit]
