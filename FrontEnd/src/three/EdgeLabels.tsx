@@ -141,47 +141,45 @@ export default function EdgeLabels({ model, emphasis, surprise }: Props) {
     if (doRecompute) {
       ready.current = true;
       const candidates: Rect[] = [];
-      model.edges.forEach((e) => {
+      // 라벨은 이제 "그 선 위에 마우스가 있을 때"만 뜬다 — 상시 노출은 화면이 글자로 뒤덮여 보기 불편하다는
+      // 피드백에 따른 변경이다. 그래서 전체 간선을 후보로 모으지 않고, 지금 호버 중인 간선 하나만 검사한다
+      // (RelationLines 의 onHover → useGalaxy.hoveredEdgeId, Scene.tsx 가 이어 준다)
+      const hoveredEdgeId = useGalaxy.getState().hoveredEdgeId;
+      const hovered = hoveredEdgeId ? model.edgeById.get(hoveredEdgeId) : undefined;
+      if (hovered) {
+        const e = hovered;
         const emph = emphasis.edge.get(e.id) ?? 1;
-        if (emph < MIN_EMPH) return;
         const si = nodeIndex.get(e.source);
         const ti = nodeIndex.get(e.target);
-        if (si === undefined || ti === undefined) return;
+        if (emph >= MIN_EMPH && si !== undefined && ti !== undefined) {
+          PA.fromArray(live.pos, si * 3).project(camera);
+          PB.fromArray(live.pos, ti * 3).project(camera);
+          const ax = ((PA.x + 1) / 2) * W;
+          const ay = ((1 - PA.y) / 2) * H;
+          const bx = ((PB.x + 1) / 2) * W;
+          const by = ((1 - PB.y) / 2) * H;
+          if (Math.hypot(bx - ax, by - ay) >= MIN_SPAN_PX) {
+            controlPoint(live.pos, live.pos, CTRL, si * 3, ti * 3, clear);
+            bezier(live.pos, live.pos, CTRL, 0.5, MID, si * 3, ti * 3);
+            MID.addScaledVector(UPV, radiusOf(e.score / 100) * 3 + 0.6);
+            PL.copy(MID).project(camera);
+            if (PL.z < 1) {
+              const isSurprise = surprise.has(e.id);
+              const cell = ensureNameCell(labelText(e.type, isSurprise));
+              if (cell) {
+                const aspect = cell.aspect / (1 - 2 * PAD);
+                const lx = ((PL.x + 1) / 2) * W;
+                const ly = ((1 - PL.y) / 2) * H;
+                const halfW = (LABEL_PX * aspect) / 2 + GAP_PX;
+                const halfH = LABEL_PX / 2 + GAP_PX;
+                candidates.push({ edgeId: e.id, score: e.score, cell, aspect, rect: [lx - halfW, ly - halfH, lx + halfW, ly + halfH] });
+              }
+            }
+          }
+        }
+      }
 
-        PA.fromArray(live.pos, si * 3).project(camera);
-        PB.fromArray(live.pos, ti * 3).project(camera);
-        const ax = ((PA.x + 1) / 2) * W;
-        const ay = ((1 - PA.y) / 2) * H;
-        const bx = ((PB.x + 1) / 2) * W;
-        const by = ((1 - PB.y) / 2) * H;
-        if (Math.hypot(bx - ax, by - ay) < MIN_SPAN_PX) return;
-
-        controlPoint(live.pos, live.pos, CTRL, si * 3, ti * 3, clear);
-        bezier(live.pos, live.pos, CTRL, 0.5, MID, si * 3, ti * 3);
-        MID.addScaledVector(UPV, radiusOf(e.score / 100) * 3 + 0.6);
-        PL.copy(MID).project(camera);
-        if (PL.z >= 1) return; // 카메라 뒤
-
-        const isSurprise = surprise.has(e.id);
-        const cell = ensureNameCell(labelText(e.type, isSurprise));
-        if (!cell) return;
-        const aspect = cell.aspect / (1 - 2 * PAD);
-
-        const lx = ((PL.x + 1) / 2) * W;
-        const ly = ((1 - PL.y) / 2) * H;
-        const halfW = (LABEL_PX * aspect) / 2 + GAP_PX;
-        const halfH = LABEL_PX / 2 + GAP_PX;
-        candidates.push({ edgeId: e.id, score: e.score, cell, aspect, rect: [lx - halfW, ly - halfH, lx + halfW, ly + halfH] });
-      });
-
-      candidates.sort((a, b) => b.score - a.score);
-      const top = candidates.slice(0, MAX);
-      const kept: Rect[] = [];
-      top.forEach((c) => {
-        const hit = kept.some((k) => c.rect[0] < k.rect[2] && k.rect[0] < c.rect[2] && c.rect[1] < k.rect[3] && k.rect[1] < c.rect[3]);
-        if (!hit) kept.push(c);
-      });
-      selected.current = kept.map((c) => ({ edgeId: c.edgeId, cell: c.cell, aspect: c.aspect }));
+      selected.current = candidates.map((c) => ({ edgeId: c.edgeId, cell: c.cell, aspect: c.aspect }));
     }
 
     const cellArr = built.cell.array as Float32Array;
