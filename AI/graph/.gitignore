@@ -52,3 +52,13 @@ data/en_sentences_v2.csv
 data/features_v1.csv
 data/company_document_scores_v1.csv
 data/rel_scores_v2.json
+
+# 근거 문장 적재 중간물 (HDFS·서버에서 재생성 가능)
+data/evidence_doc_meta.json
+data/evidence_company_sentiment.json
+data/rel_hits_all_v2_sent.jsonl
+data/relcand_sentstart.json
+data/rel_evidence_record_ids.txt
+# 적재 CSV 는 기사 원문 문장·제목을 담고 있어 커밋하지 않는다 (13MB).
+# build_evidence_load_package.py 로 다시 만든다.
+data/db_evidence_20260922/*.csv
