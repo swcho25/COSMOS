@@ -4,6 +4,7 @@ import type { Me } from "@/api";
 import { HELP_UI } from "@/lib/guide";
 import { useScraps, useWatchlist } from "@/lib/queries";
 import { useNarrowViewport } from "@/lib/viewport";
+import { useGalaxy } from "@/store/galaxy";
 import { useSession } from "@/store/session";
 import { useUi } from "@/store/ui";
 import { cycleTabFocus, Icon, useClickOutside } from "./ui";
@@ -57,7 +58,18 @@ export default function Header() {
 
   return (
     <header className={narrow ? "hd hd-narrow" : "hd"}>
-      <NavLink to="/" className="logo" aria-label="COSMOS 홈">
+      {/* "/" 는 전체 은하·기업 중심 뷰가 같은 경로(query only)를 쓰므로, 기업 중심 뷰(focusId 있음)에서 로고를 눌러도
+          React Router 입장에서는 route 전환이 아니라 그대로다 — GalaxyPage 가 리마운트되지 않아 화면이 안 바뀌었다.
+          로고를 누르면 늘 전체 은하로 돌아가도록 기존 "은하로 돌아가기" 버튼과 같은 backToGalaxy(warpTo(null))를 같이 호출한다 */}
+      <NavLink
+        to="/"
+        className="logo"
+        aria-label="COSMOS 홈"
+        onClick={() => {
+          const s = useGalaxy.getState();
+          if (s.focusId !== null || s.phase !== "galaxy") s.backToGalaxy();
+        }}
+      >
         <img src="/cosmos-logo.png" alt="" width={167} height={128} />
         <span>COSMOS</span>
       </NavLink>

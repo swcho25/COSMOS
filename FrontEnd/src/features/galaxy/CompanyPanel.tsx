@@ -1,12 +1,12 @@
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import type { CompanyComment, MetricWindow, PricePeriod, Sentiment } from "@/api/types";
+import type { CompanyComment, PricePeriod, Sentiment } from "@/api/types";
 import { CompanyAvatar, Empty, Icon, IndustryBadge, SentimentBadge, Skeleton } from "@/components/ui";
 import PriceChart, { Sparkbars } from "@/components/PriceChart";
 import { fmtCompact, fmtCompactPrice, fmtDateTime, fmtNumber, fmtPct, fmtPctFrom01, fmtPrice, fmtRelative, fmtTradingDate, josa, newsSummaryOrFallback, sortNewsByLatest } from "@/lib/format";
 import type { SceneModel } from "@/lib/graph";
 import { PREVIEW_UI } from "@/lib/guide";
-import { SENTIMENTS, SENTIMENT_META, marketCurrency } from "@/lib/meta";
+import { METRIC_WINDOW_LABEL, METRIC_WINDOWS, SENTIMENTS, SENTIMENT_META, marketCurrency } from "@/lib/meta";
 import { ROLE_META, roleColor, roleCounts } from "@/lib/roles";
 import {
   useCompany,
@@ -253,7 +253,6 @@ function NewsTab({ companyId, onPickCompany }: { companyId: string; onPickCompan
 /* 주가 탭                                                              */
 /* ------------------------------------------------------------------ */
 const PERIODS: PricePeriod[] = ["1M", "3M", "6M", "1Y"];
-const WINDOWS: MetricWindow[] = ["7D", "30D", "90D"];
 
 function PriceTab({ companyId, market, marketCap, listedShares }: { companyId: string; market: string; marketCap: number | null; listedShares: number | null }) {
   const period = useGalaxy((s) => s.pricePeriod);
@@ -332,9 +331,9 @@ function PriceTab({ companyId, market, marketCap, listedShares }: { companyId: s
       <div className="row between mt-20">
         <span className="kick">뉴스 · 관계 지표</span>
         <div className="seg" style={{ padding: 3 }}>
-          {WINDOWS.map((w) => (
+          {METRIC_WINDOWS.map((w) => (
             <button key={w} type="button" className={window === w ? "on" : ""} style={{ padding: "4px 9px", fontSize: 12 }} onClick={() => setWindow(w)}>
-              {w}
+              {METRIC_WINDOW_LABEL[w]}
             </button>
           ))}
         </div>

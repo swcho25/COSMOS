@@ -14,8 +14,12 @@
      패널 카드 자체의 등장·퇴장 애니메이션(.hud-panel, 아래)과 같은 1.2s 로 맞춰 둘이 한 호흡으로 움직이게 한다 */
   transition: right 1.2s cubic-bezier(0.2, 0.8, 0.2, 1);
 }
-/* 패널 폭(390px) + 좌우 여백(24px, 16px) — .hud-top 이 옆으로 비켜 주는 값(아래 :has(.hud-panel) .hud-top)과 맞춘다 */
-.galaxy:has(.hud-panel) .stage {
+/* 패널 폭(390px) + 좌우 여백(24px, 16px) — .hud-top 이 옆으로 비켜 주는 값(아래 .hud-panel-active .hud-top)과 맞춘다.
+   :has(.hud-panel) 대신 GalaxyPage/PathGalaxyPage 가 패널을 "열겠다는 의도"(panelOpen && 선택 있음)에 직접 붙이는
+   .hud-panel-active 클래스를 쓴다 — :has(.hud-panel) 는 useLingeringPanel 이 퇴장 애니메이션 동안 패널 DOM을 1.2s
+   더 붙잡아 두는 것까지 그대로 반영해서, 닫을 때는 패널이 완전히 사라진 뒤에야(그 시점의 스냅으로) 이 전환이 시작됐다.
+   panelOpen 이 꺼지는 즉시 클래스가 빠지므로, 패널이 슬라이드 아웃하는 것과 같은 박자로 은하가 넓어진다 */
+.galaxy.hud-panel-active .stage {
   right: 430px;
 }
 .galaxy .stage canvas {
@@ -1760,17 +1764,19 @@
   font-size: 12px;
 }
 
-/* 은하 뷰에서 미리보기 패널(우측 390px)이 열리면 상단 한 줄(검색·범위·산업)은 그 왼쪽에서 접힌다 — 기업 중심 뷰에는 상단 줄이 없어 해당 없음 */
-.galaxy:has(.hud-panel) .hud-top {
+/* 은하 뷰에서 미리보기 패널(우측 390px)이 열리면 상단 한 줄(검색·범위·산업)은 그 왼쪽에서 접힌다 — 기업 중심 뷰에는 상단 줄이 없어 해당 없음.
+   .hud-panel-active 는 panelOpen 의도에 바로 붙는 클래스라(위 .stage 규칙과 같은 이유) 열 때·닫을 때 모두 패널 카드
+   자체의 등장/퇴장 애니메이션과 같은 박자로 즉시 시작된다 */
+.galaxy.hud-panel-active .hud-top {
   padding-right: calc(24px + 390px + 16px);
 }
 @media (max-width: 900px) {
   /* 모바일 패널은 바텀시트라 상단 줄이 오른쪽으로 비켜 줄 필요가 없다 — 위 규칙을 상쇄 */
-  .galaxy:has(.hud-panel) .hud-top {
+  .galaxy.hud-panel-active .hud-top {
     padding-right: 16px;
   }
   /* 모바일에서는 패널이 화면 아래에서 올라오는 바텀시트라 은하 폭을 줄일 이유가 없다 — 위 규칙을 상쇄 */
-  .galaxy:has(.hud-panel) .stage {
+  .galaxy.hud-panel-active .stage {
     right: 0;
   }
 }

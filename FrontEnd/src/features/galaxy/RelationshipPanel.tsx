@@ -1,9 +1,9 @@
-import type { MetricWindow, RelationshipEvidence } from "@/api/types";
+import type { RelationshipEvidence } from "@/api/types";
 import { Empty, Icon, ImpactBadge, ScoreBar, Skeleton, TypeBadge } from "@/components/ui";
 import { fmtDateTime, fmtPctFrom01, fmtRelative, fmtScore, pct01 } from "@/lib/format";
 import type { SceneModel } from "@/lib/graph";
 import { EVIDENCE_UI, SURPRISE_UI } from "@/lib/guide";
-import { relationshipMeta, scoreBand } from "@/lib/meta";
+import { METRIC_WINDOW_LABEL, METRIC_WINDOWS, relationshipMeta, scoreBand } from "@/lib/meta";
 import { useRelationship, useRelationshipEvidence } from "@/lib/queries";
 import { scoreBasisLabel } from "@/lib/score";
 import { SURPRISE_MIN, surpriseFor } from "@/lib/surprise";
@@ -11,8 +11,6 @@ import { useGalaxy } from "@/store/galaxy";
 import { useUi } from "@/store/ui";
 import { useNewsWeight } from "@/store/weight";
 import "./evidence.css";
-
-const WINDOWS: MetricWindow[] = ["7D", "30D", "90D"];
 
 interface Props {
   relationshipId: string;
@@ -129,9 +127,9 @@ export default function RelationshipPanel({ relationshipId, onClose, onPickCompa
             <div className="row between mt-20">
               <span className="kick">관계 점수</span>
               <div className="seg" style={{ padding: 3 }}>
-                {WINDOWS.map((w) => (
+                {METRIC_WINDOWS.map((w) => (
                   <button key={w} type="button" className={window === w ? "on" : ""} style={{ padding: "4px 9px", fontSize: 12 }} onClick={() => setWindow(w)}>
-                    {w}
+                    {METRIC_WINDOW_LABEL[w]}
                   </button>
                 ))}
               </div>

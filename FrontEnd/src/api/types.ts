@@ -8,7 +8,10 @@ export type ISODateTime = string;
 export type UserId = number;
 
 export type Market = "KOSPI" | "KOSDAQ" | "NASDAQ" | (string & {});
-export type MetricWindow = "7D" | "30D" | "90D";
+/** 기업 연결 선(관계)·기업 인텔리전스의 뉴스·관계 지표가 쓰는 기간 — api 요청 값은 그대로 30D/1Y/10Y 이고,
+    화면 표기(1M/1Y/10Y)는 lib/meta 의 METRIC_WINDOW_LABEL 이 맡는다. 주가 고도(AltitudeWindow, 아래)와는
+    값·목적이 다른 완전히 별개 기간이다 — 서로 다른 화면 조각(ControlDock ↔ CompanyPanel/RelationshipPanel)이 각자 고른다 */
+export type MetricWindow = "30D" | "1Y" | "10Y";
 export type PricePeriod = "1M" | "3M" | "6M" | "1Y";
 export type Sentiment = "POSITIVE" | "NEGATIVE" | "NEUTRAL";
 export type ImpactDirection = "POSITIVE" | "NEGATIVE" | "NEUTRAL";
@@ -261,7 +264,9 @@ export interface GraphEdge {
   disclosureScore?: number | null;
   impactDirection: ImpactDirection | null;
 }
-/** 은하 뷰가 행성 높이로 쓰는 등락률 기간 — 뉴스·관계 지표의 MetricWindow(7D/30D/90D)와 표기를 맞췄다 */
+/** 은하 뷰가 행성 높이로 쓰는 등락률 기간 — 그대로 7D/30D/90D 를 쓴다. MetricWindow(30D/1Y/10Y, 위)와는
+    값도 표기도 다른 별개 기간이다: ControlDock 의 주가 고도 선택과 CompanyPanel/RelationshipPanel 의
+    뉴스·관계 지표·연결 선 기간 선택은 서로 영향을 주지 않고 각자 고를 수 있다 */
 export type AltitudeWindow = "7D" | "30D" | "90D";
 export interface LatestGraphNode {
   companyId: UUID;
