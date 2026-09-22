@@ -841,3 +841,98 @@ export function layoutMyGalaxy(
   });
   return { model, missing, neighborIds };
 }
+
+/* ------------------------------------------------------------------ */
+/* 관계 경로 — 검색한 두 기업을 잇는 최단 경로만 한 줄로 배치                */
+/* ------------------------------------------------------------------ */
+/** 간선을 무방향 그래프로 보고 BFS 로 두 기업 사이 최단(hop 수 기준) 경로를 찾는다. 연결돼 있지 않으면 null */
+export function findShortestPath(edges: GraphEdge[], fromId: string, toId: string): string[] | null {
+  if (fromId === toId) return [fromId];
+  const adj = new Map<string, string[]>();
+  edges.forEach((e) => {
+    if (!adj.has(e.sourceCompanyId)) adj.set(e.sourceCompanyId, []);
+    if (!adj.has(e.targetCompanyId)) adj.set(e.targetCompanyId, []);
+    adj.get(e.sourceCompanyId)!.push(e.targetCompanyId);
+    adj.get(e.targetCompanyId)!.push(e.sourceCompanyId);
+  });
+  if (!adj.has(fromId) || !adj.has(toId)) return null;
+  const prev = new Map<string, string>();
+  const visited = new Set([fromId]);
+  const queue = [fromId];
+  let head = 0;
+  while (head < queue.length) {
+    const cur = queue[head++];
+    if (cur === toId) {
+      const path = [cur];
+      let p = cur;
+      while (prev.has(p)) {
+        p = prev.get(p)!;
+        path.unshift(p);
+      }
+      return path;
+    }
+    for (const nb of adj.get(cur) ?? []) {
+      if (visited.has(nb)) continue;
+      visited.add(nb);
+      prev.set(nb, cur);
+      queue.push(nb);
+    }
+  }
+  return null; // 두 기업이 서로 다른 연결 성분에 있다 — 경로가 없다
+}
+
+/** 경로 노드 사이 기본 간격(월드 단위) */
+const PATH_GAP = 30;
+
+/**
+ * 관계 검색 결과 — 검색한 두 기업(맨 왼쪽·맨 오른쪽)과 그 사이 최단 경로만 한 줄로 잇는다(화면구성도 ① 변형).
+ * layoutMyGalaxy·layoutNewsSubgraph 와 달리 나선 힘 시뮬레이션(layoutGalaxy)을 타지 않는다 — "일렬로 연결된 형태" 라는
+ * 요구가 은하 배치의 자연스러운 뭉침과 반대라, 좌표를 직접 정하고 finish() 로 SceneModel 배선(nodeById·neighbors·extent 등)만 재사용한다.
+ * @returns path 두 기업을 잇는 최단 경로(기업 id, 왼쪽→오른쪽 순) · 스냅샷에 없거나 연결돼 있지 않으면 null(빈 모델)
+ */
+export function layoutPathGalaxy(graph: LatestGraph, fromId: string, toId: string, capT: CapScale): { model: SceneModel; path: string[] | null } {
+  const byId = new Map(graph.nodes.map((n) => [n.companyId, n]));
+  const path = byId.has(fromId) && byId.has(toId) ? findShortestPath(graph.edges, fromId, toId) : null;
+  if (!path) return { model: finish("galaxy", null, [], [], []), path: null };
+
+  // 경로 위 연속한 두 기업을 잇는 실제 간선만 남긴다(둘 사이 관계가 여럿이면 점수가 가장 높은 것 하나) — 곁가지 관계는 이 뷰에 없다
+  const indexOf = new Map(path.map((id, i) => [id, i]));
+  const edgeByPair = new Map<string, GraphEdge>();
+  graph.edges.forEach((e) => {
+    const ia = indexOf.get(e.sourceCompanyId);
+    const ib = indexOf.get(e.targetCompanyId);
+    if (ia === undefined || ib === undefined || Math.abs(ia - ib) !== 1) return;
+    const key = ia < ib ? `${e.sourceCompanyId}:${e.targetCompanyId}` : `${e.targetCompanyId}:${e.sourceCompanyId}`;
+    const cur = edgeByPair.get(key);
+    if (!cur || e.score > cur.score) edgeByPair.set(key, e);
+  });
+  const edges = [...edgeByPair.values()];
+  const { deg } = weightedDegree(edges);
+  const touch = new Map<string, number>();
+  edges.forEach((e) => {
+    touch.set(e.sourceCompanyId, (touch.get(e.sourceCompanyId) ?? 0) + 1);
+    touch.set(e.targetCompanyId, (touch.get(e.targetCompanyId) ?? 0) + 1);
+  });
+
+  const nodes: SceneNode[] = path.map((id, i) => {
+    const src = byId.get(id)!;
+    const industry = industryNameOf(src);
+    const isEndpoint = i === 0 || i === path.length - 1;
+    return {
+      id,
+      name: src.name,
+      industry,
+      market: src.market,
+      stockCode: src.stockCode,
+      // 검색한 두 기업(맨 왼쪽·맨 오른쪽)은 산업색 그대로, 중간에 낀 경유 기업은 내 은하의 이웃과 같은 어두운 단색 — 무엇을 찾았는지 한눈에 보여준다
+      color: isEndpoint ? industryColor(industry) : NEIGHBOR_NODE_COLOR,
+      pos: [(i - (path.length - 1) / 2) * PATH_GAP, CORE_Y, 0] as Vec3,
+      size: nodeSize(deg.get(id) ?? 0, capT(src.marketCapKrw)),
+      depth: 0,
+      degree: touch.get(id) ?? 0,
+      tier: isEndpoint ? 0 : 1,
+      priceChange: src.priceChange,
+    };
+  });
+  return { model: finish("galaxy", null, nodes, edges, []), path };
+}

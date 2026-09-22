@@ -278,13 +278,15 @@ export default function CompanyNodes({ model, emphasis, hoveredId, onHover, onCl
       model.nodes.map((node) => {
         // 배열 인덱스가 아니라 기업 id 로 시드를 만들어 뷰가 바뀌어도 외형이 유지된다
         const h = (hashString(node.id) % 1000) / 1000;
-        const variant: Variant = h < 0.27 ? "ring" : "land";
+        // 예전엔 ~27%의 행성에 고리를 둘렀지만(h < 0.27 → "ring"), 굳이 필요 없다는 피드백을 받아
+        // 모든 행성을 고리 없는 일반 행성("land")으로 통일한다. h 는 seed 다양성을 위해 계속 쓴다.
+        const variant: Variant = "land";
         const radius = node.size * PLANET_RADIUS_K;
         const palette = planetPaletteFor(node.color);
         const seed = 0.5 + h * 9;
         // 세분화는 반지름과 무관하게 고정한다 — 뷰마다 size 가 달라도(기업 중심의 중심 3.4 등) 같은 면 분할·대륙 모양이 나오도록.
         // 188개 × 320면이라 비용은 무시할 수준
-        const geo = planetGeometry(radius, palette, seed, 2, variant === "ring" ? 0.3 : 0.45);
+        const geo = planetGeometry(radius, palette, seed, 2, 0.45);
         return { node, radius, palette, variant, seed, geo };
       }),
     [model],

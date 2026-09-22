@@ -60,6 +60,18 @@ export default function CompaniesPage() {
     return m;
   }, [universe.data]);
 
+  /**
+   * 기업별 시가총액(원화 환산) — 스냅샷 노드의 marketCapKrw 를 쓴다(백엔드가 아직 값을 안 채웠으면 null/undefined).
+   * 전체 은하 뷰의 행성 크기가 이미 이 필드를 쓰고 있으므로 여기서도 같은 값을 재사용한다 — 별도 하드코딩 없이 실데이터를 그대로 반영.
+   */
+  const capById = useMemo(() => {
+    const m = new Map<string, number>();
+    universe.data?.nodes.forEach((n) => {
+      if (typeof n.marketCapKrw === "number") m.set(n.companyId, n.marketCapKrw);
+    });
+    return m;
+  }, [universe.data]);
+
   /** 목록 클릭은 곧바로 은하로 이동하지 않고 가벼운 미리보기를 연다. 관계망 탐색은 미리보기에서 선택한다. */
   const openPreview = (id: string) => setPreviewId(id);
   const goToGalaxy = (id: string) => {
@@ -70,15 +82,29 @@ export default function CompaniesPage() {
   /** 지금 불러온 목록 안에서만 정렬한다 — 서버가 관계 수·점수 정렬을 지원하지 않아 전체 정렬은 아직 불가능하다 */
   const toggleSort = (key: SortKey) => setSort((s) => (s?.key === key ? (s.dir === "desc" ? { key, dir: "asc" } : null) : { key, dir: "desc" }));
   const sortedRows = useMemo(() => {
-    if (!sort) return rows;
+    if (sort) {
+      return rows
+        .slice()
+        .sort((a, b) => {
+          const av = sort.key === "count" ? stats.get(a.companyId)?.count ?? 0 : stats.get(a.companyId)?.max ?? 0;
+          const bv = sort.key === "count" ? stats.get(b.companyId)?.count ?? 0 : stats.get(b.companyId)?.max ?? 0;
+          return sort.dir === "asc" ? av - bv : bv - av;
+        });
+    }
+    // 검색어로 서버가 관련도순을 이미 매겨 준 경우엔 그 순서를 존중한다.
+    if (keyword) return rows;
+    // 기본 정렬은 알파벳(기업명)순 대신 시가총액 내림차순 — 값이 없는 기업(백엔드 미제공)은 뒤로 밀리고, 그 안에서는 기업명순.
     return rows
       .slice()
       .sort((a, b) => {
-        const av = sort.key === "count" ? stats.get(a.companyId)?.count ?? 0 : stats.get(a.companyId)?.max ?? 0;
-        const bv = sort.key === "count" ? stats.get(b.companyId)?.count ?? 0 : stats.get(b.companyId)?.max ?? 0;
-        return sort.dir === "asc" ? av - bv : bv - av;
+        const av = capById.get(a.companyId);
+        const bv = capById.get(b.companyId);
+        if (av != null && bv != null) return bv - av;
+        if (av != null) return -1;
+        if (bv != null) return 1;
+        return a.name.localeCompare(b.name, "ko");
       });
-  }, [rows, stats, sort]);
+  }, [rows, stats, capById, sort, keyword]);
 
   return (
     <div className="page">
@@ -183,7 +209,7 @@ export default function CompaniesPage() {
                 ))}
               </select>
               <span className="meta" style={{ marginLeft: "auto" }}>
-                {sort ? `${sort.key === "count" ? "연결 관계" : "최고 관계 점수"} ${sort.dir === "desc" ? "높은순" : "낮은순"} · 불러온 목록 기준` : keyword ? "관련도순" : "기업명순"}
+                {sort ? `${sort.key === "count" ? "연결 관계" : "최고 관계 점수"} ${sort.dir === "desc" ? "높은순" : "낮은순"} · 불러온 목록 기준` : keyword ? "관련도순" : "시가총액 높은순"}
               </span>
             </div>
             <div style={{ overflowX: "auto" }}>

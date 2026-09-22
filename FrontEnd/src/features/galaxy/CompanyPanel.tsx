@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import type { CompanyComment, MetricWindow, PricePeriod, Sentiment } from "@/api/types";
 import { CompanyAvatar, Empty, Icon, IndustryBadge, SentimentBadge, Skeleton } from "@/components/ui";
 import PriceChart, { Sparkbars } from "@/components/PriceChart";
-import { cleanNewsSummary, fmtCompact, fmtCompactPrice, fmtDateTime, fmtNumber, fmtPct, fmtPctFrom01, fmtPrice, fmtRelative, fmtTradingDate, josa, sortNewsByLatest } from "@/lib/format";
+import { fmtCompact, fmtCompactPrice, fmtDateTime, fmtNumber, fmtPct, fmtPctFrom01, fmtPrice, fmtRelative, fmtTradingDate, josa, newsSummaryOrFallback, sortNewsByLatest } from "@/lib/format";
 import type { SceneModel } from "@/lib/graph";
 import { PREVIEW_UI } from "@/lib/guide";
 import { SENTIMENTS, SENTIMENT_META, marketCurrency } from "@/lib/meta";
@@ -221,7 +221,7 @@ function NewsTab({ companyId, onPickCompany }: { companyId: string; onPickCompan
               </button>
             </div>
             <div className="title">{n.title}</div>
-            <div className="summary clamp-2">{cleanNewsSummary(n.summary)}</div>
+            <div className="summary clamp-2">{newsSummaryOrFallback(n.summary)}</div>
             <div className="foot">
               <div className="co">
                 {n.relatedCompanies

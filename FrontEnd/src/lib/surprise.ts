@@ -12,7 +12,15 @@ import { RELATIONSHIP_META, UNCLASSIFIED_INDUSTRY } from "./meta";
  *  - quiet     둘 다 허브가 아니다 (연결 수 하위) — 허브를 따라가면 절대 못 보는 연결
  *  - rare      이 산업 조합·이 유형의 관계가 그래프에 이것 하나뿐이다
  *  - far       관계 점수 대비 은하에서 멀리 놓였다 — 각자 다른 무리에 속한다는 뜻
- * 이유 라벨은 UI(툴팁·패널·레일)가 그대로 보여 준다. 임계·가중치는 목업 300 간선 기준으로 상위 6 개가 실제로 "어?" 싶은 조합이 되게 맞췄다.
+ * 이유 라벨은 UI(툴팁·패널·레일)가 그대로 보여 준다.
+ *
+ * 임계·가중치는 원래 목업 300 간선 기준으로 맞춰져 있었는데, 실제 운영 그래프(KOSPI100+NASDAQ100,
+ * 여러 산업이 뒤섞인 대형 은하)에서는 "산업이 다름"·"시장이 다름" 이 오히려 제일 흔한 조합이라
+ * 레일 상위가 이 둘로만 채워져 "그냥 그런" 조합처럼 보이는 문제가 있었다. industry·market 은 실제로
+ * 드문 사실이 아니라 대형 은하에서는 오히려 기본값에 가깝다 — 두 기업이 우연히 같은 산업·시장일
+ * 확률이 더 낮다. 그래서 (1) industry·market 가중치를 크게 낮추고 frenemy·rare(그래프 전체를
+ * 뒤져야 알 수 있는 진짜 드문 사실)를 끌어올렸고, (2) frenemy·rare 중 하나도 없고 quiet+far 조합도
+ * 아니면(=industry·market 만으로 특별해 보이는 경우) 애초에 후보에서 뺀다 — hasSignatureReason.
  */
 export type SurpriseReasonKey = "industry" | "market" | "frenemy" | "quiet" | "rare" | "far";
 
@@ -38,7 +46,9 @@ export const SURPRISE_MIN = 0.42;
 /** 후보가 되기 위한 최소 관계 점수 — 약한 관계의 우연은 특별한 게 아니라 잡음이다 */
 const MIN_EDGE_SCORE = 55;
 
-const W: Record<SurpriseReasonKey, number> = { industry: 0.3, market: 0.15, frenemy: 0.35, quiet: 0.22, rare: 0.15, far: 0.15 };
+// industry·market 은 대형 은하에서는 흔한 사실이라 가중치를 낮췄다. frenemy·rare 는 그래프 전체를
+// 훑어야만 드러나는 진짜 드문 사실이라 끌어올렸다 — 레일 상위를 이 둘이 주도하게 한다.
+const W: Record<SurpriseReasonKey, number> = { industry: 0.12, market: 0.08, frenemy: 0.42, quiet: 0.2, rare: 0.34, far: 0.2 };
 
 interface Ctx {
   /** 노드 id → 연결 수 백분위(0 = 가장 적음, 1 = 가장 많음) */
@@ -146,6 +156,13 @@ export function surpriseFor(model: SceneModel, edge: SceneEdge): Surprise {
   }
 
   if (!reasons.length) return none;
+  // industry·market 처럼 대형 은하에서는 흔한 이유만 있고, frenemy·rare(진짜 드문 사실) 도 없고
+  // quiet+far 조합(허브가 아닌 두 기업이 점수 대비 멀리 떨어져 있는데도 이어진, 그 자체로 드문 경우)도
+  // 아니면 "특별하다" 고 부르기엔 부족하다 — 후보에서 뺀다.
+  const hasSignatureReason =
+    reasons.some((r) => r.key === "frenemy" || r.key === "rare") ||
+    (reasons.some((r) => r.key === "quiet") && reasons.some((r) => r.key === "far"));
+  if (!hasSignatureReason) return none;
   reasons.sort((x, y) => y.weight - x.weight);
   const raw = reasons.reduce((s, r) => s + r.weight, 0);
   // 강한 관계일수록 같은 이유라도 더 놀랍다 (점수 55 → ×0.82, 100 → ×1.0)

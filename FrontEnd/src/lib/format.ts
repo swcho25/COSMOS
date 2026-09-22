@@ -141,7 +141,15 @@ export function josa(word: string, withBatchim: string, withoutBatchim: string) 
  *  - 뒤: 문장 끝에 그대로 붙어 온 언론사 URL 을 제거한다
  */
 const LEADING_CREDIT = /^\s*[[［(（【][^\]）)】]{1,40}[\])）】]\s*/;
-const TRAILING_MARK = /저작권자\s*[ⓒ©]|무단\s*전재|재배포\s*금지|Copyright\s*[ⓒ©]/gi;
+/**
+ * 언론사마다 표기가 제각각이라(저작권자ⓒ/©/(c), 무단전재·배포·복제, 재배포·재판매 금지,
+ * 영문 Copyright·All rights reserved, 최근엔 AI 학습 금지 고지까지) 문구를 하나씩 대응하다
+ * 보면 끝이 없다 — 대신 아래 각 문구를 폭넓게 잡고, 실제로 잘라낼지는 stripTrailingMark 의
+ * "문구 뒤에 남은 글자 수" 판정에 맡긴다. 바로 뒤 [ⓒ©] 단독 패턴도 포함하는데, 본문 중간에
+ * 상표 등으로 등장해도 뒤에 남은 글자가 많으면 잘리지 않으므로 오탐 위험은 낮다.
+ */
+const TRAILING_MARK =
+  /저작권자\s*(?:[ⓒ©]|\(c\))|[ⓒ©]|무단\s*(?:전재|배포|복제)|재배포\s*금지|재판매\s*금지|Copyright|All\s+rights\s+reserved|AI\s*(?:학습|데이터\s*활용).{0,15}금지/gi;
 const TRAILING_URL = /\s*https?:\/\/\S+\s*$/gi;
 /** 저작권 고지 문구 뒤에 이 글자 수보다 적게 남아 있어야 "말미의 고지"로 보고 잘라낸다 */
 const TRAILING_MARK_TAIL_LIMIT = 40;
@@ -180,6 +188,16 @@ export function cleanNewsSummary(text: string | null | undefined): string {
     out = beforeTrailingCut.replace(TRAILING_URL, "").trim();
   }
   return out;
+}
+
+/**
+ * 정제 후에도 남는 텍스트가 없으면(크롤러가 원문에서 요약·설명 텍스트 자체를 못 얻어 backend
+ * summary 가 애초에 비어 있는 기사 — 사이트에 meta description 이 없거나 극히 짧은 통신사
+ * 단신인 경우가 많다) 빈 줄 대신 안내 문구를 보여준다. "설명이 아예 안 보인다"는 체감은 실제로는
+ * 이 빈 줄 때문인 경우가 많아, 사라진 것처럼 보이지 않게 한다 — 없는 내용을 지어내진 않는다.
+ */
+export function newsSummaryOrFallback(text: string | null | undefined): string {
+  return cleanNewsSummary(text) || "요약 정보가 없는 기사입니다.";
 }
 
 /** 뉴스 목록을 최신순(발행일 내림차순)으로 — publishedAt 이 없는 기사는 맨 뒤로 보낸다 */
