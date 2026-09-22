@@ -18,7 +18,7 @@ import HelpHub, { HelpHotkey } from "./HelpHub";
 import HoldRing from "./HoldRing";
 import HopSummary from "./HopSummary";
 import IndustryPicker from "./IndustryPicker";
-import { PanelFrame } from "./MobileSheet";
+import { PanelFrame, useLingeringPanel } from "./MobileSheet";
 import MyGalaxyBar, { MyGalaxyEmpty } from "./MyGalaxyBar";
 import PathStrip from "./PathStrip";
 import RelationshipPanel from "./RelationshipPanel";
@@ -277,6 +277,26 @@ export default function GalaxyPage() {
   );
 
   const focusName = focusId ? systemModel?.nodeById.get(focusId)?.name ?? lookup(focusId)?.name ?? "…" : null;
+
+  /* 우측 패널 내용 — panelOpen 이 꺼져도(닫는 애니메이션 재생 중) useLingeringPanel 이 이 트리의 마지막 모습을 잠깐 더 붙잡아 준다 */
+  const panelContent = selectedEdgeId ? (
+    <RelationshipPanel relationshipId={selectedEdgeId} onClose={() => setPanelOpen(false)} onPickCompany={pickCompany} model={focusId ? systemModel : galaxyModel} />
+  ) : focusId ? (
+    <CompanyPanel companyId={focusId} onClose={() => setPanelOpen(false)} onPickCompany={pickCompany} />
+  ) : (
+    selectedId && (
+      <CompanyPanel
+        companyId={selectedId}
+        model={galaxyModel}
+        onClose={() => selectCompany(null)}
+        onPickCompany={(id) => (galaxyModel?.nodeById.has(id) ? selectCompany(id) : pickCompany(id))}
+        onWarp={() => pickCompany(selectedId)}
+      />
+    )
+  );
+  // 패널 내용의 "무엇이 선택돼 있는가" 를 나타내는 안정적인 키 — panelContent(JSX)는 매 렌더 새 객체라 이걸로 변경 여부를 판단한다
+  const panelKey = selectedEdgeId ?? focusId ?? selectedId ?? null;
+  const { node: panelNode, show: showPanel, closing: panelClosing } = useLingeringPanel(Boolean(panelOpen && (focusId || selectedEdgeId || selectedId)), panelContent, panelKey);
   // 내 은하의 기준 스냅샷은 우주다 — 상태 카드의 시각·갱신 예정도 그 재료를 가리켜야 한다
   const snapshot = mineScope ? universe.data : latest.data;
   const nextRefreshAt = snapshot?.nextRefreshAt;
@@ -509,33 +529,20 @@ export default function GalaxyPage() {
 
       {/* 우측 패널 — 닫으면 오른쪽 가장자리 꼬리표로 접힌다 */}
       {/* 은하 뷰에서 행성을 클릭하면 워프하지 않고 그 기업의 뉴스·연결 단계를 여기서 먼저 본다 — 더블클릭(또는 패널의 "관계망 보기")이 워프 */}
-      {(focusId || selectedEdgeId || selectedId) &&
-        (panelOpen ? (
-          /* 모바일은 바텀시트(살짝 보기 → 전체 펼침, 손잡이로 끌어 접기·닫기) — 끌어 내려 닫을 때는 각 패널의 onClose 와 같은 일을 한다 */
-          <PanelFrame narrow={narrow} onDismiss={selectedEdgeId || focusId ? () => setPanelOpen(false) : () => selectCompany(null)}>
-            {selectedEdgeId ? (
-              <RelationshipPanel relationshipId={selectedEdgeId} onClose={() => setPanelOpen(false)} onPickCompany={pickCompany} model={focusId ? systemModel : galaxyModel} />
-            ) : focusId ? (
-              <CompanyPanel companyId={focusId} onClose={() => setPanelOpen(false)} onPickCompany={pickCompany} />
-            ) : (
-              selectedId && (
-                <CompanyPanel
-                  companyId={selectedId}
-                  model={galaxyModel}
-                  onClose={() => selectCompany(null)}
-                  onPickCompany={(id) => (galaxyModel?.nodeById.has(id) ? selectCompany(id) : pickCompany(id))}
-                  onWarp={() => pickCompany(selectedId)}
-                />
-              )
-            )}
-          </PanelFrame>
-        ) : (
-          <div className="hud hud-panel-tag">
-            <button type="button" className="hud-tag vertical" onClick={() => setPanelOpen(true)} title="패널 펼치기">
-              {selectedEdgeId ? "기업 관계" : `${focusName ?? galaxyModel?.nodeById.get(selectedId ?? "")?.name ?? ""} · 인텔리전스`}
-            </button>
-          </div>
-        ))}
+      {(focusId || selectedEdgeId || selectedId) && !panelOpen && (
+        <div className="hud hud-panel-tag">
+          <button type="button" className="hud-tag vertical" onClick={() => setPanelOpen(true)} title="패널 펼치기">
+            {selectedEdgeId ? "기업 관계" : `${focusName ?? galaxyModel?.nodeById.get(selectedId ?? "")?.name ?? ""} · 인텔리전스`}
+          </button>
+        </div>
+      )}
+      {showPanel && (
+        /* 모바일은 바텀시트(살짝 보기 → 전체 펼침, 손잡이로 끌어 접기·닫기) — 끌어 내려 닫을 때는 각 패널의 onClose 와 같은 일을 한다.
+           panelClosing 인 동안은 useLingeringPanel 이 얼려 둔 마지막 내용을 그대로 보여주며 퇴장 애니메이션만 재생한다 */
+        <PanelFrame narrow={narrow} closing={panelClosing} onDismiss={selectedEdgeId || focusId ? () => setPanelOpen(false) : () => selectCompany(null)}>
+          {panelNode}
+        </PanelFrame>
+      )}
 
       <SearchPalette onPick={pickFromSearch} />
     </div>
