@@ -61,7 +61,8 @@ class CommentListControllerTest {
     @BeforeEach
     void setUp() throws Exception {
         jdbcTemplate.update("DELETE FROM company_community_comment");
-        jdbcTemplate.update("INSERT INTO company (company_id, name, status) VALUES (?, ?, 'ACTIVE')",
+        // A는 종목코드·시장이 있는 기업(로고 표시 가능), B는 없는 기업
+        jdbcTemplate.update("INSERT INTO company (company_id, name, stock_code, market, status) VALUES (?, ?, '005930', 'KOSPI', 'ACTIVE')",
                 COMPANY_A, "목록테스트기업A");
         jdbcTemplate.update("INSERT INTO company (company_id, name, status) VALUES (?, ?, 'ACTIVE')",
                 COMPANY_B, "목록테스트기업B");
@@ -181,7 +182,7 @@ class CommentListControllerTest {
     }
 
     // 상황: 서로 다른 기업에 댓글을 쓰고 전체 목록 조회 (토큰 없이)
-    // 기대: 기업 구분 없이 최신순으로 합쳐지고, 각 줄에 기업 이름이 담긴다
+    // 기대: 기업 구분 없이 최신순으로 합쳐지고, 각 줄에 기업 이름과 로고용 종목코드·시장이 담긴다 (없는 기업은 null)
     @Test
     @DisplayName("전체 커뮤니티 목록은 여러 기업 댓글을 최신순으로 합쳐 보여준다")
     void all_comments_merged() throws Exception {
@@ -194,8 +195,11 @@ class CommentListControllerTest {
                 .andExpect(jsonPath("$.items[0].content").value("B기업 댓글"))
                 .andExpect(jsonPath("$.items[0].company.name").value("목록테스트기업B"))
                 .andExpect(jsonPath("$.items[0].company.companyId").value(COMPANY_B.toString()))
+                .andExpect(jsonPath("$.items[0].company.stockCode").value(org.hamcrest.Matchers.nullValue()))
                 .andExpect(jsonPath("$.items[0].author.nickname").value("목록테스터"))
                 .andExpect(jsonPath("$.items[1].content").value("A기업 댓글"))
+                .andExpect(jsonPath("$.items[1].company.stockCode").value("005930"))
+                .andExpect(jsonPath("$.items[1].company.market").value("KOSPI"))
                 .andExpect(jsonPath("$.hasNext").value(false));
     }
 

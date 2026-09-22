@@ -356,8 +356,13 @@ export interface CompanyComment {
   updatedAt: ISODateTime;
   edited: boolean;
 }
+/** 전체 커뮤니티 목록의 기업 — 로고를 찾을 수 있게 종목코드·시장이 함께 온다 (없는 기업은 null) */
+export interface CommentCompanyRef extends CompanyRef {
+  stockCode: string | null;
+  market: Market | null;
+}
 export interface GlobalComment extends Omit<CompanyComment, "companyId"> {
-  company: CompanyRef;
+  company: CommentCompanyRef;
 }
 export interface CommentWriteResponse {
   commentId: UUID;

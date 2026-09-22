@@ -1839,7 +1839,9 @@ HDFS의 기사 본문 전체는 제공하지 않으며 사용자는 `originalUrl
       },
       "company": {
         "companyId": "550e8400-e29b-41d4-a716-446655440010",
-        "name": "삼성전자"
+        "name": "삼성전자",
+        "stockCode": "005930",
+        "market": "KOSPI"
       },
       "createdAt": "2026-09-07T05:00:00Z",
       "updatedAt": "2026-09-07T05:00:00Z",
@@ -1850,6 +1852,8 @@ HDFS의 기사 본문 전체는 제공하지 않으며 사용자는 `originalUrl
   "hasNext": false
 }
 ```
+#### Notes
+- `company.stockCode`·`company.market`은 프론트가 기업 로고 파일을 찾는 키다. 종목코드가 없는 기업은 `null`이며 화면은 이니셜로 표시한다.
 #### Errors
 <table header-row="true">
 <tr>

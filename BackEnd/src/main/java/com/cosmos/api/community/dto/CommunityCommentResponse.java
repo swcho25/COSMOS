@@ -16,10 +16,15 @@ public record CommunityCommentResponse(
         boolean edited
 ) {
 
-    public record CompanyBrief(UUID companyId, String name) {
+    /**
+     * 어느 기업 글인지 알려주는 최소 정보.
+     * 종목코드·시장은 프론트가 기업 로고 파일을 찾는 열쇠라 함께 준다 (없는 기업은 null → 화면은 이니셜로 표시).
+     */
+    public record CompanyBrief(UUID companyId, String name, String stockCode, String market) {
 
         public static CompanyBrief from(Company company) {
-            return new CompanyBrief(company.getCompanyId(), company.getName());
+            return new CompanyBrief(
+                    company.getCompanyId(), company.getName(), company.getStockCode(), company.getMarket());
         }
     }
 
