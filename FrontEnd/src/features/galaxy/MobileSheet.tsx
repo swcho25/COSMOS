@@ -12,9 +12,16 @@ export const PANEL_TRANSITION_MS = 1200;
  * state 로 얼려 그대로 보여준다(그 사이 선택 상태가 비어도 패널 내용이 갑자기 빈 값을 시도하다 깜빡이지 않는다).
  * active 가 바뀌는 순간의 단계 전환은 렌더 중에 바로 반영한다(React 의 "이전 값과 비교해 렌더 중 state 조정" 패턴) —
  * ref 를 렌더 중에 읽거나 쓰지 않기 위해서다. 실제 타이머(퇴장 애니메이션이 끝난 뒤 완전히 치우기)만 effect 에 남긴다.
+ *
+ * contentKey 는 children 이 "같은 내용" 인지 판단하는 안정적인 식별자다(예: 선택된 기업/간선 id).
+ * children(JSX 엘리먼트)은 호출부가 매 렌더마다 새로 만들어 내는 객체라 참조로 비교하면 절대 같아지지
+ * 않는다 — 그 값으로 "바뀌었으면 얼린다" 를 하면 조건이 항상 참이 되어 렌더 중 setState 가 매번 실행되고
+ * 그때마다 다시 렌더 → 다시 변경 감지 → 다시 setState 로 무한 루프(React error #301, "Too many re-renders")에
+ * 빠진다. contentKey(문자열/ null)는 실제 선택이 바뀔 때만 변하므로 이 비교가 정상적으로 안정된다.
  */
-export function useLingeringPanel(active: boolean, children: ReactNode, ms: number = PANEL_TRANSITION_MS): { node: ReactNode; show: boolean; closing: boolean } {
+export function useLingeringPanel(active: boolean, children: ReactNode, contentKey: string | null, ms: number = PANEL_TRANSITION_MS): { node: ReactNode; show: boolean; closing: boolean } {
   const [frozenChildren, setFrozenChildren] = useState(children);
+  const [frozenKey, setFrozenKey] = useState(contentKey);
   const [phase, setPhase] = useState<"shown" | "closing" | "hidden">(active ? "shown" : "hidden");
   const [prevActive, setPrevActive] = useState(active);
 
@@ -23,8 +30,11 @@ export function useLingeringPanel(active: boolean, children: ReactNode, ms: numb
     setPrevActive(active);
     setPhase(active ? "shown" : "closing");
   }
-  // active 인 동안 마지막 내용을 계속 최신으로 얼려 둔다 — 렌더 중 state 갱신은 리액트가 같은 패스에서 반영하므로 깜빡임이 없다
-  if (active && frozenChildren !== children) setFrozenChildren(children);
+  // active 인 동안 내용이 바뀔 때마다(다른 기업/간선 선택) 마지막 내용을 다시 얼려 둔다 — contentKey 비교라 안정적으로 멈춘다
+  if (active && contentKey !== frozenKey) {
+    setFrozenKey(contentKey);
+    setFrozenChildren(children);
+  }
 
   useEffect(() => {
     if (phase !== "closing") return;

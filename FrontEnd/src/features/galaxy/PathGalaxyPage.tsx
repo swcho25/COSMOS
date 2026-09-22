@@ -58,7 +58,9 @@ export default function PathGalaxyPage() {
   ) : (
     selectedId && <CompanyPanel companyId={selectedId} model={pathModel} onClose={() => selectCompany(null)} onPickCompany={pickCompany} onWarp={() => openInGalaxy(selectedId)} />
   );
-  const { node: panelNode, show: showPanel, closing: panelClosing } = useLingeringPanel(Boolean(panelOpen && (selectedId || selectedEdgeId)), panelContent);
+  // 패널 내용의 "무엇이 선택돼 있는가" 를 나타내는 안정적인 키 — panelContent(JSX)는 매 렌더 새 객체라 이걸로 변경 여부를 판단한다
+  const panelKey = selectedEdgeId ?? selectedId ?? null;
+  const { node: panelNode, show: showPanel, closing: panelClosing } = useLingeringPanel(Boolean(panelOpen && (selectedId || selectedEdgeId)), panelContent, panelKey);
 
   return (
     <div className="galaxy">

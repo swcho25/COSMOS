@@ -294,7 +294,9 @@ export default function GalaxyPage() {
       />
     )
   );
-  const { node: panelNode, show: showPanel, closing: panelClosing } = useLingeringPanel(Boolean(panelOpen && (focusId || selectedEdgeId || selectedId)), panelContent);
+  // 패널 내용의 "무엇이 선택돼 있는가" 를 나타내는 안정적인 키 — panelContent(JSX)는 매 렌더 새 객체라 이걸로 변경 여부를 판단한다
+  const panelKey = selectedEdgeId ?? focusId ?? selectedId ?? null;
+  const { node: panelNode, show: showPanel, closing: panelClosing } = useLingeringPanel(Boolean(panelOpen && (focusId || selectedEdgeId || selectedId)), panelContent, panelKey);
   // 내 은하의 기준 스냅샷은 우주다 — 상태 카드의 시각·갱신 예정도 그 재료를 가리켜야 한다
   const snapshot = mineScope ? universe.data : latest.data;
   const nextRefreshAt = snapshot?.nextRefreshAt;
