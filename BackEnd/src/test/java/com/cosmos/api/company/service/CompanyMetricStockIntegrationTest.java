@@ -40,7 +40,8 @@ class CompanyMetricStockIntegrationTest {
 
         insertMetric("2026-08-31T00:00:00Z", "30D", 100, 60, 10, "0.500000", 8);
         insertMetric("2026-09-07T06:00:00Z", "30D", 152, 91, 23, "0.620000", 18);
-        insertMetric("2026-09-07T06:00:00Z", "7D", 40, 25, 5, "0.700000", 6);
+        insertMetric("2026-09-07T06:00:00Z", "1Y", 240, 125, 35, "0.700000", 26);
+        insertMetric("2026-09-07T06:00:00Z", "10Y", 1240, 625, 105, "0.650000", 56);
 
         insertStock("2026-07-31T00:00:00Z", "70000", "71000", "69000", "70500", 900L);
         insertStock("2026-08-10T00:00:00Z", "71000", "72000", "70000", "71500", 1000L);
@@ -60,10 +61,10 @@ class CompanyMetricStockIntegrationTest {
 
     @Test
     void keepsMetricsSeparatedByWindow() {
-        CompanyMetricResponse result = companyService.findLatestMetric(COMPANY_ID, "7D");
+        CompanyMetricResponse result = companyService.findLatestMetric(COMPANY_ID, "1Y");
 
-        assertThat(result.newsMentionCount()).isEqualTo(40);
-        assertThat(result.relationshipCount()).isEqualTo(6);
+        assertThat(result.newsMentionCount()).isEqualTo(240);
+        assertThat(result.relationshipCount()).isEqualTo(26);
     }
 
     @Test
@@ -112,6 +113,8 @@ class CompanyMetricStockIntegrationTest {
     @Test
     void rejectsInvalidWindowPeriodIntervalAndDateRange() {
         assertValidationFailed(() -> companyService.findLatestMetric(COMPANY_ID, "14D"));
+        assertValidationFailed(() -> companyService.findLatestMetric(COMPANY_ID, "7D"));
+        assertValidationFailed(() -> companyService.findLatestMetric(COMPANY_ID, "90D"));
         assertValidationFailed(() -> companyService.findStockPrices(COMPANY_ID, "2M", "1D"));
         assertValidationFailed(() -> companyService.findStockPrices(COMPANY_ID, "1M", "1H"));
         assertValidationFailed(() -> companyService.findMetricHistory(

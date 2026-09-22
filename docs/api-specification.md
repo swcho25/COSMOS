@@ -1021,7 +1021,7 @@ GET /api/companies?keyword=삼성&market=KOSPI&industryId={uuid}&size=20&cursor=
 #### 인증
 불필요
 #### Query Params
-- `window`: 7D·30D·90D, 기본 30D
+- `window`: 30D·1Y·10Y, 기본 30D
 #### Response — 200 OK
 ```json
 {
@@ -1064,11 +1064,11 @@ GET /api/companies?keyword=삼성&market=KOSPI&industryId={uuid}&size=20&cursor=
 #### GET /api/companies/{companyId}/metrics/history — 기업 지표 이력 조회
 
 #### 목적
-7일·30일·90일 기준 기업 지표의 시간별 변화를 차트용으로 조회한다.
+30일·1년·10년 기준 기업 지표의 시간별 변화를 차트용으로 조회한다.
 #### 인증
 불필요
 #### Query Params
-- `window`: 7D·30D·90D, 기본 30D
+- `window`: 30D·1Y·10Y, 기본 30D
 - `from`, `to`: 선택 조회 기간, YYYY-MM-DD
 #### Response — 200 OK
 ```json
@@ -1426,7 +1426,7 @@ HDFS의 기사 본문 전체는 제공하지 않으며 사용자는 `originalUrl
 <tr>
 <td>window</td>
 <td>30D</td>
-<td>7D·30D·90D 중 하나</td>
+<td>30D·1Y·10Y 중 하나</td>
 </tr>
 </table>
 #### Response — 200 OK
@@ -1523,7 +1523,7 @@ HDFS의 기사 본문 전체는 제공하지 않으며 사용자는 `originalUrl
 <tr>
 <td>window</td>
 <td>아니요</td>
-<td>7D·30D·90D, 기본 30D</td>
+<td>30D·1Y·10Y, 기본 30D</td>
 </tr>
 </table>
 #### Response — 200 OK
@@ -1604,7 +1604,7 @@ HDFS의 기사 본문 전체는 제공하지 않으며 사용자는 `originalUrl
 #### Path Variable
 - `relationshipId`: 기업 관계 UUID
 #### Query Params
-- `window`: 7D·30D·90D, 기본 30D
+- `window`: 30D·1Y·10Y, 기본 30D
 #### Response — 200 OK
 ```json
 {
@@ -1633,6 +1633,7 @@ HDFS의 기사 본문 전체는 제공하지 않으며 사용자는 `originalUrl
 #### Notes
 - 공시는 점수 계산에 사용하지만 응답에서 공시 문서 자체를 공개하지 않는다.
 - `newsScore`와 `disclosureScore` 중 한쪽이 `null`이면 프론트엔드는 존재하는 점수를 그대로 사용한다.
+- 프론트엔드는 API의 `30D`를 화면에서 `1M`으로 표시하고, 요청 값은 `30D`를 사용한다.
 #### Errors
 <table header-row="true">
 <tr>

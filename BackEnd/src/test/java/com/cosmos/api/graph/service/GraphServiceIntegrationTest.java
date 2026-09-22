@@ -68,9 +68,9 @@ class GraphServiceIntegrationTest {
                 """, SNAPSHOT_ID);
         insertRelationship(RELATIONSHIP_AB, COMPANY_A, COMPANY_B, "82.4", 16);
         insertRelationship(RELATIONSHIP_BC, COMPANY_B, COMPANY_C, "60.0", 4);
-        insertRelationshipScore(RELATIONSHIP_AB, "7D", "91.0", 8);
-        insertRelationshipScore(RELATIONSHIP_AB, "90D", "78.0", 24);
-        insertRelationshipScore(RELATIONSHIP_BC, "90D", "64.0", 7);
+        insertRelationshipScore(RELATIONSHIP_AB, "1Y", "91.0", 28);
+        insertRelationshipScore(RELATIONSHIP_AB, "10Y", "78.0", 124);
+        insertRelationshipScore(RELATIONSHIP_BC, "10Y", "64.0", 37);
         jdbcTemplate.update("""
                 INSERT INTO data_source (source_id, name, source_type)
                 VALUES (?, '그래프 테스트 출처', 'NEWS')
@@ -139,13 +139,13 @@ class GraphServiceIntegrationTest {
 
     @Test
     void filtersWholeAndCompanyGraphsByRequestedWindow() {
-        LatestGraphResponse latest = graphService.findLatestGraph(null, null, "7d");
-        CompanyGraphResponse company = graphService.findCompanyGraph(COMPANY_A, 3, "7D");
+        LatestGraphResponse latest = graphService.findLatestGraph(null, null, "1y");
+        CompanyGraphResponse company = graphService.findCompanyGraph(COMPANY_A, 3, "1Y");
 
-        assertThat(latest.window()).isEqualTo("7D");
+        assertThat(latest.window()).isEqualTo("1Y");
         assertThat(latest.edges()).singleElement()
                 .satisfies(edge -> assertThat(edge.relationshipId()).isEqualTo(RELATIONSHIP_AB));
-        assertThat(company.window()).isEqualTo("7D");
+        assertThat(company.window()).isEqualTo("1Y");
         assertThat(company.nodes()).extracting(node -> node.companyId())
                 .containsExactly(COMPANY_A, COMPANY_B);
         assertThat(company.edges()).singleElement()
@@ -209,6 +209,12 @@ class GraphServiceIntegrationTest {
                 CommonErrorCode.VALIDATION_FAILED);
         assertError(
                 () -> graphService.findRelationship(RELATIONSHIP_AB, "14D"),
+                CommonErrorCode.VALIDATION_FAILED);
+        assertError(
+                () -> graphService.findLatestGraph(null, null, "7D"),
+                CommonErrorCode.VALIDATION_FAILED);
+        assertError(
+                () -> graphService.findRelationship(RELATIONSHIP_AB, "90D"),
                 CommonErrorCode.VALIDATION_FAILED);
         assertError(
                 () -> graphService.findRelationshipEvidence(RELATIONSHIP_AB, "invalid", 10),

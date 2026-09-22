@@ -3,10 +3,12 @@
 `AI/rdb_loader`는 완료된 관계 점수 스냅샷을 검증한 뒤 PostgreSQL에 발행한다.
 `news_score`, `disclosure_score`, 기본 `score`를 현재 점수와 이력에 함께 저장한다.
 사용자별 가중치나 계산 결과를 PostgreSQL/Redis에 기록하지 않는다.
+신규 Loader는 `30D`, `1Y`, `10Y` 세 기간이 모두 포함된 스냅샷만 발행한다.
+따라서 AI 집계 producer도 같은 계약으로 변경한 뒤 Loader보다 먼저 또는 함께 배포해야 한다.
 
 ```text
 정규화된 문서별 관계 특징 Parquet
-  → Spark: 출처별 점수 × 7D/30D/90D 집계
+  → Spark: 출처별 점수 × 30D/1Y/10Y 집계
   → HDFS: data/*.parquet + manifest.json + _SUCCESS
   → Hadoop Master: python -m AI.rdb_loader
   → PostgreSQL: 관계 연결 → 이력 저장 → 현재 점수 교체 → PUBLISHED
@@ -17,6 +19,8 @@
 - BackEnd Flyway 마이그레이션을 적용한다. 현재 저장소의
   `V4__personalize_relationship_score.sql`이 구성 점수 컬럼을 추가한다.
   `V5__add_graph_snapshot_load_receipt.sql`은 재실행 검증용 적재 기록 테이블을 추가한다.
+  `V9__support_long_term_graph_windows.sql`은 신규 30D·1Y·10Y 적재를 허용하면서 기존
+  7D·90D 이력과 과거 적재 영수증을 보존한다.
   기존 Flyway 파일을 고쳐서 재적용하지 않는다.
 - `company`, `relationship_type`의 기준 데이터가 있어야 한다. 입력의 기업 UUID와 관계 유형이
   실제 DB와 일치해야 하며, 모르는 ID를 조용히 제외하지 않는다.
@@ -52,7 +56,8 @@ python3 -m venv .venv-rdb-loader
 같은 문서가 여러 관계에 나타나도 출처 종류와 발행 시각은 일치해야 한다.
 무방향인 `PARTNER`, `COMPETE`는 기업 UUID 순서로 정규화한다.
 
-- 기간은 UTC 기준 `[as_of_at - 기간, as_of_at)`이며 `7D`, `30D`, `90D`를 계산한다.
+- 기간은 UTC 기준 `[as_of_at - 기간, as_of_at)`이며 `30D`, `1Y`, `10Y`를 계산한다.
+  `1Y`와 `10Y`는 365일 고정값이 아닌 달력 연도 기준이다.
 - 두 출처가 있으면 `score = news_score × 0.5 + disclosure_score × 0.5`이다.
 - 한 출처만 있으면 해당 점수를 기본 `score`로도 사용한다.
 - 근거가 없는 출처는 `NULL`이다. 점수가 실제로 0인 근거와 구분한다.
@@ -93,7 +98,7 @@ relationship-scores/<snapshot UUID>/
 
 - `schema_version: 1`, `status: "SUCCEEDED"`, `snapshot_mode: "FULL"`
 - `snapshot_id`, UTC `as_of_at`, `formula_version`, `model_version`, `hdfs_uri`
-- `windows: ["7D", "30D", "90D"]`
+- `windows: ["30D", "1Y", "10Y"]`
 - `record_count`, 기간별 `window_counts`
 - `files`: `{ "path": "data/part-....parquet", "sha256": "..." }` 목록
 

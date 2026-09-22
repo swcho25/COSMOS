@@ -1,6 +1,6 @@
 """Real PostgreSQL integration checks; opt in with TEST_DATABASE_URL.
 
-Each test creates and drops its own random schema and applies unmodified V1-V5.
+Each test creates and drops its own random schema and applies every migration in order.
 Never set this variable to a production database.
 """
 
@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from decimal import Decimal
 import hashlib
 import os
@@ -17,7 +17,7 @@ import threading
 import unittest
 from uuid import UUID, uuid4
 
-from AI.rdb_loader.contract import Manifest, WINDOWS, default_score
+from AI.rdb_loader.contract import Manifest, WINDOWS, default_score, window_start
 from AI.rdb_loader.postgres import (
     PublishError, SnapshotConflictError, StaleSnapshotError, publish_snapshot,
 )
@@ -35,6 +35,8 @@ class PostgresPublicationTests(unittest.TestCase):
     def setUp(self):
         self.schema = "loader_test_" + uuid4().hex
         self.connection = psycopg.connect(os.environ["TEST_DATABASE_URL"], autocommit=True)
+        # V6+ owns a qualified analysis schema, so isolate it as well as search_path.
+        self.connection.execute("DROP SCHEMA IF EXISTS cosmos_analysis CASCADE")
         self.connection.execute(sql.SQL("CREATE SCHEMA {}").format(sql.Identifier(self.schema)))
         self.connection.execute(sql.SQL("SET search_path TO {}").format(sql.Identifier(self.schema)))
         migrations = Path(__file__).resolve().parents[3] / "BackEnd/src/main/resources/db/migration"
@@ -52,13 +54,14 @@ class PostgresPublicationTests(unittest.TestCase):
     def tearDown(self):
         self.connection.rollback()
         self.connection.execute("SET search_path TO public")
+        self.connection.execute("DROP SCHEMA IF EXISTS cosmos_analysis CASCADE")
         self.connection.execute(sql.SQL("DROP SCHEMA {} CASCADE").format(sql.Identifier(self.schema)))
         self.connection.close()
 
     def manifest(self, *, day=15, record_count=3, allow_empty=False):
         snapshot_id = uuid4()
         counts = {window: record_count // 3 for window in WINDOWS}
-        counts["90D"] += record_count % 3
+        counts["10Y"] += record_count % 3
         return Manifest(
             snapshot_id=snapshot_id,
             as_of_at=datetime(2026, 9, day, tzinfo=timezone.utc),
@@ -79,7 +82,7 @@ class PostgresPublicationTests(unittest.TestCase):
             news_score=news_score, disclosure_score=disclosure_score,
             score=default_score(news_score, disclosure_score), confidence=Decimal("0.8"),
             evidence_count=2, impact_direction="POSITIVE",
-            period_start=manifest.as_of_at - timedelta(days=int(window[:-1])),
+            period_start=window_start(manifest.as_of_at, window),
             period_end=manifest.as_of_at,
         ) for window in WINDOWS]
 
@@ -108,9 +111,9 @@ class PostgresPublicationTests(unittest.TestCase):
                 "SELECT window_type, news_score, disclosure_score, score FROM {} ORDER BY window_type"
             ).format(sql.Identifier(table))).fetchall()
             self.assertEqual(values, [
-                ("30D", None, Decimal("30"), Decimal("30")),
-                ("7D", Decimal("80"), Decimal("20"), Decimal("50")),
-                ("90D", Decimal("0"), None, Decimal("0")),
+                ("10Y", Decimal("0"), None, Decimal("0")),
+                ("1Y", None, Decimal("30"), Decimal("30")),
+                ("30D", Decimal("80"), Decimal("20"), Decimal("50")),
             ])
         self.assertEqual(self.connection.execute(
             "SELECT status, published_at IS NOT NULL FROM graph_snapshot"
@@ -118,14 +121,14 @@ class PostgresPublicationTests(unittest.TestCase):
 
     def test_utc_windows_are_independent_of_session_daylight_saving_time(self):
         self.connection.execute("SET TIME ZONE 'America/New_York'")
-        # The seven-day interval crosses the 2026-03-08 spring DST transition.
+        # The 30-day interval crosses the 2026-03-08 spring DST transition.
         manifest = replace(self.manifest(), as_of_at=datetime(2026, 3, 15, tzinfo=timezone.utc))
         publish_snapshot(self.connection, manifest, self.rows(manifest))
         self.assert_current(manifest.snapshot_id)
         for window, start, end in self.connection.execute(
             "SELECT window_type, period_start, period_end FROM relationship_score_history"
         ).fetchall():
-            self.assertEqual(start, manifest.as_of_at - timedelta(days=int(window[:-1])))
+            self.assertEqual(start, window_start(manifest.as_of_at, window))
             self.assertEqual(end, manifest.as_of_at)
         self.assertEqual(self.connection.execute("SHOW TIME ZONE").fetchone()[0], "America/New_York")
 

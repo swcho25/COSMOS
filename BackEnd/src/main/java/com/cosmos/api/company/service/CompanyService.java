@@ -136,7 +136,7 @@ public class CompanyService {
         MetricWindow window = MetricWindow.from(windowValue);
         LocalDate resolvedTo = to == null ? LocalDate.now(clock) : to;
         LocalDate resolvedFrom = from == null
-                ? resolvedTo.minusDays(window.days() - 1L)
+                ? window.inclusiveStartDate(resolvedTo)
                 : from;
         if (resolvedFrom.isAfter(resolvedTo)) {
             throw new BusinessException(CommonErrorCode.VALIDATION_FAILED);

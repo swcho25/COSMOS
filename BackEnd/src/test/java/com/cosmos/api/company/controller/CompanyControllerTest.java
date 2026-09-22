@@ -132,22 +132,22 @@ class CompanyControllerTest {
     void returnsMetricHistory() throws Exception {
         when(companyService.findMetricHistory(
                 COMPANY_ID,
-                "7D",
+                "1Y",
                 LocalDate.parse("2026-09-01"),
                 LocalDate.parse("2026-09-07")))
                 .thenReturn(new CompanyMetricHistoryResponse(
                         COMPANY_ID,
-                        "7D",
+                        "1Y",
                         List.of(new CompanyMetricHistoryItemResponse(
                                 Instant.parse("2026-09-07T00:00:00Z"),
                                 40, 25, 5, new BigDecimal("0.700000"), 6))));
 
         mockMvc.perform(get("/api/companies/{companyId}/metrics/history", COMPANY_ID)
-                        .param("window", "7D")
+                        .param("window", "1Y")
                         .param("from", "2026-09-01")
                         .param("to", "2026-09-07"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.window").value("7D"))
+                .andExpect(jsonPath("$.window").value("1Y"))
                 .andExpect(jsonPath("$.items[0].relationshipCount").value(6));
     }
 
