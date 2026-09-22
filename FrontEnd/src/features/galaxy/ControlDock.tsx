@@ -2,7 +2,7 @@ import { useState, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent a
 import type { AltitudeWindow } from "@/api/types";
 import { Icon } from "@/components/ui";
 import { DOCK_UI } from "@/lib/guide";
-import { RELATIONSHIP_ORDER, relationshipMeta } from "@/lib/meta";
+import { METRIC_WINDOWS, METRIC_WINDOW_LABEL, RELATIONSHIP_ORDER, relationshipMeta } from "@/lib/meta";
 import { spreadStage } from "@/lib/spread";
 import { useNarrowViewport } from "@/lib/viewport";
 import { useGalaxy } from "@/store/galaxy";
@@ -11,12 +11,18 @@ import "./dock.css";
 
 /**
  * 하단 중앙 조절 도크 — Human Atlas 의 "Explode anatomy" 카드와 같은 자리.
- * 넓은 화면: 기본은 펼친 상태이고, 접으면 '^' 알약 버튼 하나만 남는다. 펼치기·관계 종류·뉴스·공시 비율·최소 점수·주가 고도가
- * 한 카드에 가로로 이어지고, 맨 오른쪽 끝에 초기화 버튼을 둔다.
+ * 넓은 화면: 기본은 펼친 상태이고, 접으면 '^' 알약 버튼 하나만 남는다. 펼치기·관계 종류·뉴스·공시 비율·최소 점수·주가 고도·
+ * 관계선 기준 기간이 한 카드에 가로로 이어지고, 맨 오른쪽 끝에 초기화 버튼을 둔다.
  * 모바일(900px 이하, lib/viewport): 같은 조절 수단을 한 장에 세로로 쌓는다 — 펼치기 슬라이더 · 관계 종류 2×2 · 뉴스·공시 비율 ·
- * 최소 점수 · 주가 고도 순. 예전에는 이 중 뒤쪽(고급) 줄들을 '>' 로 접어 별도 장으로 감췄지만, 뉴스·공시 비율·최소 점수는
- * 늘 눈에 보여야 한다는 결정에 따라 그 좌우 접고 펼치기 토글은 없앴다 — 도크를 열면 처음부터 전부 보인다.
+ * 최소 점수 · 주가 고도 · 관계선 기준 기간 순. 예전에는 이 중 뒤쪽(고급) 줄들을 '>' 로 접어 별도 장으로 감췄지만, 뉴스·공시
+ * 비율·최소 점수는 늘 눈에 보여야 한다는 결정에 따라 그 좌우 접고 펼치기 토글은 없앴다 — 도크를 열면 처음부터 전부 보인다.
  * 열림 여부는 로컬 상태 없이 store/galaxy 의 dockOpen 을 그대로 쓴다.
+ *
+ * 관계선 기준 기간(edgeWindow, 주가 고도 바로 옆): 주가 고도처럼 은하 뷰(inGalaxyView)에서만 보이지만, 고르는 값은
+ * store/galaxy 의 전역 상태라 여기서 나가도(기업 중심 뷰·관계 경로 화면으로 이동해도) 그대로 유지되어 그 화면들이
+ * 요청하는 그래프에도 같이 적용된다(lib/queries 의 useLatestGraph·useCompanyGraph 가 window 쿼리로 넘긴다) —
+ * "이미 고른 관계 하나의 지표를 보는 기간"(CompanyPanel/RelationshipPanel 의 window)과는 달리, 이 값은
+ * 관계선 자체(간선의 존재·점수)를 다시 계산하는 기준이다.
  */
 
 const ALTITUDE_WINDOWS: AltitudeWindow[] = ["7D", "30D", "90D"];
@@ -44,6 +50,8 @@ export default function ControlDock() {
   const setAltitude = useGalaxy((s) => s.setAltitude);
   const altitudeWindow = useGalaxy((s) => s.altitudeWindow);
   const setAltitudeWindow = useGalaxy((s) => s.setAltitudeWindow);
+  const edgeWindow = useGalaxy((s) => s.edgeWindow);
+  const setEdgeWindow = useGalaxy((s) => s.setEdgeWindow);
   const focusId = useGalaxy((s) => s.focusId);
   const resetControls = useGalaxy((s) => s.resetControls);
 
@@ -193,6 +201,23 @@ export default function ControlDock() {
     </div>
   );
 
+  /* 관계선(간선) 자체를 다시 계산하는 기준 기간 — 주가 고도 바로 옆. 여기서 고르면 메인 은하뿐 아니라 기업 중심 뷰·
+     관계 경로 화면·관계 검색 추천까지 같은 기간 기준으로 관계선을 다시 받는다(store/galaxy 의 edgeWindow, 전역) */
+  const edgeWindowRow = (
+    <div className="dock-row dock-edge-window">
+      <span className="lab" title={DOCK_UI.edgeWindowTitle}>
+        {DOCK_UI.edgeWindow}
+      </span>
+      <div className="seg">
+        {METRIC_WINDOWS.map((w) => (
+          <button key={w} type="button" className={edgeWindow === w ? "on" : ""} onClick={() => setEdgeWindow(w)} title={DOCK_UI.edgeWindowTitle}>
+            {METRIC_WINDOW_LABEL[w]}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+
   /* 초기화 — 카드 맨 오른쪽 끝. 글자 없이 아이콘만, 설명은 title.
      예전엔 그 아래에 고급('>')을 접고 펼치는 버튼이 있었지만, 뉴스·공시 비율·최소 점수·주가 고도는 항상 보여야 한다는
      결정에 따라 그 토글은 없앴다 — 도크가 열려 있으면 이 조절 수단들도 항상 함께 보인다 */
@@ -215,8 +240,8 @@ export default function ControlDock() {
     return (
       <div className="hud hud-dock">
         <div className="card dock-card dock-mobile">
-          {/* 한 장에 세로로 쌓는다 — 펼치기 슬라이더(은하 뷰) · 관계 종류 2×2 · 뉴스·공시 비율 · 최소 점수 · 주가 고도(은하 뷰) 순.
-              예전엔 뒤쪽 세 줄을 '>' 로 접어 별도 장에 감췄지만 이제 처음부터 전부 보인다 */}
+          {/* 한 장에 세로로 쌓는다 — 펼치기 슬라이더(은하 뷰) · 관계 종류 2×2 · 뉴스·공시 비율 · 최소 점수 · 주가 고도(은하 뷰) ·
+              관계선 기준 기간(은하 뷰) 순. 예전엔 뒤쪽 세 줄을 '>' 로 접어 별도 장에 감췄지만 이제 처음부터 전부 보인다 */}
           <div className="dock-mobile-stack">
             {inGalaxyView && spreadCol}
             <div className="dock-types-grid" title={DOCK_UI.types}>
@@ -225,6 +250,7 @@ export default function ControlDock() {
             {mixRow}
             {minScoreRow}
             {inGalaxyView && altitudeRow}
+            {inGalaxyView && edgeWindowRow}
           </div>
           {tail}
           {closeHandle}
@@ -252,6 +278,7 @@ export default function ControlDock() {
           {mixRow}
           {minScoreRow}
           {inGalaxyView && altitudeRow}
+          {inGalaxyView && edgeWindowRow}
         </div>
 
         <span className="dock-div" aria-hidden="true" />

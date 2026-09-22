@@ -32,13 +32,16 @@ export default function PathGalaxyPage() {
   const selectCompany = useGalaxy((s) => s.selectCompany);
   const setPanelOpen = useGalaxy((s) => s.setPanelOpen);
   const setSearchOpen = useGalaxy((s) => s.setSearchOpen);
+  // ControlDock(메인 은하, 주가 고도 옆)에서 고른 관계선 기준 기간 — 화면을 옮겨도 store/galaxy 에 남아 있는 전역
+  // 값이라, 이 화면도 같은 기준으로 다시 계산된 관계선 위에서 경로를 찾는다
+  const edgeWindow = useGalaxy((s) => s.edgeWindow);
 
   // 이 화면을 떠나면(다른 경로 검색·뒤로 가기 등) 남아 있던 선택 상태가 다음 화면에 새지 않게 비운다
   useEffect(() => {
     return () => useGalaxy.getState().clearSelection();
   }, []);
 
-  const universe = useLatestGraph(null);
+  const universe = useLatestGraph(null, edgeWindow);
   const capT = useMemo(() => capScale(universe.data?.nodes ?? []), [universe.data]);
   const result = useMemo(() => {
     if (!universe.data || !fromId || !toId || fromId === toId) return null;

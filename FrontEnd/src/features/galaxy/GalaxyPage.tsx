@@ -36,13 +36,14 @@ const Scene = lazy(() => import("@/three/Scene"));
     hoveredId 구독을 이 조각에 가둬 호버마다 HUD 전체가 리렌더되지 않게 한다 */
 function HoverPrefetch({ focusId }: { focusId: string | null }) {
   const hoveredId = useGalaxy((s) => s.hoveredId);
+  const edgeWindow = useGalaxy((s) => s.edgeWindow);
   const sessionKey = useSessionKey();
   const qc = useQueryClient();
   useEffect(() => {
     if (!hoveredId || hoveredId === focusId) return;
-    const t = setTimeout(() => void qc.prefetchQuery(companyGraphQuery(sessionKey, hoveredId)), 200);
+    const t = setTimeout(() => void qc.prefetchQuery(companyGraphQuery(sessionKey, hoveredId, edgeWindow)), 200);
     return () => clearTimeout(t);
-  }, [hoveredId, focusId, sessionKey, qc]);
+  }, [hoveredId, focusId, sessionKey, edgeWindow, qc]);
   return null;
 }
 
@@ -78,17 +79,20 @@ export default function GalaxyPage() {
   const setSearchOpen = useGalaxy((s) => s.setSearchOpen);
   const panelOpen = useGalaxy((s) => s.panelOpen);
   const setPanelOpen = useGalaxy((s) => s.setPanelOpen);
+  // 관계선(간선) 계산 기준 기간 — ControlDock 의 주가 고도 옆 버튼이 고른다. 메인 은하·기업 중심 뷰가 요청하는
+  // 그래프에 그대로 실려 백엔드가 이 기간 기준으로 다시 계산한 edges 를 돌려준다
+  const edgeWindow = useGalaxy((s) => s.edgeWindow);
 
   const status = useSession((s) => s.status);
   const openAuth = useUi((s) => s.openAuth);
   const toast = useUi((s) => s.toast);
   const industries = useIndustries();
-  const universe = useLatestGraph(null); // 전체 우주 — 색·시장 조회용
-  const latest = useLatestGraph(industryId);
-  const focusGraph = useCompanyGraph(focusId);
+  const universe = useLatestGraph(null); // 전체 우주 — 색·시장 조회용. 노드만 쓰고 간선을 그리지 않으므로 edgeWindow 를 넘기지 않는다
+  const latest = useLatestGraph(industryId, edgeWindow);
+  const focusGraph = useCompanyGraph(focusId, edgeWindow);
   // 워프 중인 목적지 — 커밋 전에 미리 배치를 만들어 둬야 모프가 첫 프레임부터 이어진다
   const warpTarget = useGalaxy((s) => s.warpTarget);
-  const targetGraph = useCompanyGraph(phase === "warp" ? warpTarget : null);
+  const targetGraph = useCompanyGraph(phase === "warp" ? warpTarget : null, edgeWindow);
   const watchlist = useWatchlist();
   const toggleWatch = useToggleWatch();
   const mineScope = scope === "mine";
