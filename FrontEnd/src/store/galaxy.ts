@@ -135,7 +135,7 @@ export const useGalaxy = create<GalaxyState>((set, get) => ({
   showLabels: true,
   edgeBudget: true,
   altitudeOn: true,
-  altitudeWindow: "1M",
+  altitudeWindow: "30D",
   spread: 0,
 
   panelTab: "news",
@@ -250,7 +250,7 @@ export const useGalaxy = create<GalaxyState>((set, get) => ({
     set({ dockAdvanced: v });
   },
   resetControls() {
-    set({ spread: 0, activeTypes: new Set(RELATIONSHIP_ORDER), minScore: 0, altitudeOn: true, altitudeWindow: "1M" });
+    set({ spread: 0, activeTypes: new Set(RELATIONSHIP_ORDER), minScore: 0, altitudeOn: true, altitudeWindow: "30D" });
   },
   toggleLabels() {
     set((s) => ({ showLabels: !s.showLabels }));
