@@ -1,6 +1,6 @@
 # 실시간 배치에 이어 붙일 것 — AI 파이프라인 인수인계
 
-작성 2026-09-22 · 박준우
+작성 2026-09-22 · 박준우 (전수 재처리·근거 적재 반영해 갱신)
 
 지금 실시간 수집·매칭은 잘 돌고 있습니다. 여기에 **네 단계만 이어 붙이면** 뉴스가
 화면까지 흐릅니다. 아래 순서대로 읽으시면 됩니다.
@@ -31,7 +31,7 @@ cosmos-sec-incremental               5분    SEC 증분
 | 주기 | 단계 | 쓰는 곳 |
 | --- | --- | --- |
 | **10분** | 근거 문장 추출 → 감성 → 관련도·영향도 | `public` 에 직접 |
-| **하루 1~2회** | 관계 추출 → 새 run → `active_run` 전환 | 버전 테이블 |
+| **하루 1~2회** | 관계 추출 → 점수 → 새 `graph_snapshot` 발행 | `public` 에 직접 |
 
 관계는 10분마다 바뀌지 않습니다. "삼성전자가 SK하이닉스와 경쟁한다"를 10분마다
 갱신할 이유가 없습니다. 반대로 기사·감성은 사용자가 바로 느끼는 부분이라 10분이
@@ -53,8 +53,11 @@ current_company_document     <- 감성·관련도·영향도가 여기 들어갑
 즉 **10분 배치는 `public.company_document` 에 쓰기만 하면 화면에 뜹니다.**
 스냅샷을 새로 만들 필요가 없습니다.
 
-`relationship_*` 뷰는 V8 이 건드리지 않았습니다. 그래서 관계만 여전히 스냅샷
-하나에 묶여 있습니다 (→ 6번 참고).
+다만 **V8 때문에 그런 건 아닙니다.** 백엔드는 애초에 `cosmos_analysis` 를 안 읽고
+`public` 을 직접 읽습니다(→ 6번). 결과는 같습니다 — `public` 에 쓰면 뜹니다.
+
+관계 쪽만 다릅니다. `relationship_score_current` 는 **스냅샷 하나**에 묶여 있어서
+행을 넣는 것만으로는 안 되고 그 스냅샷에 붙여야 합니다 (→ 5-④).
 
 ---
 
@@ -101,7 +104,7 @@ snunlp/KR-FinBert-SC   f8586286cc3161fb648e9fee09a456069fd846d0
 ProsusAI/finbert       4556d13015211d73dccd3fdd39d39232506f3e43
 ```
 
-번들에 이미 들어 있습니다: `artifacts/news_impact_v2_bundle/models/sentiment_{ko,en}/`
+모델 받는 곳은 8절 "감성" 에 적어 뒀습니다. 저장소에는 없고 **하둡 서버** 에 있습니다.
 
 문장에 한글이 있으면 한국어 모델, 없으면 영어 모델로 보냅니다.
 
@@ -124,69 +127,197 @@ from kg_target_sentiment import _surface   # 문장부호 안 지움, 영문 경
 
 본문만으로 문장을 자르면 **제목 길이만큼 전부 밀려서** 엉뚱한 문장이 근거로 붙습니다.
 
-### ④ 부분 run 을 만들면 안 됩니다
+### ④ 새 스냅샷은 그래프 **전체**를 갈아끼웁니다
 
-관계 발행 시 **12개 버전 테이블을 전부** 채워야 합니다.
+백엔드는 스냅샷을 **하나만** 읽습니다 (`GraphQueryRepository.findLatestPublishedSnapshot`).
 
-```
-source_document · news_article · disclosure · company_document
-document_evidence · company_relationship · relationship_evidence
-relationship_score_current · relationship_score_history
-company_metric_history · graph_snapshot · graph_snapshot_load
+```sql
+SELECT snapshot_id, as_of_at FROM graph_snapshot
+WHERE status = 'PUBLISHED' ORDER BY as_of_at DESC, snapshot_id DESC LIMIT 1
 ```
 
-관계만 든 run 으로 전환하면 **뉴스 219,662건과 기업 연결 246,117건이 통째로
-사라집니다.**
+그리고 간선은 그 `snapshot_id` + `window_type` 으로만 걸러 옵니다. 그래서
+**더 늦은 `as_of_at` 으로 스냅샷을 만드는 순간 그 스냅샷에 붙지 않은 관계는 전부
+화면에서 사라집니다.** 새로 뽑은 관계만 담아 발행하면 나머지가 통째로 없어집니다.
+
+발행할 때마다 **그 시점의 관계 전량 + 쓰는 창 전량**을 같이 넣어야 합니다.
+
+창 주의: 백엔드 `MetricWindow` 는 **7D / 30D / 90D 만** 받습니다(그 밖은 400).
+세 창 중 하나라도 행이 없으면 그 탭이 빕니다.
+
+또 하나 — `relationship_score_current` 의 PK 는 `(relationship_id, window_type)` 이라
+**`snapshot_id` 가 안 들어갑니다.** 새 스냅샷으로 upsert 하면 같은 관계의 옛 스냅샷
+행이 새 스냅샷으로 끌려옵니다. 되돌리려면 적재 전에 테이블을 떠 두세요.
 
 ---
 
-## 6. 먼저 확인해야 할 것 (백엔드)
+## 6. 백엔드가 읽는 곳은 `public` 입니다 — `cosmos_analysis` 가 아닙니다
 
-지금 `/api/graphs/companies/*` 응답이 이렇습니다.
+**이 문서의 예전 판이 여기를 틀리게 적었습니다.** 실측으로 바로잡습니다.
+
+백엔드는 `cosmos` 롤로 붙고 `search_path` 가 `"$user", public` 입니다.
+`GraphQueryRepository` 의 SQL 은 스키마를 하나도 안 붙이므로 실제로 읽는 건 `public.*` 입니다.
 
 ```
-snapshotId  ab19d794-ad08-51b3-8a91-a060bcdfdafc
-asOfAt      2026-09-16T00:00:00Z
+to_regclass('graph_snapshot')  ->  public.graph_snapshot
 ```
 
-**9/20 에 적재한 관계가 화면에 안 보입니다.** 백엔드가 9/16 스냅샷에 고정돼 있어서,
-DB 에 행이 있어도 그 스냅샷에 안 붙으면 노출되지 않습니다.
+`cosmos_analysis` 의 `runs` · `active_run` · `current_*` 뷰는 **서빙 경로에 연결돼
+있지 않습니다.** 2026-09-20 에 `cosmos_analysis` 로 적재한 관계가 화면에 안 나온
+이유가 이것입니다 — 스냅샷을 잘못 고른 게 아니라 아예 다른 스키마였습니다.
 
-여쭤볼 것:
+**그러니 `active_run` 전환은 하지 마세요. 아무 효과가 없습니다.**
+관계·점수·근거는 전부 `public` 에 넣습니다.
 
-> 새 `graph_snapshot` 을 만들고 `active_run` 을 전환하면 `/api/graphs/*` 가 그걸
-> 바로 집나요? V8 이 문서 계열 뷰만 `public` 과 UNION 했고 관계 뷰는 건드리지 않아서,
-> 관계는 여전히 스냅샷 하나에 묶여 있습니다.
+본보기: `AI/graph/data/db_full_20260922/load_full_reprocess.sql`
+(되돌리기 `rollback_full_reprocess.sql`)
 
-**이게 안 풀리면 배치를 아무리 잘 만들어도 관계가 화면에 반영되지 않습니다.**
-순서상 이것부터 확인하는 게 맞습니다.
+---
+
+## 6-1. 근거 문장을 띄우려면 테이블 다섯 개를 다 채워야 합니다
+
+전수 재처리 때 근거 18,400건을 적재하면서 밟은 지뢰입니다. 실시간 배치에서
+**그대로 재현됩니다.**
+
+근거 조회는 이 사슬을 전부 탑니다 (`GraphQueryRepository` 의 `representative_evidence`):
+
+```
+relationship_evidence ─┬─> source_document ──> news_article
+                       └─> document_evidence ──> company_document   (FK)
+```
+
+`relationship_evidence` 만 넣으면 **아무것도 안 보입니다.** 한 군데라도 비면 조용히
+빠집니다 — 에러가 안 납니다.
+
+#### ⓐ `document_id` 를 계산하지 말고 DB 에서 찾으세요
+
+수집기 규칙은 `uuid5(NAMESPACE_URL, 'cosmos:document:NEWS:' + sha256(canonical_url))`
+입니다(`Crawling/documents/services/document_loader/postgres.py`). 그런데 이 규칙만
+믿으면 안 됩니다. 실측으로 근거 문서 8,926건 중 **3,591건이 이미 `news_article` 에
+같은 `canonical_url_hash` 로 있으면서 `document_id` 가 달랐습니다.** 예전 적재가
+다른 규칙을 썼습니다.
+
+새 id 로 넣으면 `uk_news_article_canonical_url_hash` 에 걸려 `ON CONFLICT DO NOTHING`
+으로 **조용히 버려지고**, `JOIN news_article` 에서 빠져 근거가 화면에 안 뜹니다.
+
+```sql
+-- 먼저 매핑을 만들고 시작하세요
+SELECT d.url_hash, COALESCE(n.document_id, d.fallback_id) AS document_id
+FROM 입력 d LEFT JOIN public.news_article n ON n.canonical_url_hash = d.url_hash
+```
+
+#### ⓑ `published_at` 을 반드시 채우세요
+
+근거 조회에 `AND sd.published_at IS NOT NULL` 이 걸려 있습니다. 그런데 운영
+`source_document` 의 NEWS 438,944건 중 **196,944건(45%)이 발행일이 비어 있습니다.**
+
+이것 때문에 근거 9,188건 중 **5,951건만** 조회됐습니다(관계 1,211개 중 999개).
+빈 발행일 3,100건을 채우고 나서야 전량이 나왔습니다.
+
+실시간 수집에서 발행일을 못 뽑으면 그 기사의 근거는 **처음부터 안 보입니다.**
+
+#### ⓒ `content_hash` 를 채우면 나중에 배치가 죽습니다
+
+`document_loader/postgres.py` 에 이 검사가 있습니다.
+
+```
+changed news content_hash requires an explicit revision/reanalysis workflow
+```
+
+이미 `content_hash` 가 있는 문서를 다른 렌더링으로 다시 수집하면 `LoadError` 로
+**배치 전체가 실패합니다.** 아카이브 적재에서는 `content_hash = NULL`,
+`status = 'COLLECTED'`, `analysis_version = NULL` 로 둬서 수집기가 정상적으로
+넘겨받게 했습니다. 실시간 쪽은 본인이 원본을 쥐고 있으니 채워도 되지만,
+**같은 URL 을 두 경로에서 쓰면 이 지뢰를 밟습니다.**
+
+#### ⓓ `company_document` 가 먼저 있어야 합니다
+
+`document_evidence` 의 FK 가 `(document_id, company_id) -> company_document` 입니다.
+문서-기업 행 없이 근거 문장만 넣으면 FK 위반으로 막힙니다. 순서:
+
+```
+data_source -> source_document -> news_article
+            -> company_document -> document_evidence -> relationship_evidence
+```
+
+#### ⓔ 제목·작성자가 오염돼 있습니다
+
+원천 파서가 본문을 흘려 넣은 기사가 있습니다. 실측 8,935건 기준:
+
+```
+제목에 줄바꿈(본문 유입)   276건   최대 246자
+작성자에 줄바꿈            720건   최대 405자
+```
+
+`news_article.author` 와 `publisher` 는 **varchar(200)** 이라 그냥 넣으면
+`value too long` 으로 **배치가 죽습니다.** 첫 줄만 취하고 길이를 확인하세요.
+
+발행일 표기도 섞여 있습니다 — 8,935건 중 1,047건은 이미 `+00:00` 이 붙어 있고
+나머지는 오프셋이 없습니다. 무조건 붙이면 `2026-09-02T01:01:25+00:00+09:00` 같은
+값이 나와 `\copy` 가 실패합니다.
+
+#### ⓕ `is_service_visible`
+
+아카이브 기사는 `false` 로 넣었습니다. 근거 패널은 이 값을 안 보지만 뉴스 목록에는
+끼어듭니다. 실시간 수집분은 당연히 `true` 입니다.
+
+본보기: `AI/graph/data/db_evidence_20260922/load_evidence.sql`
+(빌더 `AI/graph/build_evidence_load_package.py`, 되돌리기 `rollback_evidence.sql`)
+
+#### ⓖ INVEST 에는 근거 문장이 없습니다
+
+관계 4종 중 INVEST 만 DART 지분 공시에서 나옵니다. 뉴스 문장 경로를 안 타므로
+붙일 문장이 없고, 백엔드 근거 조회도 `sd.document_type = 'NEWS'` 로 공시를
+거릅니다. **정상입니다** — 화면도 "공시는 점수에 반영되지만 원문 문장은 공개하지
+않습니다" 라고 안내합니다.
 
 ---
 
 ## 7. 참고로 알아둘 것
 
-### 7D 버튼이 비어 있는 이유
+### 7D 가 거의 빈 이유 — 이 배치가 채워야 합니다
+
+2026-09-22 전수 재처리 후 실적재된 관계입니다 (`rel-v0.5-full`).
 
 ```
-7D  관계 1개 · 30D 245개 · 90D 57개
+7D      40   ← 전부 INVEST. 최근 7일 안에 들어온 뉴스 근거가 0건
+30D    106
+90D    123
+1Y     301
+10Y  1,251
 ```
 
-확장·영문 배치가 `WINDOW = "30D"` 로 고정해서 7D·90D 행을 안 만들었습니다.
-원래 설계(`relationship_score_components.py`)는 `WINDOWS = (7, 30, 90)` 으로 세 창을
-다 만듭니다. 재처리 때 되돌릴 예정입니다.
+창은 `as_of` 기준 상대 기간인데 **관계 근거의 91%가 1년보다 오래됐습니다**
+(10,354건 중 9,432건). 원천이 과거 아카이브 위주고 2025~2026 수집이 얇아서입니다.
 
-다만 **7D 는 세 창을 다 만들어도 거의 빕니다.** 창이 `as_of` 기준 상대 기간이라
-최근 7일 기사만 보는데, 지금 관계 추출 입력이 과거 아카이브 위주입니다.
-**실시간 수집분이 관계 추출까지 흘러야 7D 가 채워집니다** — 이 배치가 그 역할입니다.
+**실시간 수집분이 관계 추출까지 흘러야 7D·30D 가 채워집니다** — 이 배치가 그 역할입니다.
+지금 30D 106개가 실시간 파이프라인이 붙으면 계속 늘어나야 정상입니다.
 
-### 뉴스·공시 가중치 슬라이더가 안 먹는 이유
+참고로 분석 창은 **30D / 1Y / 10Y** 로 정했습니다(`WINDOWS` in
+`relationship_score_components.py`). 7D·90D 는 백엔드 `MetricWindow` 호환용으로
+같이 내고 있을 뿐입니다. 1Y·10Y 를 화면에 띄우려면 백엔드 enum 과 프론트 수정이
+필요합니다(아직 안 했습니다).
+
+### 뉴스·공시 슬라이더가 사실상 on/off 인 이유
 
 ```
-30D 245개 중   뉴스만 120 · 공시만 103 · 양쪽 다 22 (9%)
+30D 106개 중   뉴스만 66 · 공시만 40 · 양쪽 다 0
+90D 123개 중   뉴스만 83 · 공시만 40 · 양쪽 다 0
 ```
 
-91% 가 한쪽 근거만 갖고 있어 가중치를 밀어도 값이 안 변합니다. 코드는 정상이고
-데이터 문제입니다 (`blendScore` 는 한쪽만 있으면 있는 쪽을 그대로 씁니다).
+**양쪽 근거를 다 가진 관계가 0개입니다.** 공시 근거가 붙은 40개는 전부 INVEST(DART
+지분)이고, PARTNER·SUPPLY·COMPETE 는 전부 뉴스 근거뿐입니다. 그래서 슬라이더가
+섞이지 않고 두 덩어리를 켰다 껐다 합니다.
+
+- 공시 100% → INVEST 40개만 남고 나머지 0점
+- 뉴스 100% → INVEST 40개가 사라짐
+
+`blendScore` 는 2026-09-22 에 고쳤습니다 — 한쪽만 있는 관계도 슬라이더를 따릅니다
+(예전엔 있는 쪽을 그대로 써서 91%가 슬라이더에 반응하지 않았습니다).
+
+섞이게 하려면 PARTNER·SUPPLY·COMPETE 에도 **공시 본문에서 뽑은 근거**가 있어야
+합니다. 지금 파이프라인은 지분 신고만 씁니다. 실시간 배치에서 공시 본문 관계추출까지
+넣으면 이게 풀립니다.
 
 ---
 
@@ -218,7 +349,25 @@ PYTHONUTF8=1 ../ner/.venv/Scripts/python.exe infer_missing_sentiment.py --limit 
 
 `--limit` 으로 소량 먼저 돌려보시면 됩니다. GPU 가 있으면 자동으로 씁니다.
 
-모델은 이미 받아져 있습니다: `artifacts/news_impact_v2_bundle/models/sentiment_{ko,en}/`
+모델은 **하둡 서버에 있습니다.** `artifacts/` 는 `.gitignore` 라서 저장소를 클론해도
+안 따라옵니다. 하둡 서버(`ubuntu@j15c205a.p.ssafy.io`)에 들어가서 받으세요.
+
+```bash
+export PATH=$PATH:/opt/hadoop/bin
+B=/data-lake/sandbox/news/junwoo/models/news_impact_v2/66c54ef0207b4783/news_impact_v2_bundle/models
+hdfs dfs -get $B/sentiment_ko ~/sentiment_models/   # 387MB
+hdfs dfs -get $B/sentiment_en ~/sentiment_models/   # 418MB
+```
+
+HDFS 는 밖에서 직접 못 붙습니다(DataNode 포트가 안 열려 있음). 서버에서 로컬 디스크로
+내린 뒤 `scp` 로 가져가세요.
+
+인터넷이 되면 **HuggingFace 에서 받는 게 빠릅니다.** 같은 파일입니다.
+
+```
+sentiment_ko -> snunlp/KR-FinBert-SC
+sentiment_en -> ProsusAI/finbert
+```
 
 ### 관련도 · 영향도
 
@@ -249,21 +398,33 @@ PYTHONUTF8=1 ../ner/.venv/Scripts/python.exe fill_company_document_scores.py --e
 
 | 파일 | 역할 |
 | --- | --- |
-| `relationship_score_components.py` | **점수 공식의 단일 출처.** `aggregate()` 가 7D/30D/90D 를 한 번에 낸다 |
+| `relationship_score_components.py` | **점수 공식의 단일 출처.** `aggregate()` 가 창 전량을 한 번에 낸다 |
+| `score_full_reprocess.py` | 그 `aggregate()` 를 쓰는 실행 예시 (창 5개 + INVEST 지분율) |
 | `data/relation_evidence/recompute_confidence.sql` | 신뢰도 재계산 |
 
 **`aggregate()` 를 쓰세요.** 예전 배치들이 이 함수를 안 쓰고 `WINDOW = "30D"` 로 직접
-만들어서 7D·90D 가 비어 있습니다.
+만들어서 7D·90D 가 비어 있었습니다.
 
-### 적재 SQL (본보기)
+### 적재 (본보기 — 2026-09-22 실적재본)
 
 | 파일 | 역할 |
 | --- | --- |
-| `data/db_expanded/load_into_analysis_run.sql` | 관계·점수 적재 |
-| `data/relation_evidence/load_relation_evidence.sql` | 근거 연결. **⚠️ 주석의 알려진 결함 확인** |
-| `data/db_expanded/rollback_expanded_relations.sql` | 되돌리기 |
+| `build_full_load_package.py` | 점수 JSON -> 적재 CSV 4종 |
+| `data/db_full_20260922/load_full_reprocess.sql` | **관계·점수를 `public` 에 적재** |
+| `data/db_full_20260922/rollback_full_reprocess.sql` | 되돌리기 (적재 전 상태를 통째로 백업) |
+| `build_evidence_load_package.py` | 근거 CSV 6종. `document_id` 매핑·제목 정제가 여기 있음 |
+| `data/db_evidence_20260922/load_evidence.sql` | **근거 문장을 `public` 에 적재** (테이블 5개) |
+| `data/db_evidence_20260922/rollback_evidence.sql` | 되돌리기 (채운 발행일도 되돌림) |
+| `spark/fetch_evidence_document_meta.py` | 근거 문서의 기사 메타를 원천에서 추출 |
+| `spark/fetch_evidence_company_sentiment.py` | 근거 문서의 (기업, 감성) 추출 |
 
 모두 멱등합니다. 여러 번 돌려도 같은 결과입니다.
+**적재 전에 `COMMIT;` 을 `ROLLBACK;` 으로 바꿔 한 번 돌려보세요** — 두 SQL 다 마지막에
+"넣으려던 수 vs 실제 DB 수" 를 출력합니다. 여기서 안 맞으면 조용히 버려진 행이
+있다는 뜻입니다.
+
+예전 판(`data/db_expanded/`, `data/relation_evidence/`)은 `cosmos_analysis` 를 대상으로
+합니다. **그쪽은 화면과 연결돼 있지 않습니다** (6절 참조). 본보기로만 보세요.
 
 ### 사전 · 매처 (이미 쓰고 계신 것)
 
@@ -276,16 +437,25 @@ PYTHONUTF8=1 ../ner/.venv/Scripts/python.exe fill_company_document_scores.py --e
 
 ---
 
-## 9. 알려진 결함 하나
+## 9. 예전 결함 — 고쳤습니다. 다시 내지 마세요
 
-`relationship_evidence.evidence_id` 가 비어 있습니다 (적재분 1,031행).
+예전에는 `relationship_evidence.evidence_id` 가 비어 있었습니다. 화면은 이 값으로
+`document_evidence` 의 **근거 문장**을 찾는데 로더가 `document_id` 까지만 연결해서,
+"근거 문서 16건" 이라 떠 놓고 문장이 안 보였습니다.
 
-화면은 `evidence_id` 로 `document_evidence` 의 **근거 문장**을 찾는데, 지금 로더가
-`document_id` 까지만 연결해서 **"근거 문서 16건" 이라 떠 놓고 문장이 안 보입니다.**
+2026-09-22 적재분은 전부 채워져 있습니다.
 
-고치는 법은 두 로더 SQL 의 ⚠️ 주석에 적어 뒀습니다. 새로 만드실 때는 **관계를 만든
-그 문장의 `evidence_id` 를 그대로 들고 가면** 됩니다 — 관계 추출이 문장 단위로
-돌아가므로 재추출이 아니라 그냥 넘기기만 하면 됩니다.
+```
+public.relationship_evidence   9,188행 · evidence_id 비어있음 0
+```
+
+(`cosmos_analysis.relationship_evidence` 에는 옛 잔재 1,530행 중 1,031행이 아직
+비어 있지만, 그 스키마는 서빙과 무관합니다.)
+
+새로 만드실 때 지킬 것: **관계를 만든 바로 그 문장의 `evidence_id` 를 그대로 들고
+가세요.** 관계 추출이 문장 단위로 돌아가므로 재추출이 아니라 넘기기만 하면 됩니다.
+`build_evidence_load_package.py` 가 `(url_hash, ticker, 문장순서)` 로 `evidence_id` 를
+결정적으로 만들어 두 테이블에 같은 값을 씁니다.
 
 **같은 문서의 아무 문장이나 붙이면 관계와 무관한 문장이 노출되므로 그렇게 하면 안 됩니다.**
 
