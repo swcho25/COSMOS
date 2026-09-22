@@ -10,8 +10,9 @@
   inset: 0;
   /* 우측 인텔리전스 패널이 열리면 그 자리만큼 오른쪽 여백을 주고 부드럽게 좁힌다(아래 :has 규칙) —
      R3F 의 Canvas 는 이 컨테이너 크기를 ResizeObserver 로 보고 있어 transition 이 진행되는 동안
-     카메라·렌더러가 프레임마다 새 크기로 따라와, 패널이 열고 닫힐 때 은하가 밀리듯 자연스럽게 보인다 */
-  transition: right 0.32s cubic-bezier(0.2, 0.8, 0.2, 1);
+     카메라·렌더러가 프레임마다 새 크기로 따라와, 패널이 열고 닫힐 때 은하가 밀리듯 자연스럽게 보인다.
+     패널 카드 자체의 등장·퇴장 애니메이션(.hud-panel, 아래)과 같은 1.2s 로 맞춰 둘이 한 호흡으로 움직이게 한다 */
+  transition: right 1.2s cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 /* 패널 폭(390px) + 좌우 여백(24px, 16px) — .hud-top 이 옆으로 비켜 주는 값(아래 :has(.hud-panel) .hud-top)과 맞춘다 */
 .galaxy:has(.hud-panel) .stage {
@@ -31,7 +32,10 @@
   pointer-events: auto;
 }
 
-/* 상단 한 줄: 검색 · 은하 범위 · 산업 선택판. 산업 드롭다운이 이 행 아래에 뜨므로 다른 HUD(경로 스트립 등)보다 한 층 위 */
+/* 상단 한 줄: 검색 · 은하 범위 · 산업 선택판. 산업 드롭다운이 이 행 아래에 뜨므로 다른 HUD(경로 스트립 등)보다 한 층 위.
+   가운데 정렬(center)이면 클러스터 전체가 화면 가운데로 몰려 검색창 왼쪽에 큰 빈 공간이 생겨 보였다 — 양끝 정렬로
+   검색창은 왼쪽 여백(24px)에 붙이고 마지막 항목(산업 선택판 등)은 오른쪽에 붙여, 줄 폭을 자연스럽게 채운다.
+   패널이 열리면 padding-right 가 늘어나므로(아래 :has 규칙) 오른쪽 끝 항목도 그만큼 함께 안쪽으로 밀린다 */
 .hud-top {
   left: 0;
   right: 0;
@@ -40,9 +44,10 @@
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  justify-content: center;
+  justify-content: space-between;
   gap: 10px;
   padding: 0 24px;
+  transition: padding-right 1.2s cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 .search-trigger {
   flex: 0 1 490px;
@@ -589,7 +594,72 @@
   transform: translateY(-50%);
 }
 
-/* 우측: 인텔리전스 패널 */
+/* 우측: 인텔리전스 패널 — 카드 자체가 오른쪽에서 슬라이드+페이드로 들어오고(.hud-panel-in), 닫을 때도 GalaxyPage/
+   PathGalaxyPage 가 언마운트를 1.2s 늦춰 붙잡아 둔 채 역방향(.hud-panel-out, useLingeringPanel 훅이 붙이는
+   .panel-closing)으로 내보낸다 — 은하 폭이 좁아지는 .stage 의 1.2s 와 같은 박자라 패널과 배경이 한 호흡으로 움직인다.
+   모바일 바텀시트(.sheet)는 오른쪽이 아니라 아래에서 올라오므로 별도의 sheet-in/out 을 쓴다(:not(.sheet) 로 분리) */
+.hud-panel:not(.sheet) {
+  animation: hud-panel-in 1.2s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.hud-panel:not(.sheet).panel-closing {
+  animation: hud-panel-out 1.2s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+  pointer-events: none;
+}
+@keyframes hud-panel-in {
+  from {
+    opacity: 0;
+    transform: translateX(48px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes hud-panel-out {
+  from {
+    opacity: 1;
+    transform: none;
+  }
+  to {
+    opacity: 0;
+    transform: translateX(48px);
+  }
+}
+.hud-panel.sheet {
+  animation: hud-sheet-in 1.2s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.hud-panel.sheet.panel-closing {
+  animation: hud-sheet-out 1.2s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+  pointer-events: none;
+}
+@keyframes hud-sheet-in {
+  from {
+    opacity: 0;
+    transform: translateY(72px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes hud-sheet-out {
+  from {
+    opacity: 1;
+    transform: none;
+  }
+  to {
+    opacity: 0;
+    transform: translateY(72px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .hud-panel:not(.sheet),
+  .hud-panel:not(.sheet).panel-closing,
+  .hud-panel.sheet,
+  .hud-panel.sheet.panel-closing {
+    animation: none;
+  }
+}
 .hud-panel {
   right: 24px;
   top: 14px;
@@ -891,6 +961,28 @@
   font-size: 15px;
   background: rgba(255, 255, 255, 0.03);
 }
+/* 관계 검색 1단계 직후 — 첫 기업과 관계 점수가 가장 높은 기업들을 연관 검색어처럼 보여준다(입력창 바로 아래) */
+.palette-suggest {
+  padding: 10px 2px 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.palette-suggest-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.palette-suggest-chips .chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+}
+.palette-suggest-chips .chip .num {
+  color: var(--primary-2);
+  font-weight: 700;
+}
 .palette ul {
   list-style: none;
   margin: 8px 0 0;
@@ -975,6 +1067,9 @@
     top: 14px;
     padding: 0 16px;
     gap: 10px;
+    /* 모바일은 돋보기 아이콘 하나 + 시점 + 범위가 한 줄에 딱 맞게 짜여 있어(아래 주석) 양끝으로 벌리면
+       오히려 어색하다 — 데스크톱 전용 수정(양끝 정렬)을 여기서 되돌린다 */
+    justify-content: center;
   }
   /* 첫 줄: 검색은 돋보기 하나로 접는다(누르면 검색 팔레트) — 비운 자리에 카메라 시점 · 은하 범위가 들어온다.
      375px 기준 44 + 10 + 시점 ≈105 + 10 + 범위 ≈155 = ≈324, 행 폭 343 안에 한 줄 */
@@ -1544,6 +1639,12 @@
 /* 기업 중심 뷰의 1홉 요약 스트립(top 74px) 아래로 Special Link 카드를 내린다 */
 .galaxy:has(.hud-hop) .hud-surprise {
   top: 130px;
+}
+/* 뉴스 복귀 팝업(.hud-crumb-below-search, top 92px)도 같은 왼쪽 열(left 24px)을 쓴다 — 팝업 높이(약 48px) +
+   여백만큼 Special Link 카드를 더 내려 겹치지 않게 한다. 팝업은 X 로 직접 닫기 전까지 계속 떠 있으므로
+   고정폭 계산으로도 안전하다(내용이 늘어나는 카드가 아니다) */
+.galaxy:has(.hud-crumb-below-search) .hud-surprise {
+  top: 152px;
 }
 
 /* 길게 누르기 진행 원(HoldRing) — 손가락 자리(뷰포트 px)에 56px 원. 트랙 위로 채움 선이 HOLD_MS 동안 한 바퀴 돈다 */

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import type { Market } from "@/api/types";
 import { fmtDateTime } from "@/lib/format";
+import { fallbackMarketCapKrw } from "@/lib/marketCapFallback";
 import { useCompanyDirectory, useIndustries, useLatestGraph, useToggleWatch, useWatchedSet, useWatchlist } from "@/lib/queries";
 import { useSession } from "@/store/session";
 import { useUi } from "@/store/ui";
@@ -93,12 +94,13 @@ export default function CompaniesPage() {
     }
     // 검색어로 서버가 관련도순을 이미 매겨 준 경우엔 그 순서를 존중한다.
     if (keyword) return rows;
-    // 기본 정렬은 알파벳(기업명)순 대신 시가총액 내림차순 — 값이 없는 기업(백엔드 미제공)은 뒤로 밀리고, 그 안에서는 기업명순.
+    // 기본 정렬은 알파벳(기업명)순 대신 시가총액 내림차순 — 실데이터(스냅샷 marketCapKrw)를 먼저 쓰고,
+    // 그마저 없으면 202개 기업 하드코딩 표(lib/marketCapFallback)를 대체값으로 쓴다. 둘 다 없는 기업만 맨 뒤로 밀린다.
     return rows
       .slice()
       .sort((a, b) => {
-        const av = capById.get(a.companyId);
-        const bv = capById.get(b.companyId);
+        const av = capById.get(a.companyId) ?? fallbackMarketCapKrw(a.stockCode);
+        const bv = capById.get(b.companyId) ?? fallbackMarketCapKrw(b.stockCode);
         if (av != null && bv != null) return bv - av;
         if (av != null) return -1;
         if (bv != null) return 1;
