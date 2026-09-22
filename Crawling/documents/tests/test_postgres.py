@@ -101,7 +101,10 @@ class PostgreSQLTests(unittest.TestCase):
         self.connection.execute(sql.SQL("CREATE SCHEMA {}").format(sql.Identifier(self.schema)))
         self.connection.execute(sql.SQL("SET search_path TO {}").format(sql.Identifier(self.schema)))
         migration_dir = Path(__file__).resolve().parents[3] / "BackEnd/src/main/resources/db/migration"
-        for path in sorted(migration_dir.glob("V*.sql")):
+        # V1-V6 only. V7 builds cosmos_analysis by reading public.* directly, so
+        # it cannot run inside the throwaway schema this suite isolates itself
+        # in, and the loader under test writes none of the tables it adds.
+        for path in sorted(migration_dir.glob("V[1-6]__*.sql")):
             self.connection.execute(path.read_text(encoding="utf-8"))
         self.kr_id, self.us_id = uuid4(), uuid4()
         self.connection.execute("""INSERT INTO company (company_id, name, market, stock_code)
@@ -192,7 +195,9 @@ class PostgreSQLTests(unittest.TestCase):
             SELECT company_id, mention_type, confidence::text, model_version, is_service_visible,
                    (analyzed_at AT TIME ZONE 'UTC')::text FROM company_document
             """).fetchall()
-        self.assertEqual(links, [(self.us_id, "MENTION", "0.875000", "dict-v1.3", True,
+        # FALSE: matching a company is not publishing it. The enrichment loader
+        # flips this once the pair has a sentiment and its evidence sentences.
+        self.assertEqual(links, [(self.us_id, "MENTION", "0.875000", "dict-v1.3", False,
                                   "2026-09-15 03:00:00")])
 
     def test_analyzed_news_empty_set_deletes_all_news_company_links(self):
@@ -262,9 +267,12 @@ class PostgreSQLTests(unittest.TestCase):
             [(self.kr_id, "0.800000")])
         self.assertEqual(self.count("document_load_batch"), 2)
 
-    def test_analyzed_upsert_preserves_hidden_state_and_clears_derived_scores(self):
+    def test_newer_analysis_clears_derived_scores_and_hides_the_pair_again(self):
+        """Visibility follows the verdict. A newer analysis invalidates the
+        sentiment, so leaving the pair visible would put a headline on screen
+        whose sentiment had just gone NULL underneath it."""
         self.load([analyzed_news(confidence=0.7)], commit=True)
-        self.connection.execute("""UPDATE company_document SET is_service_visible=FALSE,
+        self.connection.execute("""UPDATE company_document SET is_service_visible=TRUE,
                                 relevance_score=0.8, sentiment='POSITIVE', impact_score=0.6""")
         self.load([analyzed_news(confidence=0.95, analyzed_at="2026-09-15T04:00:00+00:00")],
                   commit=True, batch_id="same-analysis-new-output")
@@ -273,6 +281,18 @@ class PostgreSQLTests(unittest.TestCase):
             FROM company_document
             """).fetchone()
         self.assertEqual(stored, ("0.950000", False, None, None, None))
+
+    def test_republished_identical_analysis_keeps_ai_sentiment_and_visibility(self):
+        self.load([analyzed_news(confidence=0.7)], commit=True)
+        self.connection.execute("""UPDATE company_document SET relevance_score=0.8,
+                                sentiment='POSITIVE', impact_score=0.6, confidence=0.55,
+                                is_service_visible=TRUE""")
+        self.load([analyzed_news(confidence=0.7)], commit=True, batch_id="republished-same-analysis")
+        stored = self.connection.execute("""
+            SELECT relevance_score::text, sentiment, impact_score::text, confidence::text,
+                   is_service_visible FROM company_document
+            """).fetchone()
+        self.assertEqual(stored, ("0.800000", "POSITIVE", "0.600000", "0.550000", True))
 
     def test_parallel_same_batch_commits_once(self):
         from concurrent.futures import ThreadPoolExecutor

@@ -1,0 +1,23 @@
+[Unit]
+Description=COSMOS load company sentiment and evidence into Postgres
+After=network-online.target cosmos-news-enrich.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=ubuntu
+Group=ubuntu
+EnvironmentFile=/etc/cosmos/sentiment-loader.env
+WorkingDirectory=/opt/cosmos/news-enrich/current/Crawling/documents
+ExecStart=/usr/bin/bash /opt/cosmos/news-enrich/current/deploy/news-enrich/run-sentiment-loader.sh
+StateDirectory=cosmos-sentiment-loader
+StateDirectoryMode=0750
+UMask=0027
+TimeoutStartSec=8min
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/cosmos-sentiment-loader
+RestrictSUIDSGID=true
+LockPersonality=true

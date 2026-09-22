@@ -1,0 +1,27 @@
+[Unit]
+Description=COSMOS evidence sentences and company sentiment for matched news
+After=network-online.target cosmos-hadoop-namenode.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=ubuntu
+Group=ubuntu
+EnvironmentFile=/etc/cosmos/news-enrich.env
+WorkingDirectory=/opt/cosmos/news-enrich/current/AI/gpu_news
+ExecStart=/usr/bin/bash /opt/cosmos/news-enrich/current/deploy/news-enrich/run-news-enrich.sh
+StateDirectory=cosmos-news-enrich
+StateDirectoryMode=0750
+RuntimeDirectory=cosmos-news-enrich
+RuntimeDirectoryMode=0750
+UMask=0027
+# A pass is seconds of work at live volume. This bound is for a stuck HDFS call,
+# and it stays under the ten-minute period so passes cannot pile up.
+TimeoutStartSec=8min
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/cosmos-news-enrich /run/cosmos-news-enrich
+RestrictSUIDSGID=true
+LockPersonality=true
