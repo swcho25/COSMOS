@@ -41,3 +41,14 @@ data/labels_shard*.parquet
 data/shard*_infer.log
 sentiment_worker.zip
 worker/
+
+# 전수 재처리 중간물 (HDFS·서버에서 재생성 가능, 합계 200MB+)
+# 관계 점수 적재 패키지(data/db_full_20260922/)는 작아서 커밋한다.
+data/labels_merged.parquet
+data/relcand_*.jsonl
+data/rel_hits_*.jsonl
+data/en_rel_hits_v2.jsonl
+data/en_sentences_v2.csv
+data/features_v1.csv
+data/company_document_scores_v1.csv
+data/rel_scores_v2.json
