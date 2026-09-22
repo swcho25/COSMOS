@@ -103,7 +103,35 @@ public class NewsQueryRepository {
             UUID cursorNewsId,
             Long userId
     ) {
-        String sql = """
+        String sql = documentFirstSearchSql(
+                condition, fromInclusive, toExclusive, cursorPublishedAt);
+        MapSqlParameterSource params = new MapSqlParameterSource()
+                .addValue("keywordPattern", likePattern(condition.keyword()))
+                .addValue("companyId", condition.companyId())
+                .addValue("industryId", condition.industryId())
+                .addValue("sentiment", condition.sentiment())
+                .addValue("userId", userId)
+                .addValue("fromInclusive", timestamp(fromInclusive))
+                .addValue("toExclusive", timestamp(toExclusive))
+                .addValue("cursorPublishedAt", timestamp(cursorPublishedAt))
+                .addValue("cursorNewsId", cursorNewsId)
+                .addValue("limit", condition.size() + 1);
+        return jdbcTemplate.query(sql, params, this::mapNews);
+    }
+
+    /**
+     * Keyword-only and unfiltered requests start from documents. This lets PostgreSQL use
+     * the publication btree or title trigram index and stop after one page instead of
+     * materializing every company mention first.
+     */
+    private String documentFirstSearchSql(
+            NewsSearchCondition condition,
+            Instant fromInclusive,
+            Instant toExclusive,
+            Instant cursorPublishedAt
+    ) {
+        String mentionPredicates = mentionPredicates(condition);
+        return """
                 SELECT sd.document_id AS news_id, sd.title, sd.summary, na.publisher,
                        sd.original_url, sd.published_at, representative.sentiment,
                        EXISTS (
@@ -120,43 +148,66 @@ public class NewsQueryRepository {
                     WHERE cd.document_id = sd.document_id
                       AND cd.is_service_visible = TRUE
                       AND c.status = 'ACTIVE'
-                      AND (CAST(:companyId AS UUID) IS NULL OR cd.company_id = CAST(:companyId AS UUID))
-                      AND (CAST(:sentiment AS TEXT) IS NULL OR cd.sentiment = CAST(:sentiment AS TEXT))
-                      AND (CAST(:industryId AS UUID) IS NULL OR EXISTS (
-                          SELECT 1 FROM company_industry ci
-                          WHERE ci.company_id = cd.company_id
-                            AND ci.industry_id = CAST(:industryId AS UUID)
-                      ))
+                """
+                + mentionPredicates
+                + """
                     ORDER BY cd.relevance_score DESC NULLS LAST, cd.company_id
                     LIMIT 1
                 ) representative ON TRUE
                 WHERE sd.document_type = 'NEWS'
                   AND sd.published_at IS NOT NULL
-                  AND (CAST(:keyword AS TEXT) IS NULL
-                       OR lower(sd.title) LIKE CAST(:keywordPattern AS TEXT) ESCAPE '\\')
-                  AND (CAST(:fromInclusive AS TIMESTAMPTZ) IS NULL
-                       OR sd.published_at >= CAST(:fromInclusive AS TIMESTAMPTZ))
-                  AND (CAST(:toExclusive AS TIMESTAMPTZ) IS NULL
-                       OR sd.published_at < CAST(:toExclusive AS TIMESTAMPTZ))
-                  AND (CAST(:cursorPublishedAt AS TIMESTAMPTZ) IS NULL OR
-                       (sd.published_at, sd.document_id) <
-                       (CAST(:cursorPublishedAt AS TIMESTAMPTZ), CAST(:cursorNewsId AS UUID)))
+                """
+                + documentPredicates(condition, fromInclusive, toExclusive, cursorPublishedAt)
+                + """
                 ORDER BY sd.published_at DESC, sd.document_id DESC
                 LIMIT :limit
                 """;
-        MapSqlParameterSource params = new MapSqlParameterSource()
-                .addValue("keyword", condition.keyword())
-                .addValue("keywordPattern", likePattern(condition.keyword()))
-                .addValue("companyId", condition.companyId())
-                .addValue("industryId", condition.industryId())
-                .addValue("sentiment", condition.sentiment())
-                .addValue("userId", userId)
-                .addValue("fromInclusive", timestamp(fromInclusive))
-                .addValue("toExclusive", timestamp(toExclusive))
-                .addValue("cursorPublishedAt", timestamp(cursorPublishedAt))
-                .addValue("cursorNewsId", cursorNewsId)
-                .addValue("limit", condition.size() + 1);
-        return jdbcTemplate.query(sql, params, this::mapNews);
+    }
+
+    private String mentionPredicates(NewsSearchCondition condition) {
+        String mentionPredicates = "";
+        if (condition.companyId() != null) {
+            mentionPredicates += " AND cd.company_id = CAST(:companyId AS UUID)\n";
+        }
+        if (condition.sentiment() != null) {
+            mentionPredicates += " AND cd.sentiment = CAST(:sentiment AS TEXT)\n";
+        }
+        if (condition.industryId() != null) {
+            mentionPredicates += """
+                     AND EXISTS (
+                         SELECT 1
+                         FROM company_industry ci
+                         WHERE ci.company_id = cd.company_id
+                           AND ci.industry_id = CAST(:industryId AS UUID)
+                     )
+                    """;
+        }
+        return mentionPredicates;
+    }
+
+    private String documentPredicates(
+            NewsSearchCondition condition,
+            Instant fromInclusive,
+            Instant toExclusive,
+            Instant cursorPublishedAt
+    ) {
+        String predicates = "";
+        if (condition.keyword() != null) {
+            predicates += " AND lower(sd.title) LIKE CAST(:keywordPattern AS TEXT) ESCAPE '\\'\n";
+        }
+        if (fromInclusive != null) {
+            predicates += " AND sd.published_at >= CAST(:fromInclusive AS TIMESTAMPTZ)\n";
+        }
+        if (toExclusive != null) {
+            predicates += " AND sd.published_at < CAST(:toExclusive AS TIMESTAMPTZ)\n";
+        }
+        if (cursorPublishedAt != null) {
+            predicates += """
+                     AND (sd.published_at, sd.document_id) <
+                         (CAST(:cursorPublishedAt AS TIMESTAMPTZ), CAST(:cursorNewsId AS UUID))
+                    """;
+        }
+        return predicates;
     }
 
     private NewsRow mapNews(ResultSet rs, int rowNum) throws SQLException {
