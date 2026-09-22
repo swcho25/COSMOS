@@ -350,7 +350,7 @@ flowchart LR
     Analyzed[(HDFS analyzed)]
     FeatureJob[Spark 특징·관계 기반 점수 계산]
     Features[(HDFS features)]
-    Aggregate[Spark 7D·30D·90D 집계]
+    Aggregate[Spark 30D·1Y·10Y 집계]
     Aggregated[(HDFS aggregated / snapshots)]
     Loader[RDB Loader]
     PG[(PostgreSQL)]
@@ -426,12 +426,12 @@ AI 분석은 핵심 인프라 5대 산정에 포함되지 않는 별도의 AI �
 
 Spark가 기업 쌍과 기간별로 다음 기반 값을 계산한다.
 
-집계 기간은 `7D`, `30D`, `90D`를 사용하며 시스템 간 기준 시각과 저장 시각은 UTC로 통일한다.
+집계 기간은 `30D`, `1Y`, `10Y`를 사용하며 시스템 간 기준 시각과 저장 시각은 UTC로 통일한다.
 
 ```text
 source_company_id
 target_company_id
-window_type: 7D | 30D | 90D
+window_type: 30D | 1Y | 10Y
 news_score
 disclosure_score
 score
@@ -451,7 +451,7 @@ formula_version
 반복 작업의 핵심은 다음과 같다.
 
 - 신규 데이터 증분 처리
-- 이동하는 `7D·30D·90D` 기간 집계
+- 이동하는 `30D·1Y·10Y` 기간 집계
 - 기업 관계 그래프 및 스냅샷 갱신
 - 늦게 도착한 데이터가 영향을 미치는 기간 재집계
 - 작은 파일 compaction과 데이터 품질 검증
@@ -498,7 +498,7 @@ OpenDART·SEC → 공시 Collector → 검증된 배치 직접 게시          �
 주가 원천 → 주가 Collector → 검증된 Parquet 직접 게시          ┘
 → Spark 증분 정제·정규화
 → AI 분석
-→ Spark 기반 점수 및 7D·30D·90D 관계 집계
+→ Spark 기반 점수 및 30D·1Y·10Y 관계 집계
 → HDFS aggregated/snapshots
 → RDB Loader
 → PostgreSQL

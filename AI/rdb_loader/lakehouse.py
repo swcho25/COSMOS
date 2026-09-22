@@ -8,13 +8,12 @@ import subprocess
 import tempfile
 from contextlib import contextmanager
 from dataclasses import dataclass
-from datetime import timedelta
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
 
-from .contract import ContractError, Manifest, WINDOWS, default_score, number, timestamp
+from .contract import ContractError, Manifest, WINDOWS, default_score, number, timestamp, window_start
 
 RUN_PATTERN = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}")
 DATASETS = {
@@ -187,11 +186,11 @@ def _sentiment(value: Any) -> Decimal | None:
 def _validate_metric(row: dict[str, Any], as_of) -> dict[str, Any]:
     window = row.get("window_type")
     if window not in WINDOWS:
-        raise ContractError("metric window_type must be 7D, 30D or 90D")
+        raise ContractError("metric window_type must be 30D, 1Y or 10Y")
     measured = timestamp(row.get("measured_at"), "measured_at")
     if measured != as_of or timestamp(row.get("period_end"), "period_end") != as_of:
         raise ContractError("metric measured_at/period_end differs from run as_of")
-    if timestamp(row.get("period_start"), "period_start") != as_of - timedelta(days=int(window[:-1])):
+    if timestamp(row.get("period_start"), "period_start") != window_start(as_of, window):
         raise ContractError("metric period_start differs from its window")
     for field in ("market", "stock_code", "metric_version"):
         if not isinstance(row.get(field), str) or not row[field].strip():
@@ -210,11 +209,11 @@ def _validate_metric(row: dict[str, Any], as_of) -> dict[str, Any]:
 def _validate_relationship(row: dict[str, Any], as_of, formula_version: str) -> dict[str, Any]:
     window = row.get("window_type")
     if window not in WINDOWS:
-        raise ContractError("relationship window_type must be 7D, 30D or 90D")
+        raise ContractError("relationship window_type must be 30D, 1Y or 10Y")
     if timestamp(row.get("as_of_at"), "as_of_at") != as_of or timestamp(row.get("period_end"), "period_end") != as_of:
         raise ContractError("relationship as_of_at/period_end differs from run as_of")
     start = timestamp(row.get("period_start"), "period_start")
-    if start != as_of - timedelta(days=int(window[:-1])):
+    if start != window_start(as_of, window):
         raise ContractError("relationship period_start differs from its window")
     required = ("source_market", "source_stock_code", "target_market", "target_stock_code", "relationship_type_code")
     if any(not isinstance(row.get(field), str) or not row[field].strip() for field in required):

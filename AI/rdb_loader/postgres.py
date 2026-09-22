@@ -30,7 +30,7 @@ class PublishResult:
     already_published: bool
 
 
-_WINDOWS = ("7D", "30D", "90D")
+_WINDOWS = ("30D", "1Y", "10Y")
 _COPY_COLUMNS = (
     "source_company_id", "target_company_id", "relationship_type", "window_type",
     "news_score", "disclosure_score", "score", "confidence", "evidence_count",
@@ -52,7 +52,7 @@ CREATE TEMP TABLE _rdb_relationship_stage (
     source_company_id UUID NOT NULL,
     target_company_id UUID NOT NULL,
     relationship_type VARCHAR(50) NOT NULL,
-    window_type VARCHAR(30) NOT NULL CHECK (window_type IN ('7D', '30D', '90D')),
+    window_type VARCHAR(30) NOT NULL CHECK (window_type IN ('30D', '1Y', '10Y')),
     news_score NUMERIC(18,6) CHECK (news_score BETWEEN 0 AND 100),
     disclosure_score NUMERIC(18,6) CHECK (disclosure_score BETWEEN 0 AND 100),
     score NUMERIC(18,6) NOT NULL CHECK (score BETWEEN 0 AND 100),
@@ -120,7 +120,7 @@ def publish_snapshot(
     if connection.info.transaction_status != TransactionStatus.IDLE:
         raise PublishError("publish_snapshot requires an idle connection")
     if tuple(manifest.windows) != _WINDOWS:
-        raise PublishError("a full snapshot must declare windows 7D, 30D, and 90D")
+        raise PublishError("a full snapshot must declare windows 30D, 1Y, and 10Y")
     if manifest.record_count < 0:
         raise PublishError("record_count must not be negative")
 
@@ -251,9 +251,9 @@ def publish_snapshot(
                 SELECT 1 FROM _rdb_relationship_stage
                 WHERE period_end <> %s
                    OR period_start <> %s - CASE window_type
-                       WHEN '7D' THEN interval '7 days'
                        WHEN '30D' THEN interval '30 days'
-                       WHEN '90D' THEN interval '90 days' END
+                       WHEN '1Y' THEN interval '1 year'
+                       WHEN '10Y' THEN interval '10 years' END
                 LIMIT 1
                 """, (manifest.as_of_at, manifest.as_of_at),
             )

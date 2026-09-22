@@ -104,20 +104,20 @@ class GraphControllerTest {
 
     @Test
     void forwardsRequestedWindowToGraphQueries() throws Exception {
-        when(graphService.findLatestGraph(null, null, "7D")).thenReturn(new LatestGraphResponse(
-                SNAPSHOT_ID, AS_OF_AT, AS_OF_AT.plusSeconds(3600), "7D", false, List.of(), List.of()));
-        when(graphService.findCompanyGraph(COMPANY_A, 3, "90D")).thenReturn(new CompanyGraphResponse(
-                SNAPSHOT_ID, AS_OF_AT, "90D", COMPANY_A, false, List.of(), List.of()));
+        when(graphService.findLatestGraph(null, null, "1Y")).thenReturn(new LatestGraphResponse(
+                SNAPSHOT_ID, AS_OF_AT, AS_OF_AT.plusSeconds(3600), "1Y", false, List.of(), List.of()));
+        when(graphService.findCompanyGraph(COMPANY_A, 3, "10Y")).thenReturn(new CompanyGraphResponse(
+                SNAPSHOT_ID, AS_OF_AT, "10Y", COMPANY_A, false, List.of(), List.of()));
 
-        mockMvc.perform(get("/api/graphs/latest").param("window", "7D"))
+        mockMvc.perform(get("/api/graphs/latest").param("window", "1Y"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.window").value("7D"));
-        mockMvc.perform(get("/api/graphs/companies/{companyId}", COMPANY_A).param("window", "90D"))
+                .andExpect(jsonPath("$.window").value("1Y"));
+        mockMvc.perform(get("/api/graphs/companies/{companyId}", COMPANY_A).param("window", "10Y"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.window").value("90D"));
+                .andExpect(jsonPath("$.window").value("10Y"));
 
-        verify(graphService).findLatestGraph(null, null, "7D");
-        verify(graphService).findCompanyGraph(COMPANY_A, 3, "90D");
+        verify(graphService).findLatestGraph(null, null, "1Y");
+        verify(graphService).findCompanyGraph(COMPANY_A, 3, "10Y");
     }
 
     @Test

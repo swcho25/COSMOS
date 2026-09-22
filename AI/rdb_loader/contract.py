@@ -12,12 +12,26 @@ from typing import Any
 from urllib.parse import urlsplit
 from uuid import UUID
 
-WINDOWS = ("7D", "30D", "90D")
+WINDOWS = ("30D", "1Y", "10Y")
 SCALE = Decimal("0.000001")
 
 
 class ContractError(ValueError):
     """An incomplete or inconsistent input must never replace the live graph."""
+
+
+def window_start(as_of_at: datetime, window: str) -> datetime:
+    """Return the inclusive start of a loader window using UTC calendar years."""
+    if window == "30D":
+        return as_of_at - timedelta(days=30)
+    years = {"1Y": 1, "10Y": 10}.get(window)
+    if years is None:
+        raise ContractError("window_type must be 30D, 1Y or 10Y")
+    try:
+        return as_of_at.replace(year=as_of_at.year - years)
+    except ValueError:
+        # A leap-day snapshot starts on February 28 in a non-leap target year.
+        return as_of_at.replace(year=as_of_at.year - years, day=28)
 
 
 def timestamp(value: Any, field: str) -> datetime:
@@ -84,7 +98,7 @@ def parse_manifest(data: dict, *, allow_empty: bool = False) -> Manifest:
     if data.get("status") != "SUCCEEDED" or data.get("snapshot_mode") != "FULL":
         raise ContractError("only SUCCEEDED FULL snapshots can be published")
     if data.get("windows") != list(WINDOWS):
-        raise ContractError("manifest must cover 7D, 30D, 90D in that order")
+        raise ContractError("manifest must cover 30D, 1Y, 10Y in that order")
     for field in ("formula_version", "model_version"):
         if not isinstance(data.get(field), str) or not 1 <= len(data[field].strip()) <= 50:
             raise ContractError(f"{field} must contain 1..50 characters")
@@ -136,11 +150,11 @@ def validate_row(data: dict, manifest: Manifest) -> dict:
     row["relationship_type"] = relation_type
     window = data["window_type"]
     if window not in WINDOWS:
-        raise ContractError("window_type must be 7D, 30D or 90D")
+        raise ContractError("window_type must be 30D, 1Y or 10Y")
     row["window_type"] = window
     row["period_start"] = timestamp(data["period_start"], "period_start")
     row["period_end"] = timestamp(data["period_end"], "period_end")
-    if row["period_end"] != manifest.as_of_at or row["period_start"] != manifest.as_of_at - timedelta(days=int(window[:-1])):
+    if row["period_end"] != manifest.as_of_at or row["period_start"] != window_start(manifest.as_of_at, window):
         raise ContractError("row period must match the snapshot time and window")
     if "as_of_at" in data and timestamp(data["as_of_at"], "as_of_at") != manifest.as_of_at:
         raise ContractError("row as_of_at differs from manifest")

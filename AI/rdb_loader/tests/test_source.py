@@ -2,14 +2,14 @@ import hashlib
 import json
 import tempfile
 import unittest
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from decimal import Decimal
 from pathlib import Path
 from unittest.mock import patch
 from uuid import uuid4
 
 from AI.rdb_loader.__main__ import main
-from AI.rdb_loader.contract import ContractError, WINDOWS, parse_manifest, validate_row
+from AI.rdb_loader.contract import ContractError, WINDOWS, parse_manifest, validate_row, window_start
 from AI.rdb_loader.source import local_snapshot, prepare_snapshot
 
 
@@ -17,11 +17,11 @@ NOW = datetime(2026, 9, 15, tzinfo=timezone.utc)
 SOURCE, TARGET = str(uuid4()), str(uuid4())
 
 
-def row(window="7D", news=80, disclosure=20):
+def row(window="30D", news=80, disclosure=20):
     score = (news + disclosure) / 2 if news is not None and disclosure is not None else (news if news is not None else disclosure)
     return dict(source_company_id=SOURCE, target_company_id=TARGET, relationship_type="SUPPLY", window_type=window,
                 news_score=news, disclosure_score=disclosure, score=score, evidence_count=0 if score is None else 1,
-                confidence=None, impact_direction=None, period_start=(NOW - timedelta(days=int(window[:-1]))).isoformat(), period_end=NOW.isoformat())
+                confidence=None, impact_direction=None, period_start=window_start(NOW, window).isoformat(), period_end=NOW.isoformat())
 
 
 def write_snapshot(root, rows, *, parquet=False, complete=True):
@@ -37,7 +37,7 @@ def write_snapshot(root, rows, *, parquet=False, complete=True):
             for window in WINDOWS:
                 if window not in present:
                     rows.append(dict(exemplar, window_type=window,
-                                     period_start=(end - timedelta(days=int(window[:-1]))).isoformat()))
+                                     period_start=window_start(end, window).isoformat()))
     root.mkdir(parents=True, exist_ok=True)
     name = "part-000.parquet" if parquet else "part-000.jsonl"
     path = root / name
@@ -63,7 +63,7 @@ class SourceTest(unittest.TestCase):
         self.root = Path(self.temp.name)
 
     def test_parquet_null_zero_and_default_scores(self):
-        write_snapshot(self.root, [row("7D", 0, None), row("30D", None, 70), row("90D")], parquet=True)
+        write_snapshot(self.root, [row("30D", 0, None), row("1Y", None, 70), row("10Y")], parquet=True)
         with prepare_snapshot(self.root) as prepared:
             actual = list(prepared.rows())
             self.assertEqual([r["score"] for r in actual], [Decimal(0), Decimal(70), Decimal(50)])
@@ -71,8 +71,15 @@ class SourceTest(unittest.TestCase):
             self.assertIsNone(actual[1]["news_score"])
             self.assertEqual(list(prepared.rows()), actual)
 
+    def test_year_windows_use_calendar_years_including_leap_day(self):
+        leap_day = datetime(2028, 2, 29, 12, 30, tzinfo=timezone.utc)
+
+        self.assertEqual(window_start(leap_day, "30D"), datetime(2028, 1, 30, 12, 30, tzinfo=timezone.utc))
+        self.assertEqual(window_start(leap_day, "1Y"), datetime(2027, 2, 28, 12, 30, tzinfo=timezone.utc))
+        self.assertEqual(window_start(leap_day, "10Y"), datetime(2018, 2, 28, 12, 30, tzinfo=timezone.utc))
+
     def test_both_null_is_validated_counted_and_omitted(self):
-        write_snapshot(self.root, [row("7D", None, None), row("30D"), row("90D")])
+        write_snapshot(self.root, [row("30D", None, None), row("1Y"), row("10Y")])
         with prepare_snapshot(self.root) as prepared:
             self.assertEqual(prepared.manifest.record_count, 3)
             self.assertEqual(prepared.stored_count, 2)
@@ -104,7 +111,7 @@ class SourceTest(unittest.TestCase):
     def test_count_mismatch_rejected(self):
         data = write_snapshot(self.root, [row()])
         data["record_count"] += 1
-        data["window_counts"]["7D"] += 1
+        data["window_counts"]["30D"] += 1
         (self.root / "manifest.json").write_text(json.dumps(data))
         with self.assertRaisesRegex(ContractError, "counts"):
             with prepare_snapshot(self.root): pass

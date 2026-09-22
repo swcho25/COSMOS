@@ -139,7 +139,7 @@ def prepare_snapshot(root: Path, *, input_uri: str | None = None, allow_empty: b
             GROUP BY source_company_id, target_company_id, relationship_type
             HAVING count(*) <> 3 LIMIT 1
         """).fetchone() is not None:
-            raise ContractError("FULL snapshot requires 7D, 30D, and 90D rows for every relationship")
+            raise ContractError("FULL snapshot requires 30D, 1Y, and 10Y rows for every relationship")
         if stored_count == 0 and not allow_empty:
             raise ContractError("empty visible snapshot requires explicit --allow-empty")
         spool.flush()

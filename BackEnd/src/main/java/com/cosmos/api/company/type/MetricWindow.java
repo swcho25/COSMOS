@@ -2,28 +2,30 @@ package com.cosmos.api.company.type;
 
 import com.cosmos.api.global.error.BusinessException;
 import com.cosmos.api.global.error.CommonErrorCode;
+import java.time.LocalDate;
+import java.time.Period;
 import java.util.Arrays;
 
 public enum MetricWindow {
 
-    DAYS_7("7D", 7),
-    DAYS_30("30D", 30),
-    DAYS_90("90D", 90);
+    DAYS_30("30D", Period.ofDays(30)),
+    YEAR_1("1Y", Period.ofYears(1)),
+    YEARS_10("10Y", Period.ofYears(10));
 
     private final String code;
-    private final int days;
+    private final Period period;
 
-    MetricWindow(String code, int days) {
+    MetricWindow(String code, Period period) {
         this.code = code;
-        this.days = days;
+        this.period = period;
     }
 
     public String code() {
         return code;
     }
 
-    public int days() {
-        return days;
+    public LocalDate inclusiveStartDate(LocalDate endDate) {
+        return endDate.minus(period).plusDays(1);
     }
 
     public static MetricWindow from(String value) {
