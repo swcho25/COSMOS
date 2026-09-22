@@ -68,9 +68,8 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from impact_dataset import (HERE, build_panel, coef_matrix, load_relation_edges,
-                            train_corr)
-from train_impact_gnn import aligned_tensors, event_ic, paired_t
+from impact_dataset import (HERE, aligned_tensors, build_panel, coef_matrix, event_ic,
+                            load_relation_edges, paired_t, train_corr)
 
 DIRECTION_CSV = HERE / "data" / "db" / "relationship_impact_direction.csv"
 OUT = HERE / "data" / "impact_coefficients.csv"

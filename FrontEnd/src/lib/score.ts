@@ -6,7 +6,10 @@ import type { GraphEdge, RelationshipDetail } from "@/api/types";
  *  - 기본 비율(0.5)이면 서버가 계산한 공통 점수 score 를 그대로 쓴다
  *    (명세: "탭 세션 종료 후 다시 접속하면 기본 score 를 사용한다" — 기본 상태의 점수는 서버가 정한다)
  *  - 비율을 조절하면  newsScore × newsWeight + disclosureScore × (1 - newsWeight)
- *  - 한쪽만 있으면 가중치와 무관하게 있는 쪽을 그대로 쓴다
+ *  - 한쪽만 있으면 **그쪽 가중치를 곱한다**. 뉴스 100% 로 밀면 공시만 있는 관계는 0 이 되어
+ *    화면에서 빠진다 — "뉴스 기준으로 보는 중" 인데 공시 관계가 그대로 굵게 남으면 안 된다.
+ *    실측(운영 30D 245개): 뉴스만 120 · 공시만 103 · 양쪽 22. 예전처럼 있는 쪽을 그대로
+ *    쓰면 **91% 가 슬라이더에 반응하지 않았다.**
  *  - 둘 다 null 이면 표시할 점수가 없다 → null (호출 측이 그 관계를 화면에서 뺀다)
  *  - 서버가 아직 구성 점수를 내려주지 않으면(필드 자체가 없음) 공통 점수 score 를 그대로 쓴다
  */
@@ -26,8 +29,10 @@ export function blendScore(parts: ScoreParts, newsWeight: number): number | null
   // 구성 점수를 아예 받지 못한 응답 — 공통 점수만 믿는다
   if (n === undefined && d === undefined) return parts.score;
   if (n == null && d == null) return null;
-  if (n == null) return d!;
-  if (d == null) return n;
+  // 한쪽만 있는 관계도 슬라이더를 따른다. 기본 비율에서는 예전과 같은 값(절반)이 되도록
+  // 2 를 곱해 둔다 — 50:50 에서 화면이 갑자기 옅어지지 않게 한다.
+  if (n == null) return round1(Math.min(d!, d! * 2 * (1 - newsWeight)));
+  if (d == null) return round1(Math.min(n, n * 2 * newsWeight));
   // 기본 비율에서는 프론트가 다시 계산하지 않는다 — 서버의 공통 점수가 곧 뉴스 50 · 공시 50 이다
   if (newsWeight === DEFAULT_NEWS_WEIGHT) return parts.score;
   return round1(n * newsWeight + d * (1 - newsWeight));

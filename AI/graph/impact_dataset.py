@@ -51,9 +51,13 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
+import math
+
 import numpy as np
 import pandas as pd
+from scipy import stats
 
+from baseline_onehop import source_index
 from build_correlation_edges import MIN_FIT, MIN_GROUP, lag_align, log_returns
 
 HERE = Path(__file__).resolve().parent
@@ -423,6 +427,95 @@ def measure_beta_mode() -> None:
           f"중앙값 {corr.median():.4f} 최소 {corr.min():.4f} (1.0 이면 차이 없음)")
     print(f"표준편차 비 (prior/inyear) 중앙값 "
           f"{(y.std() / x.std()).median():.4f}")
+
+
+# ── 패널 정렬과 평가 통계 ──────────────────────────────────────────────
+# train_impact_gnn.py 에 있던 것을 옮겼다. GNN 모델과 함께 두었지만 torch 를
+# 쓰지 않는 순수 numpy/scipy 함수라, 모델을 안 쓰는 build_impact_scores.py 가
+# 이 셋 때문에 35KB GNN 파일을 통째로 import 해야 했다.
+# 영향도 순위(현재 제품용 선택)는 GNN 없이 이 파일만으로 계산된다.
+
+MARKETS = ("KOSPI", "NASDAQ")
+
+
+def aligned_tensors(panel: Panel):
+    """타깃 시장별로 (소스 정렬 행렬 X, 타깃 행렬 Y, 세션 메타).
+
+    X[i, j] = 타깃 세션 i 와 **같은 뉴스 사이클**에 속하는 종목 j 의 잔차.
+    같은 시장이면 그 세션 자신. 교차시장이면 그 직전에 끝난 세션 — KRX 가 06:30 UTC 에,
+    NASDAQ 이 20:00 UTC 에 닫으므로 KOSPI(D) 다음이 NASDAQ(D), 그 다음이 KOSPI(D+1) 이다.
+    """
+    R = panel.resid.to_numpy(dtype=float)
+    days = panel.resid.index.values
+    sess = panel.sess
+    cols = {m: panel.cols(m) for m in MARKETS}
+    sess_days = {m: days[sess[m]] for m in MARKETS}
+    out = {}
+    for tgt in MARKETS:
+        t_rows = sess[tgt]
+        X = np.full((len(t_rows), R.shape[1]), np.nan)
+        for src in MARKETS:
+            k = source_index(sess_days[tgt], sess_days[src], tgt, src, 0)
+            ok = k >= 0
+            srow = np.where(ok, sess[src][np.clip(k, 0, len(sess[src]) - 1)], 0)
+            block = R[np.ix_(srow, cols[src])]
+            block[~ok] = np.nan
+            X[:, cols[src]] = block
+        out[tgt] = {"X": X, "Y": R[np.ix_(t_rows, cols[tgt])], "rows": t_rows,
+                    "days": days[t_rows], "cols": cols[tgt]}
+    return out
+
+
+def event_ic(scores: np.ndarray, truth: np.ndarray, valid: np.ndarray, min_n: int = 10):
+    """이벤트별 횡단면 rank-IC 와 그 시계열 t.
+
+    스피어만은 "순위에 대한 피어슨"이므로 행마다 rankdata 를 먹인 뒤 벡터화해서 잰다.
+    이벤트마다 scipy.spearmanr 를 부르면 학습 중 검증에만 수십만 번 호출이라 GPU 가
+    놀고 CPU 가 병목이 된다 (실제로 그렇게 짰다가 한참 기다렸다).
+    """
+    v = valid & np.isfinite(scores) & np.isfinite(truth)
+    enough = v.sum(1) >= min_n
+    if not enough.any():
+        return float("nan"), float("nan"), 0, np.full(len(scores), np.nan)
+    v = v[enough]
+    rs = stats.rankdata(np.where(v, scores[enough], np.nan), axis=1, nan_policy="omit")
+    ry = stats.rankdata(np.where(v, truth[enough], np.nan), axis=1, nan_policy="omit")
+    rs, ry = np.where(v, rs, 0.0), np.where(v, ry, 0.0)
+    n = v.sum(1, keepdims=True)
+    sc = (rs - rs.sum(1, keepdims=True) / n) * v
+    yc = (ry - ry.sum(1, keepdims=True) / n) * v
+    den = np.sqrt((sc * sc).sum(1) * (yc * yc).sum(1))
+    with np.errstate(invalid="ignore", divide="ignore"):
+        ics = np.where(den > 0, (sc * yc).sum(1) / den, np.nan)
+    out = np.full(len(scores), np.nan)          # 원래 행 위치를 유지한 이벤트별 IC
+    out[np.flatnonzero(enough)] = ics
+    ics = ics[np.isfinite(ics)]
+    if len(ics) < 3:
+        return float("nan"), float("nan"), len(ics), out
+    se = ics.std(ddof=1) / math.sqrt(len(ics))
+    return (float(ics.mean()), float(ics.mean() / se) if se > 0 else float("nan"),
+            len(ics), out)
+
+
+def paired_t(diff: np.ndarray, sess: np.ndarray) -> tuple[float, float, float, int]:
+    """짝지은 IC 차이의 평균과 t. 순진한 t 와 **세션 클러스터** t 를 같이 낸다.
+
+    같은 세션의 이벤트 수십 개는 독립 관측이 아니다 — 그날의 시장 상태를 공유한다.
+    이벤트를 그대로 세면 표본이 실제보다 많은 셈이 돼 t 가 부풀려진다(실측 1.5~1.6배).
+    세션 안에서 먼저 평균을 낸 뒤 세션끼리 t 를 구한다.
+    """
+    m = np.isfinite(diff)
+    d, g = diff[m], sess[m]
+    if len(d) < 3:
+        return float("nan"), float("nan"), float("nan"), 0
+    naive = d.mean() / (d.std(ddof=1) / math.sqrt(len(d))) if d.std(ddof=1) > 0 else np.nan
+    order = np.argsort(g, kind="stable")
+    d, g = d[order], g[order]
+    cuts = np.flatnonzero(np.diff(g)) + 1
+    means = np.array([b.mean() for b in np.split(d, cuts)])
+    clus = (means.mean() / (means.std(ddof=1) / math.sqrt(len(means)))
+            if len(means) > 2 and means.std(ddof=1) > 0 else float("nan"))
+    return float(d.mean()), float(naive), float(clus), len(means)
 
 
 if __name__ == "__main__":
