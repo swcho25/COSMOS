@@ -344,16 +344,40 @@ def _write_document(cursor, record, source_id, companies):
             key = _company_key(link)
             company_id = companies[key]
             incoming_ids.append(company_id)
+            # Derived scores belong to the mention analysis that produced them, so a
+            # genuinely newer analysis invalidates them. Republishing the same analysis
+            # under a new batch id must not erase AI sentiment the enrichment loader
+            # already committed against that identical (model_version, analyzed_at).
+            #
+            # is_service_visible moves with those scores. A matched pair is not yet
+            # a publishable pair: the news API filters on this flag, so inserting
+            # TRUE here is what put headlines on screen with no sentiment behind
+            # them. The enrichment loader sets it once a verdict exists, and a
+            # newer analysis that invalidates the verdict takes it away again -
+            # otherwise a row would stay visible while its sentiment went NULL.
             cursor.execute("""
                 INSERT INTO company_document AS old
                     (document_id, company_id, mention_type, confidence, model_version,
                      is_service_visible, analyzed_at)
-                VALUES (%s, %s, 'MENTION', %s, %s, TRUE, %s)
+                VALUES (%s, %s, 'MENTION', %s, %s, FALSE, %s)
                 ON CONFLICT (document_id, company_id) DO UPDATE SET
-                    mention_type = 'MENTION', confidence = EXCLUDED.confidence,
-                    relevance_score = NULL, sentiment = NULL, impact_score = NULL,
+                    mention_type = 'MENTION',
+                    confidence = CASE WHEN old.analyzed_at = EXCLUDED.analyzed_at
+                        AND old.model_version = EXCLUDED.model_version
+                        THEN old.confidence ELSE EXCLUDED.confidence END,
+                    relevance_score = CASE WHEN old.analyzed_at = EXCLUDED.analyzed_at
+                        AND old.model_version = EXCLUDED.model_version
+                        THEN old.relevance_score END,
+                    sentiment = CASE WHEN old.analyzed_at = EXCLUDED.analyzed_at
+                        AND old.model_version = EXCLUDED.model_version
+                        THEN old.sentiment END,
+                    impact_score = CASE WHEN old.analyzed_at = EXCLUDED.analyzed_at
+                        AND old.model_version = EXCLUDED.model_version
+                        THEN old.impact_score END,
                     model_version = EXCLUDED.model_version,
-                    is_service_visible = old.is_service_visible,
+                    is_service_visible = CASE WHEN old.analyzed_at = EXCLUDED.analyzed_at
+                        AND old.model_version = EXCLUDED.model_version
+                        THEN old.is_service_visible ELSE FALSE END,
                     analyzed_at = EXCLUDED.analyzed_at
                 WHERE old.model_version IS NULL OR old.analyzed_at <= EXCLUDED.analyzed_at
                 RETURNING (xmax = 0) AS inserted
