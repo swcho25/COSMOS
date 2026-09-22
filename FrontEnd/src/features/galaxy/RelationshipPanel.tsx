@@ -84,7 +84,27 @@ export default function RelationshipPanel({ relationshipId, onClose, onPickCompa
         </button>
       </div>
       <div className="panel-body scroll">
-        {!r || !meta ? (
+        {rel.isError ? (
+          // 관계선은 기준 기간(edgeWindow)마다 있고 없고가 달라질 수 있다 — 패널을 연 기간에 이 관계가 없으면
+          // 상세 조회가 404 로 실패한다. 예전엔 이 상태를 걸러내지 못해 위 스켈레톤이 무한히 남아 있었다(무한 로딩) —
+          // 여기서 끊어 주고, 기간 버튼을 그대로 남겨 둬 사용자가 바로 다른 기간을 시도해 볼 수 있게 한다
+          <>
+            <div className="row between mt-4">
+              <span className="kick">관계 점수</span>
+              <div className="seg" style={{ padding: 3 }}>
+                {METRIC_WINDOWS.map((w) => (
+                  <button key={w} type="button" className={window === w ? "on" : ""} style={{ padding: "4px 9px", fontSize: 12 }} onClick={() => setWindow(w)}>
+                    {METRIC_WINDOW_LABEL[w]}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="mt-16">
+              <Empty>{EVIDENCE_UI.notFoundForWindow}</Empty>
+              <div className="meta mt-8">{EVIDENCE_UI.notFoundForWindowHelp}</div>
+            </div>
+          </>
+        ) : !r || !meta ? (
           <>
             <Skeleton h={72} style={{ borderRadius: 12 }} />
             <Skeleton h={40} style={{ marginTop: 16 }} />

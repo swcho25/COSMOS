@@ -203,6 +203,10 @@ export const EVIDENCE_UI = {
   original: "원문",
   disclosure: "공시는 점수에 반영되지만 원문 문장은 공개하지 않습니다",
   more: "더 보기",
+  /** 관계 상세(404 등)를 불러오지 못했을 때 — 관계선은 기준 기간(edgeWindow)마다 있고 없고가 달라질 수 있어, 패널을
+      연 기간에는 이 관계 자체가 없을 수 있다. 위 기간 버튼으로 다른 기간을 시도해 보라고 안내한다 */
+  notFoundForWindow: "이 기간 기준으로는 이 관계를 찾을 수 없습니다",
+  notFoundForWindowHelp: "관계선은 계산 기준 기간에 따라 있고 없고가 달라질 수 있습니다 — 위에서 다른 기간을 선택해 보세요",
   /** 오래된 근거의 불투명도 — 숨기지 않고 물러나게만 */
   ageOpacity: [
     { maxDays: 30, opacity: 1 },

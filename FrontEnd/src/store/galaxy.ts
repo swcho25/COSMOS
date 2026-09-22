@@ -207,7 +207,19 @@ export const useGalaxy = create<GalaxyState>((set, get) => ({
   },
   selectEdge(id) {
     // 간선을 고르면 기업 미리보기는 내려간다 — 우측 패널은 한 번에 하나
-    set((s) => ({ selectedEdgeId: s.selectedEdgeId === id ? null : id, selectedId: null, panelOpen: true, sheetExpanded: false }));
+    set((s) => {
+      const opening = id !== null && s.selectedEdgeId !== id;
+      return {
+        selectedEdgeId: s.selectedEdgeId === id ? null : id,
+        selectedId: null,
+        panelOpen: true,
+        sheetExpanded: false,
+        // 관계선을 새로 고르면 RelationshipPanel 의 표시 기간(window)을 그 관계선을 만든 기준 기간(edgeWindow)으로
+        // 맞춘다 — 다른 기간에는 이 관계 자체가 없을 수 있어(예: 10Y 기준에서만 보이는 관계) 상세 조회가 404 날 수 있다.
+        // 패널을 연 뒤에는 사용자가 그 안의 기간 버튼으로 자유롭게 다른 기간을 둘러볼 수 있다
+        ...(opening ? { window: s.edgeWindow } : null),
+      };
+    });
   },
   clearSelection() {
     set({ selectedEdgeId: null, selectedId: null, hoveredId: null, hoveredEdgeId: null, roleFilter: null });
