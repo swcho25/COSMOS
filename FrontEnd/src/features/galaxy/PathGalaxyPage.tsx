@@ -6,7 +6,7 @@ import { useGalaxy } from "@/store/galaxy";
 import { useNarrowViewport } from "@/lib/viewport";
 import { Icon } from "@/components/ui";
 import CompanyPanel from "./CompanyPanel";
-import { PanelFrame } from "./MobileSheet";
+import { PanelFrame, useLingeringPanel } from "./MobileSheet";
 import RelationshipPanel from "./RelationshipPanel";
 import "./galaxy.css";
 
@@ -51,6 +51,14 @@ export default function PathGalaxyPage() {
 
   const loading = universe.isLoading;
   const invalidQuery = !fromId || !toId || fromId === toId;
+
+  /* 우측 패널 내용 — panelOpen 이 꺼져도(닫는 애니메이션 재생 중) useLingeringPanel 이 마지막 모습을 잠깐 더 붙잡아 준다 (GalaxyPage 와 같은 패턴) */
+  const panelContent = selectedEdgeId ? (
+    <RelationshipPanel relationshipId={selectedEdgeId} onClose={() => setPanelOpen(false)} onPickCompany={pickCompany} model={pathModel} />
+  ) : (
+    selectedId && <CompanyPanel companyId={selectedId} model={pathModel} onClose={() => selectCompany(null)} onPickCompany={pickCompany} onWarp={() => openInGalaxy(selectedId)} />
+  );
+  const { node: panelNode, show: showPanel, closing: panelClosing } = useLingeringPanel(Boolean(panelOpen && (selectedId || selectedEdgeId)), panelContent);
 
   return (
     <div className="galaxy">
@@ -105,22 +113,18 @@ export default function PathGalaxyPage() {
         </div>
       </div>
 
-      {(selectedId || selectedEdgeId) &&
-        (panelOpen ? (
-          <PanelFrame narrow={narrow} onDismiss={selectedEdgeId ? () => setPanelOpen(false) : () => selectCompany(null)}>
-            {selectedEdgeId ? (
-              <RelationshipPanel relationshipId={selectedEdgeId} onClose={() => setPanelOpen(false)} onPickCompany={pickCompany} model={pathModel} />
-            ) : (
-              selectedId && <CompanyPanel companyId={selectedId} model={pathModel} onClose={() => selectCompany(null)} onPickCompany={pickCompany} onWarp={() => openInGalaxy(selectedId)} />
-            )}
-          </PanelFrame>
-        ) : (
-          <div className="hud hud-panel-tag">
-            <button type="button" className="hud-tag vertical" onClick={() => setPanelOpen(true)} title="패널 펼치기">
-              {selectedEdgeId ? "기업 관계" : (pathModel?.nodeById.get(selectedId ?? "")?.name ?? "") + " · 인텔리전스"}
-            </button>
-          </div>
-        ))}
+      {(selectedId || selectedEdgeId) && !panelOpen && (
+        <div className="hud hud-panel-tag">
+          <button type="button" className="hud-tag vertical" onClick={() => setPanelOpen(true)} title="패널 펼치기">
+            {selectedEdgeId ? "기업 관계" : (pathModel?.nodeById.get(selectedId ?? "")?.name ?? "") + " · 인텔리전스"}
+          </button>
+        </div>
+      )}
+      {showPanel && (
+        <PanelFrame narrow={narrow} closing={panelClosing} onDismiss={selectedEdgeId ? () => setPanelOpen(false) : () => selectCompany(null)}>
+          {panelNode}
+        </PanelFrame>
+      )}
     </div>
   );
 }

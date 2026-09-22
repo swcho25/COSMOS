@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { useCompanySearch } from "@/lib/queries";
+import { useCompanyGraph, useCompanySearch } from "@/lib/queries";
 import { useGalaxy } from "@/store/galaxy";
 import { isTyping, modalOpen } from "@/three/keyboard";
 import { CompanyAvatar, Icon, IndustryBadge, MarketTag } from "@/components/ui";
@@ -50,6 +50,29 @@ function SearchPaletteDialog({ onPick, onClose }: Props & { onClose: () => void 
   const input = useRef<HTMLInputElement>(null);
   const results = useCompanySearch(q);
   const items = results.data?.items ?? [];
+
+  /**
+   * 관계 검색 1단계에서 기업을 고르면, 그 기업과 관계 점수가 가장 높은 기업들을 연관 검색어처럼 바로 보여준다 —
+   * 두 번째 기업명을 몰라도 여기서 바로 골라 경로 검색으로 이어갈 수 있다. 기업 중심 그래프(최대 3단계) 중
+   * relFrom 에 직접 붙은 간선(depth 1)만 추려 점수 내림차순 상위 몇 개만 남긴다.
+   */
+  const relGraph = useCompanyGraph(mode === "relation" && relFrom ? relFrom.companyId : null);
+  const relSuggestions = useMemo(() => {
+    if (!relGraph.data) return [];
+    const { edges, centerCompanyId, nodes } = relGraph.data;
+    const nameById = new Map(nodes.map((n) => [n.companyId, n.name]));
+    const bestScore = new Map<string, number>();
+    edges.forEach((e) => {
+      const otherId = e.sourceCompanyId === centerCompanyId ? e.targetCompanyId : e.targetCompanyId === centerCompanyId ? e.sourceCompanyId : null;
+      if (!otherId) return;
+      const cur = bestScore.get(otherId) ?? -1;
+      if (e.score > cur) bestScore.set(otherId, e.score);
+    });
+    return [...bestScore.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 8)
+      .map(([companyId, score]) => ({ companyId, name: nameById.get(companyId) ?? companyId, score }));
+  }, [relGraph.data]);
 
   useEffect(() => {
     const timer = setTimeout(() => input.current?.focus(), 10);
@@ -129,6 +152,25 @@ function SearchPaletteDialog({ onPick, onClose }: Props & { onClose: () => void 
           />
           <span className="kbd">ESC</span>
         </label>
+        {mode === "relation" && relFrom && (
+          <div className="palette-suggest">
+            <span className="meta">{relFrom.name}와(과) 관계 점수가 가장 높은 기업</span>
+            {relGraph.isLoading ? (
+              <span className="meta">불러오는 중…</span>
+            ) : relSuggestions.length ? (
+              <div className="palette-suggest-chips">
+                {relSuggestions.map((s) => (
+                  <button key={s.companyId} type="button" className="chip" onClick={() => pickRelation(s)}>
+                    {s.name}
+                    <b className="num">{Math.round(s.score)}</b>
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <span className="meta">연결된 기업이 없습니다.</span>
+            )}
+          </div>
+        )}
         {q.trim() ? (
           items.length ? (
             <ul className="scroll">
