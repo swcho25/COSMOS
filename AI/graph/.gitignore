@@ -33,3 +33,11 @@ data/relation_evidence/*.csv
 
 # 영문 관계 추출 중간물 (DB 에서 재추출 가능, 14MB)
 data/en_sentences.csv
+
+# 감성 추론 샤드·라벨·워커 패키지 (HDFS 에서 재생성 가능, 2.9GB)
+# 샤드는 /data-lake/sandbox/news/junwoo/sentiment-shards/v1/ 에서 다시 받는다.
+data/shard*/
+data/labels_shard*.parquet
+data/shard*_infer.log
+sentiment_worker.zip
+worker/
