@@ -7,7 +7,7 @@ or measured price impact. Ownership percentage is NOT comparable to article coun
 so it is not used as the disclosure score. Sector signals are not mixed in.
 Pair price correlation adds at most PRICE_BONUS_MAX points on top (see price_bonus).
 
-Windows are [as_of - N calendar days, as_of), UTC. Date-only evidence is available at
+Windows are [as_of - N calendar days, as_of), UTC — 30D / 1Y / 10Y (see WINDOWS). Date-only evidence is available at
 the END of that UTC date; no accounting date is substituted for DART receipt date.
 Old disclosures expire from a window. Persistent ownership is a different policy.
 Each (relationship type, oriented pair, source, document ID) contributes once, using
@@ -31,8 +31,23 @@ from collections import defaultdict
 from pathlib import Path
 
 UTC = dt.timezone.utc
-WINDOWS = (7, 30, 90)
-FORMULA_VERSION = "rel-v0.3-components"
+# 창 — 2026-09-22 사용자 결정으로 7D/30D/90D 에서 30D/1Y/10Y 로 바꿨다.
+#
+# 왜: 관계 근거의 91%가 1년보다 오래됐다(실측 10,354건 중 9,432건). 90일 창으로는
+# 추출한 관계 1,200개 중 83개만 점수 행이 생겼다. 원천 뉴스가 과거 아카이브 위주고
+# 2025~2026 수집이 얇아서다.
+#
+#   30일 이내   258건   고유관계   65
+#   90일 이내    32건            25
+#   1년 이내    632건           194
+#   1년 초과  9,432건         1,088
+#
+# (라벨, 일수) 로 둔다 — 3650 을 "3650D" 로 쓰면 화면에서 읽히지 않는다.
+WINDOWS = (("30D", 30), ("1Y", 365), ("10Y", 3650))
+MAX_WINDOW_DAYS = max(d for _, d in WINDOWS)
+# 전수 재처리판. 창(30D/1Y/10Y)·주가 가산점·INVEST 지분율이 모두 바뀌었으므로
+# 예전 rel-v0.3-components 행과 섞이지 않게 판을 올린다 (되돌릴 때 이 값으로 고른다).
+FORMULA_VERSION = "rel-v0.5-full"
 TYPES = {"SUPPLY", "INVEST", "PARTNER", "COMPETE"}
 NATURAL_FIELDS = ["source_market", "source_stock_code", "target_market",
                   "target_stock_code", "relationship_type_code"]
@@ -158,6 +173,24 @@ def price_bonus(corr):
     return round(PRICE_BONUS_MAX * min(abs(c), 1.0), 6)
 
 
+# INVEST 는 지분율로 매긴다 (2026-09-22 사용자 합의).
+#
+# 근거 개수로 매기면 지분 79.38%(LG화학->LG엔솔)가 신고 1건이라 18.1점인데, 5% 턱걸이를
+# 세 번 신고한 쪽이 45.1점이 된다. 신고 횟수가 지배력처럼 보인다.
+#
+# 창(30D/1Y/10Y)도 적용하지 않는다. 지분은 신고일의 사건이 아니라 해지 신고 전까지
+# 유효한 **상태**다. 실측: 근거 1,530건 중 최근 30일이 11건뿐이라 창을 걸면 INVEST 가
+# 거의 사라진다.
+#
+# 눈금: 5% 가 법정 신고 기준선이고 25% 부터 실질 지배력으로 본다. 50% 면 확정적이다.
+#   5% -> 20점 · 25% -> 60점 · 50% -> 85점 · 79% -> 97점
+def invest_score(pct: float) -> float:
+    """지분율(0~1)을 0~100 으로. 5% 미만은 신고 대상이 아니므로 0."""
+    if pct is None or pct < 0.05:
+        return 0.0
+    return round(min(100.0, 100 * (1 - math.exp(-float(pct) / 0.28))), 6)
+
+
 def blend(news: float | None, disclosure: float | None) -> float | None:
     if news is None:
         return disclosure
@@ -176,7 +209,7 @@ def aggregate(evidence, markets: dict, as_of: dt.datetime, overrides=None,
         if src not in markets or dst not in markets:
             unknown.add(item["key"])
             continue
-        if not as_of - dt.timedelta(days=90) <= item["at"] < as_of:
+        if not as_of - dt.timedelta(days=MAX_WINDOW_DAYS) <= item["at"] < as_of:
             continue
         key = (*item["key"], item["source"], item["document"])
         previous = docs.get(key)
@@ -186,11 +219,11 @@ def aggregate(evidence, markets: dict, as_of: dt.datetime, overrides=None,
             docs[key] = item
     groups = defaultdict(list)
     for item in docs.values():
-        if as_of - dt.timedelta(days=90) <= item["at"] < as_of:
+        if as_of - dt.timedelta(days=MAX_WINDOW_DAYS) <= item["at"] < as_of:
             groups[item["key"]].append(item)
     rows = []
     for (src, dst, rel), items in sorted(groups.items()):
-        for days in WINDOWS:
+        for label, days in WINDOWS:
             present = [d for d in items if d["at"] >= as_of - dt.timedelta(days=days)]
             news = component([d for d in present if d["source"] == "NEWS"])
             disclosure = component([d for d in present if d["source"] == "DISCLOSURE"])
@@ -201,7 +234,7 @@ def aggregate(evidence, markets: dict, as_of: dt.datetime, overrides=None,
             bonus = price_bonus((price_corr or {}).get(tuple(sorted((src, dst)))))
             score = round(min(100.0, score + bonus), 6)
             rows.append(dict(zip(NATURAL_FIELDS, [markets[src], src, markets[dst], dst, rel])) | {
-                "window_type": f"{days}D", "news_score": news, "disclosure_score": disclosure,
+                "window_type": label, "news_score": news, "disclosure_score": disclosure,
                 "score": score, "impact_direction": (overrides or {}).get((tuple(sorted((src, dst))), rel)),
                 "confidence": round(math.fsum(d["confidence"] for d in present) / len(present), 6),
                 "evidence_count": len(present), "formula_version": FORMULA_VERSION,
@@ -242,7 +275,7 @@ def build_seed(args, out: Path):
     loader = Path(__file__).with_name("load_relationship_components.sql")
     (out / "load_relationships.sql").write_text(loader.read_text(encoding="utf-8"), encoding="utf-8")
     summary = {"formula_version": FORMULA_VERSION, "as_of_at": stamp, "rows": len(rows),
-               "by_window": {f"{d}D": sum(r["window_type"] == f"{d}D" for r in rows) for d in WINDOWS},
+               "by_window": {lab: sum(r["window_type"] == lab for r in rows) for lab, _ in WINDOWS},
                "unknown_relationships": unknown, "disclosure_policy": "receipt_in_window",
                "news_input": str(args.news_hits),
                "disclosure_input": str(args.disclosure_evidence or args.ownership)}
