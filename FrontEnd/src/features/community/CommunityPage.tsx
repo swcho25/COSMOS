@@ -73,7 +73,7 @@ export default function CommunityPage() {
         {!comments.isLoading && !comments.isError && !filtered.length && <Empty>표시할 댓글이 없습니다.</Empty>}
         {filtered.map((c) => (
           <button key={c.commentId} type="button" className="comm-item" onClick={() => goCompany(c.company.companyId)}>
-            <CompanyAvatar name={c.company.name} size={36} radius={18} />
+            <CompanyAvatar name={c.company.name} companyId={c.company.companyId} stockCode={c.company.stockCode} market={c.company.market} size={36} radius={18} />
             <div className="comm-body">
               <div className="comm-company">
                 <b>{c.company.name}</b>
