@@ -8,6 +8,14 @@
 .galaxy .stage {
   position: absolute;
   inset: 0;
+  /* 우측 인텔리전스 패널이 열리면 그 자리만큼 오른쪽 여백을 주고 부드럽게 좁힌다(아래 :has 규칙) —
+     R3F 의 Canvas 는 이 컨테이너 크기를 ResizeObserver 로 보고 있어 transition 이 진행되는 동안
+     카메라·렌더러가 프레임마다 새 크기로 따라와, 패널이 열고 닫힐 때 은하가 밀리듯 자연스럽게 보인다 */
+  transition: right 0.32s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+/* 패널 폭(390px) + 좌우 여백(24px, 16px) — .hud-top 이 옆으로 비켜 주는 값(아래 :has(.hud-panel) .hud-top)과 맞춘다 */
+.galaxy:has(.hud-panel) .stage {
+  right: 430px;
 }
 .galaxy .stage canvas {
   display: block;
@@ -268,6 +276,11 @@
   flex-wrap: wrap;
   align-items: center;
   gap: 10px;
+}
+/* 은하 뷰(비 focus)의 뉴스 복귀 팝업 전용 — 같은 화면에 hud-top(검색창 · 카메라 시점 · 은하 범위, top:22px)이
+   가운데 정렬로 이미 그 자리를 쓰고 있어, 화면이 좁아지면 왼쪽까지 번져 겹친다. 검색창 줄 아래로 내린다. */
+.hud-crumb-below-search {
+  top: 92px;
 }
 .crumb {
   display: inline-flex;
@@ -857,6 +870,21 @@
   padding: 10px;
   border-radius: 18px;
   background: var(--panel-solid);
+}
+/* 기업명 검색 ⟷ 관계 검색 전환 — 입력창 위에 얇게 얹는다 */
+.palette-mode {
+  margin-bottom: 8px;
+}
+/* 관계 검색 1단계에서 고른 기업 — 2단계 입력창 위에 "OO → 두 번째 기업을 검색하세요" 로 보여 준다 */
+.palette-relation-step {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 2px 8px;
+  color: var(--text-3);
+}
+.palette-relation-step .btn {
+  margin-left: auto;
 }
 .palette .field {
   min-height: 52px;
@@ -1639,5 +1667,9 @@
   /* 모바일 패널은 바텀시트라 상단 줄이 오른쪽으로 비켜 줄 필요가 없다 — 위 규칙을 상쇄 */
   .galaxy:has(.hud-panel) .hud-top {
     padding-right: 16px;
+  }
+  /* 모바일에서는 패널이 화면 아래에서 올라오는 바텀시트라 은하 폭을 줄일 이유가 없다 — 위 규칙을 상쇄 */
+  .galaxy:has(.hud-panel) .stage {
+    right: 0;
   }
 }

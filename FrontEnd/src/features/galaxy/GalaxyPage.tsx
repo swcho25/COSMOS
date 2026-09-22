@@ -422,7 +422,9 @@ export default function GalaxyPage() {
           예전엔 다른 브레드크럼과 같은 옅은 알약 버튼이라 눈에 잘 안 띈다는 피드백을 받았다 — 사용자가 X 로 직접
           닫기 전까지는 화면에 계속 남아 있는, 더 도드라진 팝업 카드로 바꿨다(자동으로 사라지지 않는다) */}
       {!focusId && newsReturnTo && !newsReturnDismissed && (
-        <div className="hud hud-crumb">
+        // 은하 뷰(비 focus)에서는 hud-top 검색창 줄이 이미 top:22px 를 쓰고 있어 hud-crumb 기본
+        // 위치(top:22px)와 겹친다 — 검색창 줄 아래로 내리는 전용 modifier 를 쓴다(galaxy.css).
+        <div className="hud hud-crumb hud-crumb-below-search">
           <div className="news-return-toast" role="status">
             <button type="button" className="news-return-go" onClick={() => navigate(newsReturnTo)} title="보고 있던 뉴스로 돌아가기">
               <Icon.Back /> 뉴스로 돌아가기
