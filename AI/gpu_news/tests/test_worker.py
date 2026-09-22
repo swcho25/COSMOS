@@ -67,6 +67,44 @@ class LocalHdfsNoSubprocessTest(unittest.TestCase):
         self.assertEqual([c[0] for c in bridge._fs.calls], ["info", "info"])
 
 
+class RoundRobinTest(unittest.TestCase):
+    """A busy partition must not starve the others."""
+
+    @staticmethod
+    def item(partition, offset):
+        root = (f"/data-lake/analyzed/news/company-mentions/model_version=dict-v1.3"
+                f"/topic=news.raw/partition={partition}/start={offset:020d}")
+        return (0, "realtime", root, "/out" + root)
+
+    def test_every_partition_advances_in_one_pass(self):
+        from worker import _round_robin
+        pending = ([self.item(2, n) for n in range(100, 110)]
+                   + [self.item(0, n) for n in range(100, 103)]
+                   + [self.item(1, n) for n in range(100, 103)])
+        first_six = _round_robin(pending, newest_first=True)[:6]
+        seen = {p for _i, _t, root, _o in first_six
+                for p in [root.split("partition=")[1].split("/")[0]]}
+        self.assertEqual(seen, {"0", "1", "2"})
+
+    def test_newest_offset_comes_first_within_a_partition(self):
+        from worker import _round_robin
+        pending = [self.item(0, 100), self.item(0, 300), self.item(0, 200)]
+        order = [int(root.split("start=")[1]) for _i, _t, root, _o
+                 in _round_robin(pending, newest_first=True)]
+        self.assertEqual(order, [300, 200, 100])
+
+    def test_oldest_first_is_still_available(self):
+        from worker import _round_robin
+        pending = [self.item(0, 100), self.item(0, 300), self.item(0, 200)]
+        order = [int(root.split("start=")[1]) for _i, _t, root, _o
+                 in _round_robin(pending, newest_first=False)]
+        self.assertEqual(order, [100, 200, 300])
+
+    def test_historical_runs_are_grouped_by_run_id(self):
+        from worker import _stream_key
+        self.assertEqual(
+            _stream_key("/x/model_version=dict-v1.3/run_id=abc/batch=00001"), "run_id=abc")
+
+
 if __name__ == "__main__":
     unittest.main()
-
