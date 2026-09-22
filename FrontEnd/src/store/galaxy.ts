@@ -62,10 +62,10 @@ interface GalaxyState {
   panelOpen: boolean;
   /** 모바일 바텀시트(MobileSheet)가 전체 높이로 펼쳐졌는지 — 기본은 살짝 보기(탭 줄까지). 새 기업·관계를 고르면 되돌린다. 넓은 화면에서는 쓰지 않는다 */
   sheetExpanded: boolean;
-  /** 하단 중앙 조절 도크(펼치기·관계 종류·고급) 펼침 여부 — '^' 버튼으로 연다 */
+  /** 하단 중앙 조절 도크(펼치기·관계 종류·뉴스·공시 비율·최소 점수·주가 고도) 펼침 여부 — '^' 버튼으로 연다.
+      고급 영역(뉴스·공시 비율·최소 점수·주가 고도)은 예전엔 이 안에서 다시 '>' 로 접고 펼 수 있었지만,
+      항상 켜 있어야 한다는 결정에 따라 그 토글(dockAdvanced)은 없앴다 — 도크가 열리면 고급 영역도 항상 같이 보인다 */
   dockOpen: boolean;
-  /** 도크의 '>' 고급 영역(뉴스·공시 비율·최소 점수·주가 고도) 펼침 여부 */
-  dockAdvanced: boolean;
   /** 상단 산업 선택판 펼침 여부 — ESC 한 겹으로 닫히도록 스토어에 둔다 */
   industryOpen: boolean;
   /** 선 중간의 관계 종류 글자(EdgeLabels) 표시 여부 */
@@ -99,7 +99,6 @@ interface GalaxyState {
   setAltitudeWindow(w: AltitudeWindow): void;
   setSpread(v: number): void;
   setDockOpen(v: boolean): void;
-  setDockAdvanced(v: boolean): void;
   /** 도크가 다루는 표시 설정을 기본값으로 — 펼치기 0 · 관계 종류 전부 · 최소 점수 0 · 주가 고도 켬(1M). 뉴스·공시 비율은 store/weight 가 따로 되돌린다 */
   resetControls(): void;
   setPanelTab(t: PanelTab): void;
@@ -144,11 +143,10 @@ export const useGalaxy = create<GalaxyState>((set, get) => ({
   searchOpen: false,
   panelOpen: true,
   sheetExpanded: false,
-  // 도크는 펼친 채로 시작한다 — 조절 수단이 첫 화면에 보여야 한다. 접으면 하단 중앙 '^' 버튼만 남는다.
-  // 모바일(900px 이하, lib/viewport)은 펼친 카드가 씬의 절반을 가리므로 접힌 채로 시작한다 — '^' 로 열 수 있다
+  // 도크는 펼친 채로 시작한다 — 조절 수단(관계 종류·뉴스·공시 비율·최소 점수·주가 고도)이 첫 화면에 모두 보여야 한다.
+  // 접으면 하단 중앙 '^' 버튼만 남는다. 모바일(900px 이하, lib/viewport)은 펼친 카드가 씬의 상당 부분을 가리므로
+  // 접힌 채로 시작한다 — '^' 로 열 수 있다. 열리면 고급 영역까지 항상 함께 보인다(예전의 '>' 토글은 없앴다)
   dockOpen: !isNarrowViewport(),
-  // 고급(뉴스·공시 비율 · 최소 점수 · 주가 고도)도 모바일은 접힌 채로 — 열린 카드가 화면 1/3 을 차지했다. '>' 로 펼친다
-  dockAdvanced: !isNarrowViewport(),
   industryOpen: false,
   cameraPreset: "orbit",
   cameraPresetNonce: 0,
@@ -245,9 +243,6 @@ export const useGalaxy = create<GalaxyState>((set, get) => ({
   },
   setDockOpen(v) {
     set({ dockOpen: v });
-  },
-  setDockAdvanced(v) {
-    set({ dockAdvanced: v });
   },
   resetControls() {
     set({ spread: 0, activeTypes: new Set(RELATIONSHIP_ORDER), minScore: 0, altitudeOn: true, altitudeWindow: "30D" });

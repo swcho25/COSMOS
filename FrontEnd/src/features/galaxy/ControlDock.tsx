@@ -11,12 +11,12 @@ import "./dock.css";
 
 /**
  * 하단 중앙 조절 도크 — Human Atlas 의 "Explode anatomy" 카드와 같은 자리.
- * 넓은 화면: 기본은 펼친 상태(고급까지)이고, 접으면 '^' 알약 버튼 하나만 남는다. 펼치기·관계 종류·(고급) 뉴스·공시 비율·
- * 최소 점수·주가 고도가 한 카드에 가로로 이어지고, 맨 오른쪽 끝에 초기화·고급 토글을 세로로 둔다.
- * 모바일(900px 이하, lib/viewport): 같은 조절 수단을 두 장으로 나눈다 — 기본 장은 펼치기 슬라이더 옆에 관계 종류 4개를 2×2 로 두고,
- * '>' 를 누르면 기본 장이 왼쪽으로 밀려 나가며 고급 장(비율 · 최소 점수 · 주가 고도)이 오른쪽에서 들어온다. 초기화·'>'(열리면 '<') 열은
- * 두 장 모두에서 오른쪽에 그대로 있다. 스토어의 dockAdvanced 가 모바일에서는 '고급 장 보기' 를 뜻한다.
- * 열림·고급 여부는 로컬 상태 없이 store/galaxy 의 dockOpen·dockAdvanced 를 그대로 쓴다.
+ * 넓은 화면: 기본은 펼친 상태이고, 접으면 '^' 알약 버튼 하나만 남는다. 펼치기·관계 종류·뉴스·공시 비율·최소 점수·주가 고도가
+ * 한 카드에 가로로 이어지고, 맨 오른쪽 끝에 초기화 버튼을 둔다.
+ * 모바일(900px 이하, lib/viewport): 같은 조절 수단을 한 장에 세로로 쌓는다 — 펼치기 슬라이더 · 관계 종류 2×2 · 뉴스·공시 비율 ·
+ * 최소 점수 · 주가 고도 순. 예전에는 이 중 뒤쪽(고급) 줄들을 '>' 로 접어 별도 장으로 감췄지만, 뉴스·공시 비율·최소 점수는
+ * 늘 눈에 보여야 한다는 결정에 따라 그 좌우 접고 펼치기 토글은 없앴다 — 도크를 열면 처음부터 전부 보인다.
+ * 열림 여부는 로컬 상태 없이 store/galaxy 의 dockOpen 을 그대로 쓴다.
  */
 
 const ALTITUDE_WINDOWS: AltitudeWindow[] = ["7D", "30D", "90D"];
@@ -34,8 +34,6 @@ function snapValue(v: number) {
 export default function ControlDock() {
   const dockOpen = useGalaxy((s) => s.dockOpen);
   const setDockOpen = useGalaxy((s) => s.setDockOpen);
-  const dockAdvanced = useGalaxy((s) => s.dockAdvanced);
-  const setDockAdvanced = useGalaxy((s) => s.setDockAdvanced);
   const spread = useGalaxy((s) => s.spread);
   const setSpread = useGalaxy((s) => s.setSpread);
   const activeTypes = useGalaxy((s) => s.activeTypes);
@@ -195,15 +193,13 @@ export default function ControlDock() {
     </div>
   );
 
-  /* 초기화(위) · 고급 '<'(아래) — 카드 맨 오른쪽 끝. 글자 없이 아이콘만, 설명은 title.
-     넓은 화면에서는 고급 그룹이 이 열의 왼쪽에서 열리고 닫히고, 모바일에서는 장이 바뀐다 — 두 버튼의 자리는 어느 쪽에서도 그대로다 */
+  /* 초기화 — 카드 맨 오른쪽 끝. 글자 없이 아이콘만, 설명은 title.
+     예전엔 그 아래에 고급('>')을 접고 펼치는 버튼이 있었지만, 뉴스·공시 비율·최소 점수·주가 고도는 항상 보여야 한다는
+     결정에 따라 그 토글은 없앴다 — 도크가 열려 있으면 이 조절 수단들도 항상 함께 보인다 */
   const tail = (
     <div className="dock-side dock-tail">
       <button type="button" className="dock-icon dock-reset" onClick={handleReset} title={DOCK_UI.resetTitle} aria-label={DOCK_UI.reset}>
         <Icon.Refresh />
-      </button>
-      <button type="button" className={`dock-icon dock-adv-toggle ${dockAdvanced ? "on" : ""}`} onClick={() => setDockAdvanced(!dockAdvanced)} title={DOCK_UI.advancedTitle} aria-expanded={dockAdvanced} aria-label={DOCK_UI.advanced}>
-        <Icon.Chevron />
       </button>
     </div>
   );
@@ -219,19 +215,16 @@ export default function ControlDock() {
     return (
       <div className="hud hud-dock">
         <div className="card dock-card dock-mobile">
-          {/* 두 장은 같은 자리에 겹쳐 있고 활성 장만 자리를 차지한다(카드 높이는 활성 장에 따른다). 비활성 장은 visibility 로 탭 순서에서도 빠진다 */}
-          <div className="dock-panes">
-            <section className={`dock-pane dock-pane-main${inGalaxyView ? "" : " no-spread"}${dockAdvanced ? "" : " is-active"}`} aria-label={DOCK_UI.types}>
-              {inGalaxyView && spreadCol}
-              <div className="dock-types-grid" title={DOCK_UI.types}>
-                {typeChips}
-              </div>
-            </section>
-            <section className={`dock-pane dock-pane-adv${dockAdvanced ? " is-active" : ""}`} aria-label={DOCK_UI.advanced}>
-              {mixRow}
-              {minScoreRow}
-              {inGalaxyView && altitudeRow}
-            </section>
+          {/* 한 장에 세로로 쌓는다 — 펼치기 슬라이더(은하 뷰) · 관계 종류 2×2 · 뉴스·공시 비율 · 최소 점수 · 주가 고도(은하 뷰) 순.
+              예전엔 뒤쪽 세 줄을 '>' 로 접어 별도 장에 감췄지만 이제 처음부터 전부 보인다 */}
+          <div className="dock-mobile-stack">
+            {inGalaxyView && spreadCol}
+            <div className="dock-types-grid" title={DOCK_UI.types}>
+              {typeChips}
+            </div>
+            {mixRow}
+            {minScoreRow}
+            {inGalaxyView && altitudeRow}
           </div>
           {tail}
           {closeHandle}
@@ -254,16 +247,12 @@ export default function ControlDock() {
           {typeChips}
         </div>
 
-        {dockAdvanced && (
-          <>
-            <span className="dock-div" aria-hidden="true" />
-            <div className="dock-col dock-advanced">
-              {mixRow}
-              {minScoreRow}
-              {inGalaxyView && altitudeRow}
-            </div>
-          </>
-        )}
+        <span className="dock-div" aria-hidden="true" />
+        <div className="dock-col dock-advanced">
+          {mixRow}
+          {minScoreRow}
+          {inGalaxyView && altitudeRow}
+        </div>
 
         <span className="dock-div" aria-hidden="true" />
         {tail}

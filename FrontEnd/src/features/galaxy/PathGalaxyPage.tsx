@@ -8,6 +8,7 @@ import { Icon } from "@/components/ui";
 import CompanyPanel from "./CompanyPanel";
 import { PanelFrame, useLingeringPanel } from "./MobileSheet";
 import RelationshipPanel from "./RelationshipPanel";
+import SearchPalette from "./SearchPalette";
 import "./galaxy.css";
 
 const Scene = lazy(() => import("@/three/Scene"));
@@ -30,6 +31,7 @@ export default function PathGalaxyPage() {
   const panelOpen = useGalaxy((s) => s.panelOpen);
   const selectCompany = useGalaxy((s) => s.selectCompany);
   const setPanelOpen = useGalaxy((s) => s.setPanelOpen);
+  const setSearchOpen = useGalaxy((s) => s.setSearchOpen);
 
   // 이 화면을 떠나면(다른 경로 검색·뒤로 가기 등) 남아 있던 선택 상태가 다음 화면에 새지 않게 비운다
   useEffect(() => {
@@ -44,6 +46,17 @@ export default function PathGalaxyPage() {
   }, [universe.data, fromId, toId, capT]);
   const pathModel = result?.model ?? null;
   const hasPath = Boolean(result?.path?.length);
+
+  /**
+   * 첫 번째 기업(from)을 기본으로 골라 둔다 — CompanyNodes/RoleRings 는 호버 중이 아니면 selectedId 를 "주인공"으로
+   * 삼아 이웃 역할 링·칩을 계속 켜 둔다(three/Scene.tsx 의 focusNode = hoveredId ?? selectedId). 이 화면은 두세 기업
+   * 사이의 관계를 보러 온 것이라, 마우스를 얹지 않아도 그 관계 정보(피투자·협력·공급 등)가 바로 보여야 한다.
+   * fromId·toId 가 바뀔 때(새 경로 검색)만 다시 고르고, 사용자가 다른 노드를 직접 고른 뒤에는 덮어쓰지 않는다.
+   */
+  useEffect(() => {
+    if (hasPath && fromId) selectCompany(fromId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fromId, toId, hasPath]);
 
   /** 관계망을 더 보고 싶으면(패널의 "관계망 보기") 전체 은하로 나가 그 기업 중심 뷰를 연다 — 이 화면은 경로 한 줄만 보여준다 */
   const openInGalaxy = (id: string) => navigate(`/?company=${id}`);
@@ -60,10 +73,13 @@ export default function PathGalaxyPage() {
   );
   // 패널 내용의 "무엇이 선택돼 있는가" 를 나타내는 안정적인 키 — panelContent(JSX)는 매 렌더 새 객체라 이걸로 변경 여부를 판단한다
   const panelKey = selectedEdgeId ?? selectedId ?? null;
-  const { node: panelNode, show: showPanel, closing: panelClosing } = useLingeringPanel(Boolean(panelOpen && (selectedId || selectedEdgeId)), panelContent, panelKey);
+  // 패널을 "열겠다는 의도" — DOM 마운트 여부(useLingeringPanel 의 퇴장 유예)와 분리해서, .stage·.hud-top 이 패널의
+  // 등장/퇴장 애니메이션과 같은 박자로 즉시 반응하게 한다(galaxy.css 의 .hud-panel-active)
+  const panelActive = Boolean(panelOpen && (selectedId || selectedEdgeId));
+  const { node: panelNode, show: showPanel, closing: panelClosing } = useLingeringPanel(panelActive, panelContent, panelKey);
 
   return (
-    <div className="galaxy">
+    <div className={`galaxy${panelActive ? " hud-panel-active" : ""}`}>
       <div className="stage">
         <Suspense fallback={null}>
           <Scene galaxy={pathModel} system={null} next={null} />
@@ -95,7 +111,7 @@ export default function PathGalaxyPage() {
         </div>
       )}
 
-      {/* 좌상단: 뒤로 가기 + 경로 브레드크럼(A → B → C) */}
+      {/* 좌상단: 뒤로 가기 + 경로 브레드크럼(A → B → C) + 검색(다른 경로를 바로 다시 찾도록 — GalaxyPage 기업 중심 뷰의 검색 아이콘과 같은 자리) */}
       <div className="hud hud-crumb">
         <div className="crumb">
           <button type="button" onClick={() => navigate("/")} title="전체 은하로 돌아가기">
@@ -113,6 +129,9 @@ export default function PathGalaxyPage() {
             </>
           )}
         </div>
+        <button type="button" className="crumb" onClick={() => setSearchOpen(true)} title="기업·관계 검색">
+          <Icon.Search />
+        </button>
       </div>
 
       {(selectedId || selectedEdgeId) && !panelOpen && (
@@ -127,6 +146,8 @@ export default function PathGalaxyPage() {
           {panelNode}
         </PanelFrame>
       )}
+
+      <SearchPalette onPick={pickCompany} />
     </div>
   );
 }

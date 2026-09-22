@@ -3,7 +3,7 @@ import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { AdaptiveDpr, OrbitControls } from "@react-three/drei";
 import { Bloom, ChromaticAberration, EffectComposer, Vignette } from "@react-three/postprocessing";
 import * as THREE from "three";
-import type { SceneEdge, SceneModel, Vec3 } from "@/lib/graph";
+import { ORBIT, type SceneEdge, type SceneModel, type Vec3 } from "@/lib/graph";
 import type { CameraPresetId } from "@/lib/guide";
 import { hoverPath } from "@/lib/path";
 import { sortedExtent, sortedFocusPos, spreadRadiusScale, spreadStage } from "@/lib/spread";
@@ -106,6 +106,10 @@ function poseFor(model: SceneModel | null, kind: "galaxy" | "system", aspect = 1
     });
     // 펼치기의 평면 단계는 반지름을 살짝 벌린다(lib/spread FLAT_SCALE) — 그만큼 물러나야 바깥 행성이 잘리지 않는다
     if (kind === "galaxy") r *= spreadRadiusScale(alt.spread);
+    // 기업 중심 뷰에서 주변 관계가 하나도 없으면(중심 기업 혼자) r 이 그 행성 자신의 반지름 정도(≈10)로만 잡혀
+    // 카메라가 코앞까지 바짝 붙는다 — 관계가 하나라도 있는 가장 좁은 뷰(depth 1 궤도, ORBIT[1])만큼은 물러나
+    // 화면 비율을 지키면서도, 그 안에 행성 하나만 외로이 떠 있는 모습으로 "관계 없음"이 보이게 한다
+    if (kind === "system") r = Math.max(r, ORBIT[1]);
   }
   // 세로로 긴 화면은 가로가 먼저 잘리므로 종횡비만큼 물러난다
   const fit = Math.tan((52 * Math.PI) / 360) * Math.min(1, aspect);

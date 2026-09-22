@@ -1,5 +1,11 @@
-import type { ImpactDirection, Market, RelationshipType, Sentiment } from "@/api/types";
+import type { ImpactDirection, Market, MetricWindow, RelationshipType, Sentiment } from "@/api/types";
 import type { CurrencyCode } from "@/lib/format";
+
+/* ------------------------------ 지표·연결 선 기간 ------------------------------ */
+/** CompanyPanel(뉴스·관계 지표)·RelationshipPanel(기업 연결 선 근거)이 함께 쓰는 기간 선택지 — api 요청 값 그대로다 */
+export const METRIC_WINDOWS: MetricWindow[] = ["30D", "1Y", "10Y"];
+/** 위 값의 화면 표기 — api 는 30D 를 쓰지만 화면에는 "1M" 로 보여준다(1Y·10Y 는 표기와 값이 같다) */
+export const METRIC_WINDOW_LABEL: Record<MetricWindow, string> = { "30D": "1M", "1Y": "1Y", "10Y": "10Y" };
 
 /* ------------------------------ 산업 팔레트 ------------------------------ */
 /**
