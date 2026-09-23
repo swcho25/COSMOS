@@ -133,12 +133,20 @@ def load_sentiment(connection, rows: Iterable[Mapping[str, Any]], *,
             # Replace, do not merge: the sentences are derived from the article,
             # so a re-run must not leave a previous run's sentences beside this
             # run's verdict. Only pairs present in this batch are touched.
+            #
+            # Scoped to this producer's own rows. Other producers put sentences
+            # here too, and relationship_evidence holds a foreign key onto
+            # (evidence_id, document_id) with no cascade - deleting a sentence a
+            # relation cites fails the whole batch. The relation loader's rows
+            # and the backfill's 18,400 both live in this table under their own
+            # model_version.
             cursor.execute(f"""
                 DELETE FROM document_evidence AS old
                  USING {TEMP_TABLE}_resolved AS resolved
                  WHERE old.document_id = resolved.document_id
                    AND old.company_id = resolved.company_id
-                """)
+                   AND old.model_version = %s
+                """, (model_version,))
             # The join to company_document is load-bearing, not redundant with
             # the resolved table: resolving only proves the article and the
             # company exist. A mention the analyzer has since retracted has no

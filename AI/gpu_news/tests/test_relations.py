@@ -14,7 +14,7 @@ from relations import article_relations
 
 def company(stock_code, name, *aliases, market="KOSPI"):
     return {"market": market, "stock_code": stock_code, "ticker": f"{stock_code}.KS",
-            "name": name, "aliases": list(aliases), "confidence": 0.9}
+            "name": name, "aliases": list(aliases), "confidence": 1.0, "method": "dict"}
 
 
 KR = [company("005930", "삼성전자"), company("000660", "SK하이닉스")]
@@ -125,6 +125,32 @@ class SubstringNameTest(unittest.TestCase):
         involved = {code for row in result
                     for code in (row["source_stock_code"], row["target_stock_code"])}
         self.assertIn("035720", involved)
+
+
+class MatchConfidenceTest(unittest.TestCase):
+    """Only identities the matcher was certain about can carry a relation."""
+
+    def test_a_group_name_guess_is_not_a_party(self):
+        weak = dict(company("005930", "삼성전자"), confidence=0.5, method="rule")
+        result = article_relations(
+            "제목", "삼성전자가 SK하이닉스와 협력한다.",
+            [weak, company("000660", "SK하이닉스")], "ko")
+        self.assertEqual(result, [])
+
+    def test_certain_hits_still_produce_relations(self):
+        result = article_relations(
+            "제목", "삼성전자가 SK하이닉스와 협력한다.",
+            [dict(company("005930", "삼성전자"), method="dict"),
+             dict(company("000660", "SK하이닉스"), method="dict")], "ko")
+        self.assertTrue(result)
+
+    def test_an_ellipsis_expansion_is_flagged_like_an_enumeration(self):
+        result = article_relations(
+            "제목", "삼성전자가 SK하이닉스와 협력한다.",
+            [dict(company("005930", "삼성전자"), method="dict+ellipsis"),
+             dict(company("000660", "SK하이닉스"), method="dict")], "ko")
+        self.assertTrue(result)
+        self.assertTrue(all(row["enumeration"] for row in result))
 
 
 if __name__ == "__main__":

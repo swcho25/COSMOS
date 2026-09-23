@@ -221,6 +221,22 @@ class SentimentPostgreSQLTests(unittest.TestCase):
         self.assertEqual(report["published"], 0)
         self.assertIs(self.stored()["is_service_visible"], False)
 
+    def test_another_producers_sentences_are_left_alone(self):
+        """relationship_evidence holds a foreign key onto document_evidence with
+        no cascade, so deleting a sentence a relation cites would fail the whole
+        batch. Only this producer's own rows are replaced."""
+        self.connection.execute("""
+            INSERT INTO document_evidence
+                (document_id, company_id, sentence_text, sentence_order, model_version)
+            VALUES (%s, %s, '관계 근거 문장이다.', 99, 'news-relations-1.0')""",
+            (self.document_id, self.company_id))
+        load_sentiment(self.connection, self.rows(), model_version=MODEL_VERSION, commit=True)
+        kept = self.connection.execute(
+            "SELECT count(*) FROM document_evidence WHERE model_version='news-relations-1.0'"
+        ).fetchone()[0]
+        self.assertEqual(kept, 1)
+        self.assertEqual(len(self.evidence()), 3)
+
     def test_rerun_replaces_evidence_instead_of_appending(self):
         load_sentiment(self.connection, self.rows(), model_version=MODEL_VERSION, commit=True)
         load_sentiment(self.connection, self.rows(evidence=[

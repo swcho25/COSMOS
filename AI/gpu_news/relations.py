@@ -29,6 +29,18 @@ from kg_target_sentiment import _name_pattern
 RELATION_TYPES = ("SUPPLY", "PARTNER", "COMPETE")
 VERSION = "news-relations-1.0"
 
+# The input contract spark/extract_relation_candidates.py states: only dictionary
+# hits the matcher was certain about. A group-name guess (0.5) or a sports-club
+# demotion (0.4) is a weak identity claim, and a relation asserts something about
+# both parties - a wrong identity on either side invents an edge between real
+# companies. Measured on live batches: 19 of 530 mentions are below 1.0.
+MIN_MATCH_CONFIDENCE = 1.0
+
+# The matcher expands "신한, KB국민, 하나, 우리은행" by carrying the suffix across
+# the list. Those sentences are lists, not statements about a pair, so the flag
+# travels with the row for the caller to weigh.
+ELLIPSIS_METHOD = "ellipsis"
+
 # Patterns the classifiers hand back with a hit. An enumerating conjunction is
 # kept but flagged: "신한은행·카카오·배달의민족과 협약" names three companies that
 # each contracted with a fourth party, not with each other. The Korean module
@@ -83,7 +95,12 @@ def article_relations(title: str, content: str, companies, language: str) -> lis
     twice in one article is two rows, because the loader scores by evidence
     count and each sentence is a separate mention.
     """
-    companies, catalog, names, field, scannable = sentence_view(title, content, companies)
+    certain = [company for company in (companies or [])
+               if float(company.get("confidence") or 0) >= MIN_MATCH_CONFIDENCE]
+    ellipsis = {(company.get("market"), company.get("stock_code"))
+                for company in certain
+                if ELLIPSIS_METHOD in (company.get("method") or "")}
+    companies, catalog, names, field, scannable = sentence_view(title, content, certain)
     if len(companies) < 2:
         return []
 
@@ -104,7 +121,8 @@ def article_relations(title: str, content: str, companies, language: str) -> lis
                 "source_market": source_key[0], "source_stock_code": source_key[1],
                 "target_market": target_key[0], "target_stock_code": target_key[1],
                 "pattern": pattern,
-                "enumeration": ENUM_MARKER in pattern,
+                "enumeration": (ENUM_MARKER in pattern
+                                or source_key in ellipsis or target_key in ellipsis),
                 "sentence_order": entry["id"],
                 "source": entry["source"],
                 "text": text,
