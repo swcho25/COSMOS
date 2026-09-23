@@ -153,6 +153,20 @@
   font-size: 10px;
   padding: 2px 8px;
 }
+/* 뉴스·공시 구분 — 공시 근거는 기사 인용이 아니라 공시를 요약해 만든 문장이다 */
+.ev-kind-badge {
+  display: inline-flex;
+  margin-top: 6px;
+  background: rgba(255, 255, 255, 0.07);
+  color: var(--muted);
+  font-size: 10px;
+  padding: 2px 8px;
+}
+.ev-item-note {
+  margin-top: 6px;
+  font-size: 11px;
+  opacity: 0.75;
+}
 .ev-item-quote {
   margin-top: 8px;
   font-size: 13px;

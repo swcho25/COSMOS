@@ -161,7 +161,8 @@ public class GraphService {
         List<RelationshipEvidenceResponse> items = pageRows.stream()
                 .map(row -> new RelationshipEvidenceResponse(
                         row.newsId(), row.title(), row.summary(), row.publisher(), row.originalUrl(),
-                        row.publishedAt(), row.evidenceSentence(), row.contributionScore(), row.confidence()))
+                        row.publishedAt(), row.documentType(), row.evidenceSentence(),
+                        row.modelVersion(), row.contributionScore(), row.confidence()))
                 .toList();
         return CursorPageResponse.of(items, nextCursor, hasNext);
     }

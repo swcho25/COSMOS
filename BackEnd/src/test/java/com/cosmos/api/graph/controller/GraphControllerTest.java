@@ -159,7 +159,9 @@ class GraphControllerTest {
                         "예시경제",
                         "https://example.com/news",
                         Instant.parse("2026-09-07T02:00:00Z"),
+                        "NEWS",
                         "관계 근거 문장",
+                        "dict-v1.3+finbert-evidence-v1",
                         new BigDecimal("0.76"),
                         new BigDecimal("0.91"))), null, false));
 

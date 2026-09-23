@@ -336,7 +336,15 @@ export interface RelationshipEvidence {
   publisher: string | null;
   originalUrl: string;
   publishedAt: ISODateTime | null;
+  /**
+   * NEWS 면 evidenceSentence 가 기사 원문에서 그대로 오려낸 문장이고,
+   * DISCLOSURE 면 공시 내용을 요약해 만든 문장이다. 둘을 같은 모양으로 그리면
+   * 사용자가 인용문과 생성문을 구분하지 못하므로 표시를 나눈다.
+   */
+  documentType: "NEWS" | "DISCLOSURE" | (string & {});
   evidenceSentence: string;
+  /** 그 문장을 만든 모델·규칙. 공시 요약은 생성 모델 이름이 들어온다 */
+  modelVersion: string | null;
   contributionScore: number | null;
   confidence: number | null;
 }

@@ -191,7 +191,7 @@ export const EVIDENCE_UI = {
   noEvidence: "근거 뉴스 없음 · 점수는 누적 데이터 기반",
   hoverMore: (n: number) => `근거 ${n}건 · 클릭해서 전체 보기`,
   hoverCapped: (n: number) => `근거 ${n}건 · 클릭해서 보기`,
-  timelineKicker: "근거 뉴스",
+  timelineKicker: "근거",
   timelineOrder: "시간순",
   timelineSummary: (n: number, latest: string) => `최근 근거 ${n}건 · 가장 최근 ${latest}`,
   representative: "대표 근거",
@@ -199,7 +199,11 @@ export const EVIDENCE_UI = {
   copy: "문장 복사",
   copied: "근거 문장을 복사했습니다",
   original: "원문",
-  disclosure: "공시는 점수에 반영되지만 원문 문장은 공개하지 않습니다",
+  noEvidenceHint: "지분 관계는 공시에서, 그 밖의 관계는 기사 문장에서 근거를 찾습니다",
+  /** 공시 근거 — 기사 인용이 아니라 공시 내용을 요약해 만든 문장이다 */
+  disclosureBadge: "공시",
+  disclosureNote: "공시 내용을 요약한 문장입니다. 기사 인용이 아닙니다.",
+  newsBadge: "뉴스",
   more: "더 보기",
   /** 오래된 근거의 불투명도 — 숨기지 않고 물러나게만 */
   ageOpacity: [

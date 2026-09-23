@@ -65,3 +65,6 @@ data/db_evidence_20260922/*.csv
 
 # GMS(Gemini) API 키 — 절대 커밋하지 않는다
 .gms_key
+
+# INVEST 공시 근거 적재 CSV (build_invest_evidence_package.py 로 재생성)
+data/db_invest_evidence_20260923/*.csv
