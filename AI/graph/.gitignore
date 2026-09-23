@@ -62,3 +62,6 @@ data/rel_evidence_record_ids.txt
 # 적재 CSV 는 기사 원문 문장·제목을 담고 있어 커밋하지 않는다 (13MB).
 # build_evidence_load_package.py 로 다시 만든다.
 data/db_evidence_20260922/*.csv
+
+# GMS(Gemini) API 키 — 절대 커밋하지 않는다
+.gms_key
