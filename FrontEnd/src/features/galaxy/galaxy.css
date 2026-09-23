@@ -8,17 +8,9 @@
 .galaxy .stage {
   position: absolute;
   inset: 0;
-  /* 우측 인텔리전스 패널이 열리면 그 자리만큼 오른쪽 여백을 주고 부드럽게 좁힌다(아래 :has 규칙) —
-     R3F 의 Canvas 는 이 컨테이너 크기를 ResizeObserver 로 보고 있어 transition 이 진행되는 동안
-     카메라·렌더러가 프레임마다 새 크기로 따라와, 패널이 열고 닫힐 때 은하가 밀리듯 자연스럽게 보인다.
-     패널 카드 자체의 등장·퇴장 애니메이션(.hud-panel, 아래)과 같은 1.2s 로 맞춰 둘이 한 호흡으로 움직이게 한다 */
-  transition: right 1.2s cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 /* 패널 폭(390px) + 좌우 여백(24px, 16px) — .hud-top 이 옆으로 비켜 주는 값(아래 .hud-panel-active .hud-top)과 맞춘다.
-   :has(.hud-panel) 대신 GalaxyPage/PathGalaxyPage 가 패널을 "열겠다는 의도"(panelOpen && 선택 있음)에 직접 붙이는
-   .hud-panel-active 클래스를 쓴다 — :has(.hud-panel) 는 useLingeringPanel 이 퇴장 애니메이션 동안 패널 DOM을 1.2s
-   더 붙잡아 두는 것까지 그대로 반영해서, 닫을 때는 패널이 완전히 사라진 뒤에야(그 시점의 스냅으로) 이 전환이 시작됐다.
-   panelOpen 이 꺼지는 즉시 클래스가 빠지므로, 패널이 슬라이드 아웃하는 것과 같은 박자로 은하가 넓어진다 */
+   패널이 열려 있는 동안(panelOpen && 선택 있음) 은하가 그 자리만큼 즉시 좁아진다 — 애니메이션 없이 원래 상태 그대로 */
 .galaxy.hud-panel-active .stage {
   right: 430px;
 }
@@ -51,7 +43,6 @@
   justify-content: space-between;
   gap: 10px;
   padding: 0 24px;
-  transition: padding-right 1.2s cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 .search-trigger {
   flex: 0 1 490px;
@@ -242,6 +233,58 @@
   color: var(--text);
 }
 
+/* '기업 추가' 팝오버 — 좌측 상단 검색 팔레트(.palette)와 같은 결이지만, 버튼 아래 붙는 작은 카드다.
+   고를 때마다 은하로 이동하지 않고 관심 등록만 하고 그대로 열려 있어, 이어서 다음 기업도 검색해 담을 수 있다 */
+.mg-add {
+  position: relative;
+}
+.mg-add-pop {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 6;
+  width: 300px;
+  padding: 10px;
+  border-radius: 13px;
+  text-align: left;
+}
+.mg-add-pop .field {
+  min-height: 42px;
+  font-size: 14px;
+}
+.mg-add-pop .hint {
+  padding: 8px 4px 2px;
+  font-size: 12px;
+  color: var(--text-4);
+}
+.mg-add-list {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  max-height: 44vh;
+  overflow-y: auto;
+}
+.mg-add-list button {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  text-align: left;
+}
+.mg-add-list button:hover:not(:disabled) {
+  background: rgba(109, 140, 255, 0.12);
+}
+.mg-add-list button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.mg-add-list .nm {
+  font-size: 13.5px;
+  font-weight: 600;
+}
+
 /* 내 은하가 비었을 때 — 무대 한가운데 안내 카드 (상단 HUD 보다는 아래) */
 .mg-empty {
   position: absolute;
@@ -287,9 +330,13 @@
   gap: 10px;
 }
 /* 은하 뷰(비 focus)의 뉴스 복귀 팝업 전용 — 같은 화면에 hud-top(검색창 · 카메라 시점 · 은하 범위, top:22px)이
-   가운데 정렬로 이미 그 자리를 쓰고 있어, 화면이 좁아지면 왼쪽까지 번져 겹친다. 검색창 줄 아래로 내린다. */
+   가운데 정렬로 이미 그 자리를 쓰고 있어, 화면이 좁아지면 왼쪽까지 번져 겹친다. 검색창 줄 아래로 내린다.
+   기업 관계 패널이 열리면 .hud-top 이 padding-right 로 눌려 산업 필터가 줄바꿈되면서 바로 이 자리(위에서 92px)로
+   내려오는데, .hud-top 은 z-index 6 이고 이 팝업은 .hud 기본값(5)을 그대로 물려받아 뒤로 깔려 다시 가려졌다 —
+   이 팝업이 항상 위에 오도록 .hud-top 보다 높은 z-index 를 준다 */
 .hud-crumb-below-search {
   top: 92px;
+  z-index: 9;
 }
 .crumb {
   display: inline-flex;
@@ -598,72 +645,7 @@
   transform: translateY(-50%);
 }
 
-/* 우측: 인텔리전스 패널 — 카드 자체가 오른쪽에서 슬라이드+페이드로 들어오고(.hud-panel-in), 닫을 때도 GalaxyPage/
-   PathGalaxyPage 가 언마운트를 1.2s 늦춰 붙잡아 둔 채 역방향(.hud-panel-out, useLingeringPanel 훅이 붙이는
-   .panel-closing)으로 내보낸다 — 은하 폭이 좁아지는 .stage 의 1.2s 와 같은 박자라 패널과 배경이 한 호흡으로 움직인다.
-   모바일 바텀시트(.sheet)는 오른쪽이 아니라 아래에서 올라오므로 별도의 sheet-in/out 을 쓴다(:not(.sheet) 로 분리) */
-.hud-panel:not(.sheet) {
-  animation: hud-panel-in 1.2s cubic-bezier(0.2, 0.8, 0.2, 1);
-}
-.hud-panel:not(.sheet).panel-closing {
-  animation: hud-panel-out 1.2s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
-  pointer-events: none;
-}
-@keyframes hud-panel-in {
-  from {
-    opacity: 0;
-    transform: translateX(48px);
-  }
-  to {
-    opacity: 1;
-    transform: none;
-  }
-}
-@keyframes hud-panel-out {
-  from {
-    opacity: 1;
-    transform: none;
-  }
-  to {
-    opacity: 0;
-    transform: translateX(48px);
-  }
-}
-.hud-panel.sheet {
-  animation: hud-sheet-in 1.2s cubic-bezier(0.2, 0.8, 0.2, 1);
-}
-.hud-panel.sheet.panel-closing {
-  animation: hud-sheet-out 1.2s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
-  pointer-events: none;
-}
-@keyframes hud-sheet-in {
-  from {
-    opacity: 0;
-    transform: translateY(72px);
-  }
-  to {
-    opacity: 1;
-    transform: none;
-  }
-}
-@keyframes hud-sheet-out {
-  from {
-    opacity: 1;
-    transform: none;
-  }
-  to {
-    opacity: 0;
-    transform: translateY(72px);
-  }
-}
-@media (prefers-reduced-motion: reduce) {
-  .hud-panel:not(.sheet),
-  .hud-panel:not(.sheet).panel-closing,
-  .hud-panel.sheet,
-  .hud-panel.sheet.panel-closing {
-    animation: none;
-  }
-}
+/* 우측: 인텔리전스 패널 — 애니메이션 없이 원래 상태 그대로 즉시 나타나고 닫힌다(모바일 바텀시트는 삭제됐다) */
 .hud-panel {
   right: 24px;
   top: 14px;
@@ -1062,213 +1044,6 @@
   }
 }
 
-/* 모바일: 우측 패널 → 바텀시트, 범례 숨김 */
-@media (max-width: 900px) {
-  .galaxy {
-    min-height: 480px;
-  }
-  .hud-top {
-    top: 14px;
-    padding: 0 16px;
-    gap: 10px;
-    /* 모바일은 돋보기 아이콘 하나 + 시점 + 범위가 한 줄에 딱 맞게 짜여 있어(아래 주석) 양끝으로 벌리면
-       오히려 어색하다 — 데스크톱 전용 수정(양끝 정렬)을 여기서 되돌린다 */
-    justify-content: center;
-  }
-  /* 첫 줄: 검색은 돋보기 하나로 접는다(누르면 검색 팔레트) — 비운 자리에 카메라 시점 · 은하 범위가 들어온다.
-     375px 기준 44 + 10 + 시점 ≈105 + 10 + 범위 ≈155 = ≈324, 행 폭 343 안에 한 줄 */
-  .search-trigger {
-    flex: none;
-    width: 44px;
-    min-width: 0;
-    height: 44px;
-    padding: 0;
-    justify-content: center;
-    color: var(--text-2);
-  }
-  .search-trigger span {
-    display: none;
-  }
-  /* 둘째 줄: Special Link 꼬리표 · 산업 선택판을 한 줄로 (GalaxyPage 가 900px 이하에서 이 묶음으로 그린다) */
-  .hud-top-line {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 10px;
-    width: 100%;
-    min-width: 0;
-  }
-  .hud-top-line .hud-tag {
-    flex: none;
-  }
-  .hud-top-line .industry-trigger {
-    height: 44px;
-  }
-  .my-galaxy-bar {
-    flex-wrap: nowrap;
-    overflow-x: auto;
-    justify-content: flex-start;
-    width: 100%;
-    padding-bottom: 4px;
-    scrollbar-width: none;
-  }
-  /* 행이 접히면 트리거 위치가 들쭉날쭉하므로 드롭다운은 행(.hud-top) 가운데에 띄운다 */
-  .industry-picker {
-    position: static;
-  }
-  .industry-pop {
-    right: auto;
-    left: 50%;
-    transform: translateX(-50%);
-    width: calc(100% - 32px);
-    max-height: 60vh;
-    overflow-y: auto;
-  }
-  .hud-path {
-    display: none;
-  }
-  .hud-panel-tag {
-    top: auto;
-    bottom: 0;
-    left: 50%;
-    right: auto;
-    transform: translateX(-50%);
-  }
-  .hud-tag.vertical {
-    writing-mode: horizontal-tb;
-    padding: 10px 18px;
-    border-radius: 12px 12px 0 0;
-    border-right: 1px solid var(--border-strong);
-    border-bottom: 0;
-  }
-  /* 좌하단 스냅샷 카드(기준 시각·다음 갱신)는 모바일에서 감춘다 — 도크·패널 꼬리표와 바닥 자리를 다투고, 같은 안내가 ? 허브에도 있다 */
-  .hud-status {
-    display: none;
-  }
-  /* 기업 중심 뷰 상단 묶음(.hud-top-focus, GalaxyPage 가 900px 이하에서 그린다) — 은하 뷰의 두 줄과 같은 여백·간격.
-     첫 줄: [← 전체 은하 › 기업명](남는 폭, 이름은 말줄임) [🔍 44]. 둘째 줄: 시점 · Special Link. 셋째 줄: 1홉 역할 칩 가로 스크롤 */
-  .crumb-main {
-    flex: 1 1 auto;
-    min-width: 0;
-    height: 44px;
-    padding: 0 14px;
-  }
-  .crumb-main button {
-    flex: none;
-    white-space: nowrap;
-  }
-  .crumb-main b {
-    flex: 1 1 auto;
-    min-width: 0;
-    max-width: none;
-  }
-  .crumb-search {
-    flex: none;
-    width: 44px;
-    height: 44px;
-    padding: 0;
-    justify-content: center;
-    color: var(--text-2);
-  }
-  .hop-strip-inline {
-    width: 100%;
-    flex-wrap: nowrap;
-    overflow-x: auto;
-    scrollbar-width: none;
-  }
-  .hop-strip-inline::-webkit-scrollbar {
-    display: none;
-  }
-  .hop-strip-inline .role-badge,
-  .hop-strip-inline .hop-total {
-    flex: none;
-  }
-  .scene-tip {
-    display: none;
-  }
-  /* 바텀시트(MobileSheet) — 두 단계. 살짝 보기(is-peek): 기업 패널은 머리·연결 단계·기업·탭 줄까지(본문 숨김), 관계 패널은 62dvh 안에서 본문 스크롤.
-     전체 펼침(is-full): 위 8px 까지. 손잡이(.sheet-grip)를 끌어 내리면 한 단계 접히고, 올리거나 탭하면 펼쳐진다. 끄는 동안은 transform 을 JS 가 직접 쓴다 */
-  .hud-panel {
-    left: 0;
-    right: 0;
-    top: auto;
-    bottom: 0;
-    width: 100%;
-    max-width: none;
-    display: flex;
-    flex-direction: column;
-    height: auto;
-    max-height: 62vh;
-    max-height: 62dvh;
-    animation: sheet-in 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
-    transition: transform 0.25s cubic-bezier(0.2, 0.8, 0.2, 1);
-  }
-  .hud-panel.is-full {
-    top: 8px;
-    max-height: none;
-    /* 전체로 펼치면 상단 한 줄(.hud-top, z 6)보다 위 — 시트 머리가 검색·시점·범위 뒤로 숨지 않게 */
-    z-index: 7;
-  }
-  .hud-panel.is-dragging {
-    transition: none;
-  }
-  /* 살짝 보기의 기업 패널 — 뉴스·주가·게시판 본문은 탭을 눌러 전체로 펼친 뒤에 보인다 */
-  .hud-panel.is-peek .panel-company .panel-body {
-    display: none;
-  }
-  /* 살짝 보기에서 연결 단계를 펼쳐 62dvh 를 넘으면 머리 부분이 스크롤된다 */
-  .hud-panel.is-peek .panel {
-    overflow-y: auto;
-  }
-  /* 손잡이 — 카드와 같은 재질로 위 모서리를 이룬다. 손가락 폭의 끌기 영역 */
-  .sheet-grip {
-    flex: none;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    height: 26px;
-    border-radius: 20px 20px 0 0;
-    border: 1px solid var(--border);
-    border-bottom: 0;
-    background: #0e1420;
-    touch-action: none;
-    cursor: grab;
-  }
-  .sheet-grip:active {
-    cursor: grabbing;
-  }
-  .sheet-grip i {
-    display: block;
-    width: 38px;
-    height: 4px;
-    border-radius: 999px;
-    background: rgba(255, 255, 255, 0.22);
-  }
-  .sheet-grip:hover i,
-  .sheet-grip:focus-visible i {
-    background: rgba(255, 255, 255, 0.4);
-  }
-  .panel {
-    flex: 1 1 auto;
-    min-height: 0;
-    height: auto;
-    border-radius: 0;
-    border-top: 0;
-    background: #0e1420;
-    animation: none;
-  }
-  @keyframes sheet-in {
-    from {
-      transform: translateY(40px);
-      opacity: 0;
-    }
-    to {
-      transform: none;
-      opacity: 1;
-    }
-  }
-}
-
 /* ------------------------------ 첫 방문 투어 ------------------------------ */
 /* 딤은 캔버스 위·HUD 아래(z 4) — HUD 는 그대로 쓰고, 포인터를 통과시켜 3단계에서 실제로 빔을 호버해 진짜 툴팁이 뜨게 한다.
    구멍은 CSS 변수 --x --y --r 로 뚫는다 (Tour 가 rAF 로 갱신, 리렌더 없음) */
@@ -1573,20 +1348,6 @@
 .hud-crumb .cam-presets .cam-hint {
   display: none;
 }
-/* 상단 한 줄이 좁아지면 라벨을 접고 아이콘만 남긴다 (title 로 읽힌다) — 검색·범위·산업이 한 줄에 남도록 */
-@media (max-width: 1180px) {
-  .cam-seg button span {
-    display: none;
-  }
-  /* 한 줄이 좁아지면 키 힌트부터 접는다 (title 로 남는다) */
-  .cam-keys {
-    display: none;
-  }
-  .cam-seg button {
-    padding-left: 9px;
-    padding-right: 9px;
-  }
-}
 /* 투어 중에는 수동적인 HUD(상태·범례·경로 스트립·1홉 요약·패널 꼬리표)를 뒤로 물린다 — 캡션과 겹치지 않고, 딤 위에서 혼자 밝게 남지 않게.
    사용자가 직접 연 것(상단 검색·산업, 관계·기업 패널)은 그대로 둔다 — 그건 투어가 가리킨 행동의 결과다 */
 .galaxy:has(.tour-dim) .hud-dock,
@@ -1614,28 +1375,6 @@
 @media (prefers-reduced-motion: reduce) {
   .cam-seg button.on {
     animation: none;
-  }
-}
-
-@media (max-width: 900px) {
-  .help-hub {
-    left: 12px;
-    right: 12px;
-    top: 12px;
-    bottom: 12px;
-    width: auto;
-  }
-  .help-grid {
-    grid-template-columns: 1fr;
-  }
-  .help-toc {
-    display: none;
-  }
-  .cam-hint {
-    display: none;
-  }
-  .tour-card {
-    bottom: 84px;
   }
 }
 
@@ -1765,18 +1504,65 @@
 }
 
 /* 은하 뷰에서 미리보기 패널(우측 390px)이 열리면 상단 한 줄(검색·범위·산업)은 그 왼쪽에서 접힌다 — 기업 중심 뷰에는 상단 줄이 없어 해당 없음.
-   .hud-panel-active 는 panelOpen 의도에 바로 붙는 클래스라(위 .stage 규칙과 같은 이유) 열 때·닫을 때 모두 패널 카드
-   자체의 등장/퇴장 애니메이션과 같은 박자로 즉시 시작된다 */
+   애니메이션 없이 패널이 열리고 닫히는 즉시 반영된다 */
 .galaxy.hud-panel-active .hud-top {
   padding-right: calc(24px + 390px + 16px);
 }
-@media (max-width: 900px) {
-  /* 모바일 패널은 바텀시트라 상단 줄이 오른쪽으로 비켜 줄 필요가 없다 — 위 규칙을 상쇄 */
-  .galaxy.hud-panel-active .hud-top {
-    padding-right: 16px;
+
+/* 관심 등록 완료 팝업 — 화면을 막던 모달(.scrim + role=dialog)을 대신한다. 배경 스크림이 없어 뒤의 은하·패널을
+   그대로 조작할 수 있고, 자리도 화면 중앙이 아니라 약간 하단으로 옮겨 눈에는 띄되 시야를 가리지 않는다.
+   CompanyPanel 의 useEffect 타이머가 5초 뒤 state 를 꺼서 사라진다 — 여기 CSS 는 순수 표시·애니메이션만 맡는다 */
+.watch-popup {
+  position: fixed;
+  left: 50%;
+  top: 66%;
+  transform: translateX(-50%);
+  z-index: 90;
+  width: min(360px, calc(100vw - 48px));
+  display: grid;
+  gap: 10px;
+  padding: 16px 16px 14px;
+  border-radius: 16px;
+  background: var(--panel-solid);
+  border: 1px solid var(--border-strong);
+  box-shadow: var(--shadow-card);
+  animation: watch-popup-in 0.22s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.watch-popup-body {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+.watch-popup-body svg {
+  flex: none;
+  margin-top: 2px;
+  color: var(--warn-fg);
+}
+.watch-popup-body p {
+  flex: 1;
+  margin: 0;
+  line-height: 1.55;
+  font-size: 13px;
+}
+.watch-popup-close {
+  flex: none;
+  padding: 4px;
+}
+.watch-popup-cta {
+  justify-self: end;
+}
+@keyframes watch-popup-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 8px);
   }
-  /* 모바일에서는 패널이 화면 아래에서 올라오는 바텀시트라 은하 폭을 줄일 이유가 없다 — 위 규칙을 상쇄 */
-  .galaxy.hud-panel-active .stage {
-    right: 0;
+  to {
+    opacity: 1;
+    transform: translateX(-50%);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .watch-popup {
+    animation: none;
   }
 }

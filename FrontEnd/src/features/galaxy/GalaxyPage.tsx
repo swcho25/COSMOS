@@ -8,7 +8,6 @@ import { companyGraphQuery, useCompanyGraph, useIndustries, useLatestGraph, useS
 import { useGalaxy, type GalaxyScope } from "@/store/galaxy";
 import { useSession } from "@/store/session";
 import { useUi } from "@/store/ui";
-import { useNarrowViewport } from "@/lib/viewport";
 import { useSceneReady } from "@/three/sceneReady";
 import { Icon } from "@/components/ui";
 import CameraPresets from "./CameraPresets";
@@ -18,7 +17,6 @@ import HelpHub, { HelpHotkey } from "./HelpHub";
 import HoldRing from "./HoldRing";
 import HopSummary from "./HopSummary";
 import IndustryPicker from "./IndustryPicker";
-import { PanelFrame, useLingeringPanel } from "./MobileSheet";
 import MyGalaxyBar, { MyGalaxyEmpty } from "./MyGalaxyBar";
 import PathStrip from "./PathStrip";
 import RelationshipPanel from "./RelationshipPanel";
@@ -124,8 +122,6 @@ export default function GalaxyPage() {
   /** 첫 방문 투어가 자동으로 뜰 조건 — Tour.tsx 의 자동 시작 조건과 같다. 그 인트로 딤(72% 어둡게)이 씬을 덮으므로 워밍업 오버레이를 따로 붙잡을 필요가 없다 */
   const [tourWillCover] = useState(() => autoTour && !isTourDone());
   const helpOpen = useUi((s) => s.helpOpen);
-  /* 모바일(900px 이하): 상단 줄을 두 줄로 다시 짠다 — 첫 줄 검색 아이콘 · 카메라 시점 · 은하 범위, 둘째 줄 Special Link 꼬리표 · 산업 선택판 */
-  const narrow = useNarrowViewport();
 
   /* URL ?company= 와 포커스 동기화 — 진입 시 딥링크를 먼저 소비한 뒤에만 URL 을 상태에 맞춘다 */
   const pendingDeepLink = useRef(params.get("company"));
@@ -265,6 +261,18 @@ export default function GalaxyPage() {
     [mineScope, status, watchIds, toggleWatch, toast, pickCompany],
   );
 
+  /**
+   * '기업 추가'(MyGalaxyBar, 우측 상단) 전용 — 좌측 상단 검색창(pickFromSearch)과는 별도 로직이다.
+   * 은하로 이동(warpTo)하지 않고 관심 등록만 한다 — 목록이 다시 불러와지면(useToggleWatch) 내 은하가 그 자리에서 새로고침된다.
+   */
+  const addToMyGalaxy = useCallback(
+    (id: string) => {
+      if (watchIds.includes(id)) return;
+      toggleWatch.mutate({ companyId: id, watched: false }, { onSuccess: () => toast("내 은하에 추가했습니다.", "success"), onError: () => toast("추가하지 못했습니다.", "error") });
+    },
+    [watchIds, toggleWatch, toast],
+  );
+
   /** 범위 전환 — 게스트가 내 은하를 누르면 로그인부터. 산업 칩과 같이 기업 중심 뷰였다면 은하로 되돌린다 */
   const pickScope = useCallback(
     (next: GalaxyScope) => {
@@ -282,7 +290,7 @@ export default function GalaxyPage() {
 
   const focusName = focusId ? systemModel?.nodeById.get(focusId)?.name ?? lookup(focusId)?.name ?? "…" : null;
 
-  /* 우측 패널 내용 — panelOpen 이 꺼져도(닫는 애니메이션 재생 중) useLingeringPanel 이 이 트리의 마지막 모습을 잠깐 더 붙잡아 준다 */
+  /* 우측 패널 내용 */
   const panelContent = selectedEdgeId ? (
     <RelationshipPanel relationshipId={selectedEdgeId} onClose={() => setPanelOpen(false)} onPickCompany={pickCompany} model={focusId ? systemModel : galaxyModel} />
   ) : focusId ? (
@@ -298,12 +306,7 @@ export default function GalaxyPage() {
       />
     )
   );
-  // 패널 내용의 "무엇이 선택돼 있는가" 를 나타내는 안정적인 키 — panelContent(JSX)는 매 렌더 새 객체라 이걸로 변경 여부를 판단한다
-  const panelKey = selectedEdgeId ?? focusId ?? selectedId ?? null;
-  // 패널을 "열겠다는 의도" — DOM 마운트 여부(useLingeringPanel 의 퇴장 유예)와 분리해서, .stage·.hud-top 이 패널의
-  // 등장/퇴장 애니메이션과 같은 박자로 즉시 반응하게 한다(galaxy.css 의 .hud-panel-active)
   const panelActive = Boolean(panelOpen && (focusId || selectedEdgeId || selectedId));
-  const { node: panelNode, show: showPanel, closing: panelClosing } = useLingeringPanel(panelActive, panelContent, panelKey);
   // 내 은하의 기준 스냅샷은 우주다 — 상태 카드의 시각·갱신 예정도 그 재료를 가리켜야 한다
   const snapshot = mineScope ? universe.data : latest.data;
   const nextRefreshAt = snapshot?.nextRefreshAt;
@@ -348,9 +351,6 @@ export default function GalaxyPage() {
       }}
     />
   );
-  /* 모바일에서는 Special Link 꼬리표를 상단 묶음의 둘째 줄 안에 그린다(은하 뷰 · 기업 중심 뷰) — 내 은하의 은하 뷰만 관심 기업 막대가 그 줄을 쓰므로 단독 레일로 남긴다 */
-  const surpriseInline = narrow && (focusId !== null || !mineScope);
-
   return (
     <div
       className={`galaxy${panelActive ? " hud-panel-active" : ""}`}
@@ -430,15 +430,11 @@ export default function GalaxyPage() {
           <MyGalaxyBar
             watchCount={watchIds.length}
             neighborCount={mine?.neighborIds.length ?? 0}
-            onSearch={() => setSearchOpen(true)}
+            watchedIds={watchIds}
+            onAdd={addToMyGalaxy}
             missing={(mine?.missing ?? []).map((id) => ({ companyId: id, name: watchItems.find((w) => w.companyId === id)?.name ?? id }))}
             onPick={pickCompany}
           />
-        ) : surpriseInline ? (
-          <div className="hud-top-line">
-            <SurpriseRail model={galaxyModel} onPickCompany={pickCompany} inline />
-            {industryPicker}
-          </div>
         ) : (
           industryPicker
         )}
@@ -462,8 +458,8 @@ export default function GalaxyPage() {
           </div>
         </div>
       )}
-      {/* 좌상단: 기업 중심 뷰 브레드크럼 (넓은 화면) */}
-      {focusId && !narrow && (
+      {/* 좌상단: 기업 중심 뷰 브레드크럼 */}
+      {focusId && (
         <div className="hud hud-crumb">
           <div className="crumb">
             <button type="button" onClick={() => warpTo(null)} title="은하로 돌아가기 (ESC)">
@@ -479,30 +475,8 @@ export default function GalaxyPage() {
           <CameraPresets />
         </div>
       )}
-      {/* 모바일 기업 중심 뷰 — 은하 뷰의 두 줄과 같은 결로 묶는다: [← 전체 은하 › 기업명 ···· 🔍] / [시점 · Special Link] / [1홉 역할 칩(가로 스크롤)] */}
-      {focusId && narrow && (
-        <div className="hud hud-top hud-top-focus">
-          <div className="hud-top-line crumb-line">
-            <div className="crumb crumb-main">
-              <button type="button" onClick={() => warpTo(null)} title="은하로 돌아가기">
-                <Icon.Back /> {mineScope ? "내 은하" : "전체 은하"}
-              </button>
-              <span aria-hidden="true">›</span>
-              <b>{focusName}</b>
-            </div>
-            <button type="button" className="crumb crumb-search" onClick={() => setSearchOpen(true)} aria-label="다른 기업 검색" title="다른 기업 검색">
-              <Icon.Search />
-            </button>
-          </div>
-          <div className="hud-top-line">
-            <CameraPresets />
-            <SurpriseRail model={systemModel} onPickCompany={pickCompany} inline />
-          </div>
-          <HopSummary model={systemModel} inline />
-        </div>
-      )}
-      {/* 브레드크럼 아래: 중심 기업의 1홉 역할 요약 (칩을 누르면 그 역할만 남긴다) — 넓은 화면 */}
-      {!(focusId && narrow) && <HopSummary model={systemModel} />}
+      {/* 브레드크럼 아래: 중심 기업의 1홉 역할 요약 (칩을 누르면 그 역할만 남긴다) */}
+      <HopSummary model={systemModel} />
       {/* 상단 중앙: 최단 경로 스트립 — 기업 중심 뷰는 중심 기준, 은하 뷰는 미리보기로 고른 기업 기준 (자기 모델로 재계산, Canvas 와 결합도 0) */}
       <PathStrip model={focusId ? systemModel : galaxyModel} />
 
@@ -532,7 +506,7 @@ export default function GalaxyPage() {
           씬 인코딩 설명(자리·굵기·색·점선)은 ? 허브에만 둔다 */}
       <ControlDock />
       {/* 왼쪽: Special Link — 특별한 관계만 골라 보여 주는 이 제품의 핵심 카드. 행 호버 = 씬 강조, 클릭 = 근거 패널 */}
-      {!surpriseInline && <SurpriseRail model={focusId ? systemModel : galaxyModel} onPickCompany={pickCompany} />}
+      <SurpriseRail model={focusId ? systemModel : galaxyModel} onPickCompany={pickCompany} />
 
       {/* 우측 패널 — 닫으면 오른쪽 가장자리 꼬리표로 접힌다 */}
       {/* 은하 뷰에서 행성을 클릭하면 워프하지 않고 그 기업의 뉴스·연결 단계를 여기서 먼저 본다 — 더블클릭(또는 패널의 "관계망 보기")이 워프 */}
@@ -543,13 +517,7 @@ export default function GalaxyPage() {
           </button>
         </div>
       )}
-      {showPanel && (
-        /* 모바일은 바텀시트(살짝 보기 → 전체 펼침, 손잡이로 끌어 접기·닫기) — 끌어 내려 닫을 때는 각 패널의 onClose 와 같은 일을 한다.
-           panelClosing 인 동안은 useLingeringPanel 이 얼려 둔 마지막 내용을 그대로 보여주며 퇴장 애니메이션만 재생한다 */
-        <PanelFrame narrow={narrow} closing={panelClosing} onDismiss={selectedEdgeId || focusId ? () => setPanelOpen(false) : () => selectCompany(null)}>
-          {panelNode}
-        </PanelFrame>
-      )}
+      {panelActive && <div className="hud hud-panel">{panelContent}</div>}
 
       <SearchPalette onPick={pickFromSearch} />
     </div>

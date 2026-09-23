@@ -23,6 +23,8 @@ export interface SceneNode {
   /** 기업 중심 뷰에서의 단계 (은하 뷰는 0) */
   depth: number;
   degree: number;
+  /** 가중 연결도(weightedDegree) 합 — 있으면 백분위 가이드라인(three/ReferenceRings) 랭킹이 degree 대신 이 값을 쓴다 */
+  weight?: number;
   /**
    * 이름표 LOD 등급 — 0 이 가장 중요하다.
    * 은하: 질량 랭크 상위 12 는 0, 50 위까지 1, 나머지 2 / 기업 중심: min(depth, 2).
@@ -562,10 +564,12 @@ export function layoutGalaxy(graph: LatestGraph, capT: CapScale = capScale(graph
       market: c.market,
       stockCode: c.stockCode,
       color: industryColor(c.industryName),
-      pos: [x[i], y, z[i]],
+      // z 만 눌러 은하 전체를 좌우로 긴 타원으로 만든다 — x(팔의 뻗음)는 그대로 둔다
+      pos: [x[i], y, z[i] * GALAXY_ELLIPSE_SQUASH],
       size: rad[i],
       depth: 0,
       degree: cnt.get(c.companyId) ?? 0,
+      weight: massOf(c.companyId),
       tier: i < 12 ? 0 : i < 50 ? 1 : 2,
       priceChange: c.priceChange,
     });
@@ -613,6 +617,12 @@ export function layoutGalaxy(graph: LatestGraph, capT: CapScale = capScale(graph
 export const ORBIT = [0, 42, 76, 108];
 /** 궤도 타원의 z 축 비율 — 비스듬히 내려다볼 때 원으로 보이도록 살짝 눌렀다 */
 const SYSTEM_SQUASH = 0.82;
+/**
+ * 전체 은하의 z 축(안길이) 비율 — 행성이 가운데(원형)에 몰려 보인다는 피드백에 따라, 은하를 좌우로
+ * 긴 타원으로 눌러 화면의 좌우 공간을 더 쓰게 한다. x 는 그대로 두고 z 만 이 비율만큼 줄인다.
+ * three/GalaxyDust(별가루)·three/ReferenceRings(백분위 가이드라인)도 같은 값으로 눌러 시각적으로 어긋나지 않게 맞춘다.
+ */
+export const GALAXY_ELLIPSE_SQUASH = 0.62;
 /**
  * 궤도 둘레에서 행성 하나가 차지하는 길이 — 이보다 촘촘해지면 궤도 반지름을 키운다.
  * 행성 지름이 depth 1 에서 12~14 (size × PLANET_RADIUS_K 3 × 2) 라 16 이던 때는 같은 궤도의 이웃이 거의 맞닿았다 — 지름의 두 배 가까이로 벌렸다
@@ -740,6 +750,7 @@ export function layoutSystem(graph: CompanyGraph, lookup: CompanyLookup): SceneM
       size: d === 0 ? 3.4 : nodeSize(deg.get(n.companyId) ?? 0, info?.capT) * (d === 1 ? 1.15 : d === 2 ? 0.95 : 0.8),
       depth: d,
       degree: cnt.get(n.companyId) ?? 0,
+      weight: deg.get(n.companyId) ?? 0,
       tier: Math.min(d, 2),
     });
   });
@@ -914,10 +925,19 @@ export function layoutPathGalaxy(graph: LatestGraph, fromId: string, toId: strin
     touch.set(e.targetCompanyId, (touch.get(e.targetCompanyId) ?? 0) + 1);
   });
 
+  // 끝점(검색한 두 기업)은 항상 좌·우, 같은 높이(y=CORE_Y, z=0)에 고정한다. 중간 경유 기업은 좌→우로 지나는
+  // 순서(x)는 지키되, 앞뒤(z)·높이(y)를 결정론적으로 흩어 "일렬로 늘어선 줄" 이 아니라 자유로운 배치처럼 보이게 한다
+  const rng = seededRandom(hashString(`${graph.snapshotId}:${fromId}:${toId}`));
+  const last = path.length - 1;
+  const totalW = PATH_GAP * Math.max(1, last);
+  const half = totalW / 2;
   const nodes: SceneNode[] = path.map((id, i) => {
     const src = byId.get(id)!;
     const industry = industryNameOf(src);
-    const isEndpoint = i === 0 || i === path.length - 1;
+    const isEndpoint = i === 0 || i === last;
+    const x = -half + (last === 0 ? 0 : (i / last) * totalW);
+    const jitterZ = isEndpoint ? 0 : (rng() * 2 - 1) * PATH_GAP * 0.55;
+    const jitterY = isEndpoint ? 0 : (rng() * 2 - 1) * 3.2;
     return {
       id,
       name: src.name,
@@ -926,13 +946,34 @@ export function layoutPathGalaxy(graph: LatestGraph, fromId: string, toId: strin
       stockCode: src.stockCode,
       // 검색한 두 기업(맨 왼쪽·맨 오른쪽)은 산업색 그대로, 중간에 낀 경유 기업은 내 은하의 이웃과 같은 어두운 단색 — 무엇을 찾았는지 한눈에 보여준다
       color: isEndpoint ? industryColor(industry) : NEIGHBOR_NODE_COLOR,
-      pos: [(i - (path.length - 1) / 2) * PATH_GAP, CORE_Y, 0] as Vec3,
+      pos: [x, CORE_Y + jitterY, jitterZ] as Vec3,
       size: nodeSize(deg.get(id) ?? 0, capT(src.marketCapKrw)),
       depth: 0,
       degree: touch.get(id) ?? 0,
+      weight: deg.get(id) ?? 0,
       tier: isEndpoint ? 0 : 1,
       priceChange: src.priceChange,
     };
   });
+  // 중간 기업끼리 겹치면 서로 밀어낸다 — 끝점 두 개는 건드리지 않고, x(좌→우 순서)도 지나는 순서가 바뀌지 않도록 그대로 둔다
+  for (let pass = 0; pass < 24; pass += 1) {
+    for (let i = 1; i < nodes.length - 1; i += 1) {
+      for (let j = i + 1; j < nodes.length - 1; j += 1) {
+        const a = nodes[i];
+        const b = nodes[j];
+        const dy = b.pos[1] - a.pos[1];
+        const dz = b.pos[2] - a.pos[2];
+        const d2 = dy * dy + dz * dz;
+        const min = (a.size + b.size) * 3.2 + 5;
+        if (d2 >= min * min || d2 <= 1e-6) continue;
+        const d = Math.sqrt(d2);
+        const push = ((min - d) / d) * 0.5;
+        a.pos[1] -= dy * push;
+        a.pos[2] -= dz * push;
+        b.pos[1] += dy * push;
+        b.pos[2] += dz * push;
+      }
+    }
+  }
   return { model: finish("galaxy", null, nodes, edges, []), path };
 }

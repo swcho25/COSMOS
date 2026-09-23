@@ -3,7 +3,6 @@ import type { AltitudeWindow, MetricWindow, PricePeriod, RelationshipType } from
 import type { CameraPresetId } from "@/lib/guide";
 import { RELATIONSHIP_ORDER } from "@/lib/meta";
 import type { RoleKey } from "@/lib/roles";
-import { isNarrowViewport } from "@/lib/viewport";
 
 /** 모바일에서 행성을 이만큼 누르면 관계망으로 워프한다 — HoldRing 의 채움 애니메이션 길이와 같은 값 */
 export const HOLD_MS = 550;
@@ -68,8 +67,6 @@ interface GalaxyState {
   searchOpen: boolean;
   /** 우측 인텔리전스 패널 펼침 여부 (접으면 오른쪽 가장자리에 꼬리표) */
   panelOpen: boolean;
-  /** 모바일 바텀시트(MobileSheet)가 전체 높이로 펼쳐졌는지 — 기본은 살짝 보기(탭 줄까지). 새 기업·관계를 고르면 되돌린다. 넓은 화면에서는 쓰지 않는다 */
-  sheetExpanded: boolean;
   /** 하단 중앙 조절 도크(펼치기·관계 종류·뉴스·공시 비율·최소 점수·주가 고도) 펼침 여부 — '^' 버튼으로 연다.
       고급 영역(뉴스·공시 비율·최소 점수·주가 고도)은 예전엔 이 안에서 다시 '>' 로 접고 펼 수 있었지만,
       항상 켜 있어야 한다는 결정에 따라 그 토글(dockAdvanced)은 없앴다 — 도크가 열리면 고급 영역도 항상 같이 보인다 */
@@ -116,7 +113,6 @@ interface GalaxyState {
   setPricePeriod(p: PricePeriod): void;
   setSearchOpen(v: boolean): void;
   setPanelOpen(v: boolean): void;
-  setSheetExpanded(v: boolean): void;
   setIndustryOpen(v: boolean): void;
   setCameraPreset(p: CameraPresetId): void;
   toggleEdgeLabels(): void;
@@ -153,11 +149,9 @@ export const useGalaxy = create<GalaxyState>((set, get) => ({
   pricePeriod: "1M",
   searchOpen: false,
   panelOpen: true,
-  sheetExpanded: false,
   // 도크는 펼친 채로 시작한다 — 조절 수단(관계 종류·뉴스·공시 비율·최소 점수·주가 고도)이 첫 화면에 모두 보여야 한다.
-  // 접으면 하단 중앙 '^' 버튼만 남는다. 모바일(900px 이하, lib/viewport)은 펼친 카드가 씬의 상당 부분을 가리므로
-  // 접힌 채로 시작한다 — '^' 로 열 수 있다. 열리면 고급 영역까지 항상 함께 보인다(예전의 '>' 토글은 없앴다)
-  dockOpen: !isNarrowViewport(),
+  // 접으면 하단 중앙 '^' 버튼만 남는다. 열리면 고급 영역까지 항상 함께 보인다(예전의 '>' 토글은 없앴다)
+  dockOpen: true,
   industryOpen: false,
   cameraPreset: "orbit",
   cameraPresetNonce: 0,
@@ -180,7 +174,6 @@ export const useGalaxy = create<GalaxyState>((set, get) => ({
       selectedId: null,
       roleFilter: null,
       panelOpen: true,
-      sheetExpanded: false,
       industryOpen: false,
       // 펼치기는 은하 뷰의 배치다 — 기업 중심 뷰로 들어가면(또는 돌아오면) 나선 배치에서 시작한다
       spread: 0,
@@ -213,7 +206,6 @@ export const useGalaxy = create<GalaxyState>((set, get) => ({
         selectedEdgeId: s.selectedEdgeId === id ? null : id,
         selectedId: null,
         panelOpen: true,
-        sheetExpanded: false,
         // 관계선을 새로 고르면 RelationshipPanel 의 표시 기간(window)을 그 관계선을 만든 기준 기간(edgeWindow)으로
         // 맞춘다 — 다른 기간에는 이 관계 자체가 없을 수 있어(예: 10Y 기준에서만 보이는 관계) 상세 조회가 404 날 수 있다.
         // 패널을 연 뒤에는 사용자가 그 안의 기간 버튼으로 자유롭게 다른 기간을 둘러볼 수 있다
@@ -227,7 +219,7 @@ export const useGalaxy = create<GalaxyState>((set, get) => ({
   selectCompany(id) {
     // 워프 중에는 아직 이전 모델이 보이고 집을 수도 있다 — 그때 고른 기업은 착지한 뷰에 없을 수 있다 (warpTo 와 같은 가드)
     if (get().phase === "warp") return;
-    set({ selectedId: id, selectedEdgeId: null, panelOpen: true, sheetExpanded: false });
+    set({ selectedId: id, selectedEdgeId: null, panelOpen: true });
   },
   setRoleFilter(r) {
     set((s) => ({ roleFilter: s.roleFilter === r ? null : r }));
@@ -290,9 +282,6 @@ export const useGalaxy = create<GalaxyState>((set, get) => ({
   },
   setPanelOpen(v) {
     set({ panelOpen: v });
-  },
-  setSheetExpanded(v) {
-    set({ sheetExpanded: v });
   },
   setIndustryOpen(v) {
     set({ industryOpen: v });

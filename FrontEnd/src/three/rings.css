@@ -7,3 +7,7 @@
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
   transition: none; /* 페이드는 useFrame 이 opacity 를 직접 쓴다 — CSS 트랜지션과 겹치면 두 번 감쇠한다 */
 }
+/* 허브(연결 랭크) 링 라벨 — 링 색(금색 계열)과 맞춘다 */
+.ring-label-hub {
+  color: rgba(217, 179, 108, 0.75);
+}

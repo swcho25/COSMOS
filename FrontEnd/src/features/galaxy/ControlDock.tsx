@@ -4,7 +4,6 @@ import { Icon } from "@/components/ui";
 import { DOCK_UI } from "@/lib/guide";
 import { METRIC_WINDOWS, METRIC_WINDOW_LABEL, RELATIONSHIP_ORDER, relationshipMeta } from "@/lib/meta";
 import { spreadStage } from "@/lib/spread";
-import { useNarrowViewport } from "@/lib/viewport";
 import { useGalaxy } from "@/store/galaxy";
 import { pct, useWeight } from "@/store/weight";
 import "./dock.css";
@@ -26,16 +25,9 @@ import "./dock.css";
  */
 
 const ALTITUDE_WINDOWS: AltitudeWindow[] = ["7D", "30D", "90D"];
-/** 펼치기 슬라이더 스냅 지점과 허용 오차 — 손을 떼거나 키를 놓았을 때만 스냅한다 (드래그 중에는 그대로 따라간다) */
-const SNAP_ANCHORS = [0, 50, 100];
-const SNAP_TOLERANCE = 6;
-
-function snapValue(v: number) {
-  for (const anchor of SNAP_ANCHORS) {
-    if (Math.abs(v - anchor) <= SNAP_TOLERANCE) return anchor;
-  }
-  return v;
-}
+/** 펼치기 버튼 세 값 — 은하 / 평면 / 정렬. SpreadDriver·Director 는 spread 값이 어떻게 바뀌든(연속 드래그든 이 버튼의 순간 점프든)
+ * 매 프레임 목표값으로 부드럽게 보간하므로, 버튼으로 값만 바꿔 줘도 기존과 같은 자연스러운 전환이 그대로 재생된다 */
+const SPREAD_STOPS: Record<"galaxy" | "flat" | "sorted", number> = { galaxy: 0, flat: 0.5, sorted: 1 };
 
 export default function ControlDock() {
   const dockOpen = useGalaxy((s) => s.dockOpen);
@@ -57,7 +49,6 @@ export default function ControlDock() {
 
   const newsWeight = useWeight((s) => s.newsWeight);
   const setNewsWeight = useWeight((s) => s.setNewsWeight);
-  const narrow = useNarrowViewport();
   /**
    * 뉴스·공시 비율 슬라이더의 드래그 중 표시값 — 드래그하는 동안은 이 값만 바뀌고(라벨만 갱신),
    * 실제 store(useWeight)·씬 재계산은 손을 떼거나(pointerUp) 키를 놓을 때(keyUp)만 한 번 커밋한다.
@@ -75,19 +66,10 @@ export default function ControlDock() {
     );
   }
 
-  const spreadPct = Math.round(spread * 100);
   const stage = spreadStage(spread);
   const inGalaxyView = focusId === null;
   const newsWeightPct = pct(newsWeight);
 
-  function commitSpread(v: number) {
-    setSpread(v / 100);
-  }
-  function releaseSpread(e: ReactPointerEvent<HTMLInputElement> | ReactKeyboardEvent<HTMLInputElement>) {
-    const v = Number(e.currentTarget.value);
-    const snapped = snapValue(v);
-    if (snapped !== v) commitSpread(snapped);
-  }
   /**
    * 마우스로 슬라이더를 놓으면 포커스를 떼어 준다 — 포커스가 남아 있으면 방향키가 씬이 아니라 이 슬라이더로 가서
    * "슬라이더를 만진 뒤 우주를 한 번 클릭해야" 카메라가 움직였다. 키보드(Tab)로 온 경우에는 그대로 둔다.
@@ -113,26 +95,16 @@ export default function ControlDock() {
         <span className="lab" title={DOCK_UI.spreadTitle}>
           {DOCK_UI.spread}
         </span>
-        <span className="chip chip-sm dock-val">{spreadPct}%</span>
       </div>
-      <input
-        type="range"
-        min={0}
-        max={100}
-        step={1}
-        value={spreadPct}
-        onChange={(e) => commitSpread(Number(e.target.value))}
-        onPointerUp={(e) => {
-          releaseSpread(e);
-          releaseFocus(e);
-        }}
-        onKeyUp={releaseSpread}
-        title={DOCK_UI.spreadTitle}
-      />
-      <div className="dock-stages">
-        <span className={stage === "galaxy" ? "on" : undefined}>{DOCK_UI.stages.galaxy}</span>
-        <span className={stage === "flat" ? "on" : undefined}>{DOCK_UI.stages.flat}</span>
-        <span className={stage === "sorted" ? "on" : undefined}>{DOCK_UI.stages.sorted}</span>
+      {/* 예전엔 0~100% 슬라이더로 중간값도 고를 수 있었지만, 세 단계 사이 미세 조정이 굳이 필요하지 않다는 판단에
+          은하/평면/정렬 세 버튼으로 바꿨다 — setSpread 로 값만 바뀌면 SpreadDriver 가 그 값까지 알아서 부드럽게
+          보간하므로, 느린 드래그로 만들던 자연스러운 전환은 버튼을 눌러도 그대로다 */}
+      <div className="seg dock-stages-btn">
+        {(Object.keys(SPREAD_STOPS) as Array<keyof typeof SPREAD_STOPS>).map((k) => (
+          <button key={k} type="button" className={stage === k ? "on" : undefined} onClick={() => setSpread(SPREAD_STOPS[k])} title={DOCK_UI.spreadTitle}>
+            {DOCK_UI.stages[k]}
+          </button>
+        ))}
       </div>
     </div>
   );
@@ -235,29 +207,6 @@ export default function ControlDock() {
       <Icon.Chevron />
     </button>
   );
-
-  if (narrow) {
-    return (
-      <div className="hud hud-dock">
-        <div className="card dock-card dock-mobile">
-          {/* 한 장에 세로로 쌓는다 — 펼치기 슬라이더(은하 뷰) · 관계 종류 2×2 · 뉴스·공시 비율 · 최소 점수 · 주가 고도(은하 뷰) ·
-              관계선 기준 기간(은하 뷰) 순. 예전엔 뒤쪽 세 줄을 '>' 로 접어 별도 장에 감췄지만 이제 처음부터 전부 보인다 */}
-          <div className="dock-mobile-stack">
-            {inGalaxyView && spreadCol}
-            <div className="dock-types-grid" title={DOCK_UI.types}>
-              {typeChips}
-            </div>
-            {mixRow}
-            {minScoreRow}
-            {inGalaxyView && altitudeRow}
-            {inGalaxyView && edgeWindowRow}
-          </div>
-          {tail}
-          {closeHandle}
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className="hud hud-dock">

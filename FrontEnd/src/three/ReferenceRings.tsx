@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
 import { Html } from "@react-three/drei";
 import * as THREE from "three";
-import type { SceneModel } from "@/lib/graph";
+import { GALAXY_ELLIPSE_SQUASH, type SceneModel, type SceneNode } from "@/lib/graph";
 import { RINGS_UI } from "@/lib/guide";
 import { useGalaxy } from "@/store/galaxy";
 import { morphState } from "./morph";
@@ -14,8 +14,10 @@ interface Props {
 }
 
 const SEGMENTS = 96;
-/** 모든 링(허브·0선·기업 중심 궤도)이 같은 옅은 청회색을 쓴다 — 색이 아니라 자리가 읽어야 하는 요소라서 */
+/** 0선·기업 중심 궤도는 같은 옅은 청회색을 쓴다 — 색이 아니라 자리가 읽어야 하는 요소라서 */
 const RING_COLOR = "#8FA6C8";
+/** 허브(연결 랭크) 링은 따로 — 관계선 색(파랑·보라·빨강 계열)과 헷갈리지 않도록 옅은 금색으로 구분한다 */
+const HUB_RING_COLOR = "#D9B36C";
 const HUB_OPACITY = 0.07;
 const ZERO_OPACITY = 0.05;
 const SYSTEM_OPACITY = 0.08;
@@ -60,12 +62,18 @@ export default function ReferenceRings({ model }: Props) {
   }, []);
   useEffect(() => () => circleGeo.dispose(), [circleGeo]);
 
-  /** 은하 뷰 — 허브 랭크 3링(반지름 랭크 상위 10/30/60%) + 노드 높이 중앙값 */
+  /**
+   * 은하 뷰 — 허브 랭크 3링(연결 상위 10/30/60%) + 노드 높이 중앙값.
+   * 랭크는 반지름이 아니라 실제 연결 가중치(weight, 없으면 degree)로 매긴다 — 반지름은 결과를 그리는 자리일 뿐이다.
+   * 은하는 GALAXY_ELLIPSE_SQUASH 만큼 z 를 눌러 타원으로 배치하므로, 링 반지름은 layoutSystem 의 SYSTEM_SQUASH 패턴과
+   * 같은 방식으로 한 번 편(un-squash) 뒤 다시 같은 비율로 눌러 그려야 행성 타원과 어긋나지 않는다.
+   */
   const galaxyData = useMemo(() => {
     if (model.kind !== "galaxy" || !model.nodes.length) return null;
-    const radii = model.nodes.map((n) => Math.hypot(n.pos[0], n.pos[2])).sort((a, b) => a - b);
-    const n = radii.length;
-    const hub = RINGS_UI.hubPercents.map((pct) => radii[Math.min(n - 1, Math.max(0, Math.round((pct / 100) * (n - 1))))]);
+    const ranked = model.nodes.slice().sort((a, b) => (b.weight ?? b.degree) - (a.weight ?? a.degree));
+    const n = ranked.length;
+    const circR = (nd: SceneNode) => Math.hypot(nd.pos[0], nd.pos[2] / GALAXY_ELLIPSE_SQUASH);
+    const hub = RINGS_UI.hubPercents.map((pct) => circR(ranked[Math.min(n - 1, Math.max(0, Math.round((pct / 100) * (n - 1))))]));
     const ys = model.nodes.map((nd) => nd.pos[1]).sort((a, b) => a - b);
     const midY = ys[Math.floor((ys.length - 1) / 2)];
     return { hub, midY, maxR: model.extent.maxR };
@@ -128,7 +136,7 @@ export default function ReferenceRings({ model }: Props) {
         <group key={`hub-${i}`} position={[0, galaxyData.midY, 0]}>
           <lineLoop
             geometry={circleGeo}
-            scale={[r, 1, r]}
+            scale={[r, 1, r * GALAXY_ELLIPSE_SQUASH]}
             frustumCulled={false}
             renderOrder={0}
             ref={(o) => {
@@ -137,9 +145,9 @@ export default function ReferenceRings({ model }: Props) {
               else delete mats.current[key];
             }}
           >
-            <lineBasicMaterial color={RING_COLOR} transparent opacity={HUB_OPACITY} depthWrite={false} />
+            <lineBasicMaterial color={HUB_RING_COLOR} transparent opacity={HUB_OPACITY} depthWrite={false} />
           </lineLoop>
-          <Html position={[Math.cos(HUB_LABEL_ANGLE) * r, 0, Math.sin(HUB_LABEL_ANGLE) * r]} pointerEvents="none" zIndexRange={[3, 0]} className="ring-label">
+          <Html position={[Math.cos(HUB_LABEL_ANGLE) * r, 0, Math.sin(HUB_LABEL_ANGLE) * r * GALAXY_ELLIPSE_SQUASH]} pointerEvents="none" zIndexRange={[3, 0]} className="ring-label ring-label-hub">
             <div
               ref={(el) => {
                 const key = `hub${i}`;

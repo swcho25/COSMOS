@@ -71,38 +71,15 @@
   accent-color: var(--primary);
 }
 
-/* A. 펼치기 */
-.dock-spread input[type="range"] {
-  width: 160px;
-}
+/* A. 펼치기 — 은하/평면/정렬 세 버튼 (0~100% 슬라이더에서 버튼식으로 바뀌었다) */
 .dock-row-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 10px;
 }
-.dock-val {
-  min-width: 34px;
-  justify-content: center;
-}
-.dock-stages {
+.dock-stages-btn {
   display: flex;
-  font-size: 11px;
-  color: var(--text-4);
-}
-.dock-stages span {
-  flex: 1;
-  text-align: center;
-}
-.dock-stages span:first-child {
-  text-align: left;
-}
-.dock-stages span:last-child {
-  text-align: right;
-}
-.dock-stages span.on {
-  color: var(--text-2);
-  font-weight: 700;
 }
 
 /* B. 관계 종류 — 글리프·설명 없이 칩 4개만 */
@@ -232,70 +209,3 @@
   height: 14px;
 }
 
-/* 좁은 화면 — 상태 카드는 모바일에서 감추므로(galaxy.css) 도크는 바닥까지 내려온다. 홈 인디케이터 영역은 피한다 */
-@media (max-width: 900px) {
-  .hud-dock {
-    bottom: calc(14px + env(safe-area-inset-bottom, 0px));
-  }
-  /* 패널을 접은 꼬리표(바닥 중앙)가 있을 때만 그 위로 비켜 선다 */
-  .galaxy:has(.hud-panel-tag) .hud-dock {
-    bottom: 64px;
-  }
-  /* 접힌 '^' 버튼(모바일 기본 상태)은 손가락 크기로 */
-  .dock-open {
-    width: 44px;
-    height: 44px;
-  }
-}
-
-/* ------------------------------ 모바일 카드 (.dock-mobile) — ControlDock 이 900px 이하에서 이 구조로 그린다 ------------------------------
-   [ 세로 스택(.dock-mobile-stack) — 펼치기 슬라이더 · 관계 종류 2×2 · 뉴스·공시 비율 · 최소 점수 · 주가 고도 전부 ][ 초기화 ]
-   예전엔 뒤쪽 세 줄(고급)을 '>' 로 접어 별도 장으로 슬라이드 전환했지만, 항상 보여야 한다는 결정에 따라 이제 한 장에
-   전부 세로로 쌓는다 — 카드가 그만큼 길어지는 대신 조절 수단을 바로 다 볼 수 있다. */
-.dock-mobile {
-  width: calc(100vw - 32px);
-  max-width: none;
-  gap: 12px;
-  padding: 12px 14px;
-}
-.dock-mobile-stack {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  min-width: 0;
-  flex: 1 1 auto;
-}
-.dock-mobile-stack .dock-row {
-  min-width: 0;
-}
-.dock-mobile-stack .dock-row input[type="range"] {
-  flex: 1 1 auto;
-  width: auto;
-  min-width: 0;
-}
-.dock-mobile-stack .dock-mix-val {
-  flex: none;
-}
-.dock-mobile .dock-spread {
-  min-width: 0;
-}
-.dock-mobile .dock-spread input[type="range"] {
-  width: 100%;
-  min-width: 0;
-}
-.dock-types-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 6px;
-  align-content: center;
-}
-.dock-types-grid .chip {
-  justify-content: center;
-  padding: 6px 9px;
-}
-
-/* 아이콘 열은 손가락 크기로 */
-.dock-mobile .dock-icon {
-  width: 34px;
-  height: 34px;
-}
