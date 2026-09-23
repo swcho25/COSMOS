@@ -298,7 +298,23 @@ class PrecisionRuleTest(unittest.TestCase):
         self.assertTrue(result)
         self.assertFalse(any(row["reject"] == "co_listed" for row in result))
 
-
 if __name__ == "__main__":
     unittest.main()
 
+
+class EarlyExitTest(unittest.TestCase):
+    """Fewer than two certain companies means no pair, so the sentence catalog is
+    never built. It used to be built first: 8 seconds per long article for []."""
+
+    def test_one_company_never_reaches_the_sentence_splitter(self):
+        from unittest.mock import patch
+        import relations
+        with patch.object(relations, "sentence_view", side_effect=AssertionError("split called")) as split:
+            result = article_relations("제목", "삼성전자는 이익이 늘었다. " * 2000,
+                                       [company("005930", "삼성전자")], "ko")
+        self.assertEqual(result, [])
+        split.assert_not_called()
+
+    def test_two_companies_still_go_through_the_splitter(self):
+        result = article_relations("제목", "삼성전자가 SK하이닉스와 협력을 강화한다.", KR, "ko")
+        self.assertTrue(result)

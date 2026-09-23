@@ -224,6 +224,12 @@ def article_relations(title: str, content: str, companies, language: str) -> lis
     ellipsis = {(company.get("market"), company.get("stock_code"))
                 for company in certain
                 if ELLIPSIS_METHOD in (company.get("method") or "")}
+    # A relation needs two parties. Deciding that before the sentence catalog
+    # is built matters: most articles name one company or none, and splitting
+    # a 50,000-character stock table into sentences cost 8 seconds on the
+    # server - paid, before this check moved, for a result that was always [].
+    if len(certain) < 2:
+        return []
     companies, catalog, names, field, scannable = sentence_view(title, content, certain)
     if len(companies) < 2:
         return []

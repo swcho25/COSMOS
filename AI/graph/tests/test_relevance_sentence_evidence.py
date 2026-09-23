@@ -158,6 +158,36 @@ class SentenceEvidenceTests(unittest.TestCase):
             with self.subTest(context=context), self.assertRaises(ValueError):
                 evidence.messages(row, "사용자 기준")
 
-
 if __name__ == "__main__":
     unittest.main()
+
+
+class AsciiTokenEquivalenceTest(unittest.TestCase):
+    """_ascii_token_before must return exactly what the whole-prefix regex did.
+
+    The old form was O(n^2) over an article; the new one only reads the run of
+    letters and dots touching the period. Fuzz the two against each other.
+    """
+
+    def test_matches_the_unbounded_search_on_random_text(self):
+        import random, re
+        from relevance_sentence_evidence import _ascii_token_before
+        alphabet = "abcXYZ. ,1한글U.S" + "e.g" + chr(10)
+        rng = random.Random(20260923)
+        checked = 0
+        for _ in range(4000):
+            text = "".join(rng.choice(alphabet) for _ in range(rng.randint(1, 40)))
+            for index, ch in enumerate(text):
+                if ch != ".":
+                    continue
+                old = re.search(r"([A-Za-z]+(?:\.[A-Za-z]+)*)$", text[:index])
+                self.assertEqual(_ascii_token_before(text, index), old.group(1) if old else None, repr((text, index)))
+                checked += 1
+        self.assertGreater(checked, 5000)
+
+    def test_a_long_table_is_no_longer_quadratic(self):
+        import time
+        from relevance_sentence_evidence import build_sentence_catalog
+        row = {"title": "표", "body": ("삼성전자 70,000. " * 4000)}   # ~64k chars, 4,000 periods
+        t0 = time.time(); build_sentence_catalog(row); elapsed = time.time() - t0
+        self.assertLess(elapsed, 2.0, "%.1fs" % elapsed)
