@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, type MutableRefObject } from "react";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import { ARMS, ARM_SPREAD, DISC_Y, R_CORE, R_MAX, armTheta } from "@/lib/galaxyShape";
+import { GALAXY_ELLIPSE_SQUASH } from "@/lib/graph";
 import { gaussian, seededRandom } from "@/lib/rng";
 import { isLowEnd } from "./perf";
 import { spreadDim } from "./spread";
@@ -107,16 +108,17 @@ export default function GalaxyDust({ seed = 0, radius = R_MAX, spiral = true, wa
       // 팔은 안쪽에서 가늘고 바깥에서 흩어진다 — 행성 배치와 같은 ARM_SPREAD 를 쓰되 조금 더 퍼뜨려 팔 경계를 흐린다.
       // 팔이 없는 뷰(spiral=false)에서는 행성처럼 원둘레에 고르게 뿌린다
       const th = spiral ? armTheta(Math.floor(rng() * ARMS) % ARMS, r) + g3() * ARM_SPREAD(r) * 1.3 : rng() * Math.PI * 2;
-      put(o, Math.cos(th) * r, g3() * DISC_Y(r) * DUST_Y, Math.sin(th) * r, 0.6 + rng() * rng() * 2.0, 0.35 + rng() * 0.35);
+      // z 만 눌러 행성 배치(layoutGalaxy 의 GALAXY_ELLIPSE_SQUASH)와 같은 타원을 그린다
+      put(o, Math.cos(th) * r, g3() * DISC_Y(r) * DUST_Y, Math.sin(th) * r * GALAXY_ELLIPSE_SQUASH, 0.6 + rng() * rng() * 2.0, 0.35 + rng() * 0.35);
     }
     for (let i = 0; i < bulge; i += 1, o += 1) {
       const s = R_CORE * 0.6;
-      put(o, g3() * s, g3() * 5, g3() * s, 0.9 + rng() * 1.7, (0.4 + rng() * 0.3) * BULGE_ALPHA);
+      put(o, g3() * s, g3() * 5, g3() * s * GALAXY_ELLIPSE_SQUASH, 0.9 + rng() * 1.7, (0.4 + rng() * 0.3) * BULGE_ALPHA);
     }
     for (let i = 0; i < inter; i += 1, o += 1) {
       const r = sampleR();
       const th = rng() * Math.PI * 2;
-      put(o, Math.cos(th) * r, g3() * DISC_Y(r) * DUST_Y, Math.sin(th) * r, 0.6 + rng() * 1.2, 0.35 + rng() * 0.15);
+      put(o, Math.cos(th) * r, g3() * DISC_Y(r) * DUST_Y, Math.sin(th) * r * GALAXY_ELLIPSE_SQUASH, 0.6 + rng() * 1.2, 0.35 + rng() * 0.15);
     }
 
     const g = new THREE.BufferGeometry();

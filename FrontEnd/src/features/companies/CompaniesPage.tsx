@@ -19,6 +19,8 @@ const MARKETS: { v: Market | ""; label: string }[] = [
 
 type SortKey = "count" | "score";
 type SortState = { key: SortKey; dir: "asc" | "desc" } | null;
+/** 열 헤더(연결 관계·최고 관계 점수) 정렬이 꺼져 있을 때 쓰는 기본 정렬 방식 — 시가총액이 기본이고, 기업명순은 사용자가 명시적으로 고른다 */
+type PrimarySort = "cap" | "name";
 
 /** 기업 (화면구성도 ⑩·⑪). 목록 / 투자·지분 관계 토글. 행을 누르면 전체 은하의 기업 패널이 열린다. */
 export default function CompaniesPage() {
@@ -31,6 +33,7 @@ export default function CompaniesPage() {
   const [market, setMarket] = useState<Market | "">("");
   const [industryId, setIndustryId] = useState("");
   const [sort, setSort] = useState<SortState>(null);
+  const [primarySort, setPrimarySort] = useState<PrimarySort>("cap");
   const [previewId, setPreviewId] = useState<string | null>(null);
 
   // 입력마다 요청이 나가지 않도록 디바운스한다 (live 모드에서 백엔드 호출 폭주 방지)
@@ -94,8 +97,12 @@ export default function CompaniesPage() {
     }
     // 검색어로 서버가 관련도순을 이미 매겨 준 경우엔 그 순서를 존중한다.
     if (keyword) return rows;
-    // 기본 정렬은 알파벳(기업명)순 대신 시가총액 내림차순 — 실데이터(스냅샷 marketCapKrw)를 먼저 쓰고,
-    // 그마저 없으면 202개 기업 하드코딩 표(lib/marketCapFallback)를 대체값으로 쓴다. 둘 다 없는 기업만 맨 뒤로 밀린다.
+    // 사용자가 명시적으로 기업명순을 고르면 가나다순 그대로 — 시가총액 데이터 유무와 무관하게 항상 이름순이다
+    if (primarySort === "name") return rows.slice().sort((a, b) => a.name.localeCompare(b.name, "ko"));
+    // 기본 정렬은 시가총액 내림차순 — 실데이터(스냅샷 marketCapKrw)를 먼저 쓰고,
+    // 그마저 없으면 202개 기업 하드코딩 표(lib/marketCapFallback)를 대체값으로 쓴다. 둘 다 없는 기업만(그 안에서는 이름순으로) 맨 뒤로 밀린다.
+    // (시가총액 데이터가 없는 기업이 많으면 이 꼬리가 길어져 "알파벳순처럼 보인다"는 지적이 있었다 — 그건 데이터 커버리지 문제이지
+    // 정렬 로직 문제가 아니라, 위의 기업명순 버튼을 명시적으로 추가해 "지금 알파벳순으로 보고 있다"를 사용자가 직접 고를 수 있게 했다)
     return rows
       .slice()
       .sort((a, b) => {
@@ -106,7 +113,7 @@ export default function CompaniesPage() {
         if (bv != null) return 1;
         return a.name.localeCompare(b.name, "ko");
       });
-  }, [rows, stats, capById, sort, keyword]);
+  }, [rows, stats, capById, sort, keyword, primarySort]);
 
   return (
     <div className="page">
@@ -211,8 +218,34 @@ export default function CompaniesPage() {
                 ))}
               </select>
               <span className="meta" style={{ marginLeft: "auto" }}>
-                {sort ? `${sort.key === "count" ? "연결 관계" : "최고 관계 점수"} ${sort.dir === "desc" ? "높은순" : "낮은순"} · 불러온 목록 기준` : keyword ? "관련도순" : "시가총액 높은순"}
+                {sort ? `${sort.key === "count" ? "연결 관계" : "최고 관계 점수"} ${sort.dir === "desc" ? "높은순" : "낮은순"} · 불러온 목록 기준` : keyword ? "관련도순" : primarySort === "name" ? "기업명 가나다순" : "시가총액 높은순"}
               </span>
+              {/* 열 헤더(연결 관계·최고 관계 점수) 정렬이나 검색어 관련도순이 아닐 때 쓰는 기본 정렬 — 시가총액(기본)과 기업명순을 사용자가 직접 고른다.
+                  둘 중 하나를 누르면 열 헤더 정렬(sort)은 끄고 이 기본 정렬로 돌아온다 */}
+              {!keyword && (
+                <div className="seg" title="목록 기본 정렬">
+                  <button
+                    type="button"
+                    className={!sort && primarySort === "cap" ? "on" : ""}
+                    onClick={() => {
+                      setSort(null);
+                      setPrimarySort("cap");
+                    }}
+                  >
+                    시가총액순
+                  </button>
+                  <button
+                    type="button"
+                    className={!sort && primarySort === "name" ? "on" : ""}
+                    onClick={() => {
+                      setSort(null);
+                      setPrimarySort("name");
+                    }}
+                  >
+                    기업명순
+                  </button>
+                </div>
+              )}
             </div>
             <div style={{ overflowX: "auto" }}>
               <table className="dir-table">

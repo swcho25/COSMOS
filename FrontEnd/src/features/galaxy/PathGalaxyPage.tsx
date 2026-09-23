@@ -3,10 +3,8 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import { capScale, layoutPathGalaxy } from "@/lib/graph";
 import { useLatestGraph } from "@/lib/queries";
 import { useGalaxy } from "@/store/galaxy";
-import { useNarrowViewport } from "@/lib/viewport";
 import { Icon } from "@/components/ui";
 import CompanyPanel from "./CompanyPanel";
-import { PanelFrame, useLingeringPanel } from "./MobileSheet";
 import RelationshipPanel from "./RelationshipPanel";
 import SearchPalette from "./SearchPalette";
 import "./galaxy.css";
@@ -22,7 +20,6 @@ const Scene = lazy(() => import("@/three/Scene"));
 export default function PathGalaxyPage() {
   const [params] = useSearchParams();
   const navigate = useNavigate();
-  const narrow = useNarrowViewport();
   const fromId = params.get("from");
   const toId = params.get("to");
 
@@ -51,15 +48,10 @@ export default function PathGalaxyPage() {
   const hasPath = Boolean(result?.path?.length);
 
   /**
-   * 첫 번째 기업(from)을 기본으로 골라 둔다 — CompanyNodes/RoleRings 는 호버 중이 아니면 selectedId 를 "주인공"으로
-   * 삼아 이웃 역할 링·칩을 계속 켜 둔다(three/Scene.tsx 의 focusNode = hoveredId ?? selectedId). 이 화면은 두세 기업
-   * 사이의 관계를 보러 온 것이라, 마우스를 얹지 않아도 그 관계 정보(피투자·협력·공급 등)가 바로 보여야 한다.
-   * fromId·toId 가 바뀔 때(새 경로 검색)만 다시 고르고, 사용자가 다른 노드를 직접 고른 뒤에는 덮어쓰지 않는다.
+   * 예전엔 첫 번째 기업(from)의 인텔리전스 패널을 기본으로 열어 두었지만, 이 화면은 이제 모든 관계·역할 정보를
+   * 기본값으로 보여주므로(three/emphasis.ts 의 isolate 모드 — 아래 <Scene isolateOnFocus>) 굳이 하나를 미리 고를
+   * 필요가 없다. 기본 상태는 아무것도 선택돼 있지 않은 채로 두고, 사용자가 행성·관계를 눌러야 우측 패널이 뜬다.
    */
-  useEffect(() => {
-    if (hasPath && fromId) selectCompany(fromId);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fromId, toId, hasPath]);
 
   /** 관계망을 더 보고 싶으면(패널의 "관계망 보기") 전체 은하로 나가 그 기업 중심 뷰를 연다 — 이 화면은 경로 한 줄만 보여준다 */
   const openInGalaxy = (id: string) => navigate(`/?company=${id}`);
@@ -68,24 +60,21 @@ export default function PathGalaxyPage() {
   const loading = universe.isLoading;
   const invalidQuery = !fromId || !toId || fromId === toId;
 
-  /* 우측 패널 내용 — panelOpen 이 꺼져도(닫는 애니메이션 재생 중) useLingeringPanel 이 마지막 모습을 잠깐 더 붙잡아 준다 (GalaxyPage 와 같은 패턴) */
+  /* 우측 패널 내용 */
   const panelContent = selectedEdgeId ? (
     <RelationshipPanel relationshipId={selectedEdgeId} onClose={() => setPanelOpen(false)} onPickCompany={pickCompany} model={pathModel} />
   ) : (
     selectedId && <CompanyPanel companyId={selectedId} model={pathModel} onClose={() => selectCompany(null)} onPickCompany={pickCompany} onWarp={() => openInGalaxy(selectedId)} />
   );
-  // 패널 내용의 "무엇이 선택돼 있는가" 를 나타내는 안정적인 키 — panelContent(JSX)는 매 렌더 새 객체라 이걸로 변경 여부를 판단한다
-  const panelKey = selectedEdgeId ?? selectedId ?? null;
-  // 패널을 "열겠다는 의도" — DOM 마운트 여부(useLingeringPanel 의 퇴장 유예)와 분리해서, .stage·.hud-top 이 패널의
-  // 등장/퇴장 애니메이션과 같은 박자로 즉시 반응하게 한다(galaxy.css 의 .hud-panel-active)
   const panelActive = Boolean(panelOpen && (selectedId || selectedEdgeId));
-  const { node: panelNode, show: showPanel, closing: panelClosing } = useLingeringPanel(panelActive, panelContent, panelKey);
 
   return (
     <div className={`galaxy${panelActive ? " hud-panel-active" : ""}`}>
       <div className="stage">
         <Suspense fallback={null}>
-          <Scene galaxy={pathModel} system={null} next={null} />
+          {/* isolateOnFocus: 기본값은 모든 관계·역할 정보가 다 보이고, 호버·클릭한 것만 남기고 나머진 숨는다.
+              panelBias: 우측에 뜨는 인텔리전스 패널 자리를 카메라 시선으로 미리 비워 둔다 */}
+          <Scene galaxy={pathModel} system={null} next={null} isolateOnFocus panelBias={0.42} />
         </Suspense>
       </div>
 
@@ -144,11 +133,7 @@ export default function PathGalaxyPage() {
           </button>
         </div>
       )}
-      {showPanel && (
-        <PanelFrame narrow={narrow} closing={panelClosing} onDismiss={selectedEdgeId ? () => setPanelOpen(false) : () => selectCompany(null)}>
-          {panelNode}
-        </PanelFrame>
-      )}
+      {panelActive && <div className="hud hud-panel">{panelContent}</div>}
 
       <SearchPalette onPick={pickCompany} />
     </div>

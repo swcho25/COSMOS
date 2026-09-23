@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import type { CompanyComment, PricePeriod, Sentiment } from "@/api/types";
 import { CompanyAvatar, Empty, Icon, IndustryBadge, SentimentBadge, Skeleton } from "@/components/ui";
@@ -22,7 +22,6 @@ import {
   useWatchedSet,
   useWriteComment,
 } from "@/lib/queries";
-import { useNarrowViewport } from "@/lib/viewport";
 import { useGalaxy, type PanelTab } from "@/store/galaxy";
 import { useSession } from "@/store/session";
 import { useUi } from "@/store/ui";
@@ -49,9 +48,6 @@ export default function CompanyPanel({ companyId, model = null, onWarp, onClose,
   const company = useCompany(companyId);
   const tab = useGalaxy((s) => s.panelTab);
   const setTab = useGalaxy((s) => s.setPanelTab);
-  const setSheetExpanded = useGalaxy((s) => s.setSheetExpanded);
-  // 모바일(900px 이하)에서는 바텀시트 살짝 보기로 열리므로 연결 단계는 접힌 채 시작하고, 탭을 누르면 시트를 전체로 올린다
-  const narrow = useNarrowViewport();
   const authed = useSession((s) => s.status === "authed");
   const openAuth = useUi((s) => s.openAuth);
   const toast = useUi((s) => s.toast);
@@ -60,12 +56,16 @@ export default function CompanyPanel({ companyId, model = null, onWarp, onClose,
   const c = company.data;
   // 백엔드 기업 상세의 watched 가 아직 항상 false 라 내 관심 목록과 합쳐 판단한다 (queries.useWatchedSet)
   const watched = Boolean(c?.watched) || watchedSet.has(companyId);
-  // 본문(뉴스·주가·게시판)을 내리면 위쪽 '연결 단계'는 한 줄로 접는다 — 읽는 동안 자리를 덜 차지하도록.
-  // stepsPin 은 머리줄을 직접 눌러 고정한 상태(null = 스크롤에 맡김)이고, 본문이 맨 위로 돌아오면 다시 풀린다
-  const [bodyScrolled, setBodyScrolled] = useState(false);
-  const [stepsPin, setStepsPin] = useState<boolean | null>(null);
-  /** 관심 등록 직후 내 은하로 바로 이동할 수 있는 선택지 — 토스트만으로는 "그래서 어디서 보나"가 안 보였다 */
+  // '연결 단계'는 기본값이 접힘 — 머리줄을 직접 눌러야만 펼쳐진다(스크롤 등 다른 조건으로 자동으로 열리지 않는다)
+  const [stepsOpen, setStepsOpen] = useState(false);
+  /** 관심 등록 직후 내 은하로 바로 이동할 수 있는 선택지 — 토스트만으로는 "그래서 어디서 보나"가 안 보였다.
+   * 화면을 막는 모달이 아니라 약 5초 뒤 저절로 사라지는 팝업이라, 닫지 않아도 다른 조작을 계속할 수 있다 */
   const [justWatched, setJustWatched] = useState(false);
+  useEffect(() => {
+    if (!justWatched) return;
+    const t = window.setTimeout(() => setJustWatched(false), 5000);
+    return () => window.clearTimeout(t);
+  }, [justWatched]);
 
   return (
     <aside className="card panel panel-company" aria-label="기업 인텔리전스">
@@ -82,7 +82,7 @@ export default function CompanyPanel({ companyId, model = null, onWarp, onClose,
           </button>
         </div>
       </div>
-      {model && model.nodeById.has(companyId) && <ConnectionSteps model={model} companyId={companyId} onPick={onPickCompany} open={stepsPin ?? (narrow ? false : !bodyScrolled)} onToggle={setStepsPin} />}
+      {model && model.nodeById.has(companyId) && <ConnectionSteps model={model} companyId={companyId} onPick={onPickCompany} open={stepsOpen} onToggle={setStepsOpen} />}
       <div className="panel-id">
         {c ? <CompanyAvatar name={c.name} stockCode={c.stockCode} market={c.market} industry={c.industries.find((i) => i.primary)?.name} size={56} /> : <Skeleton h={56} w={56} style={{ borderRadius: 14 }} />}
         <div className="grow">
@@ -128,47 +128,40 @@ export default function CompanyPanel({ companyId, model = null, onWarp, onClose,
       </div>
       <div className="tabs" role="tablist">
         {TABS.map((t) => (
-          <button key={t.key} type="button" role="tab" aria-selected={tab === t.key} className={tab === t.key ? "on" : ""} onClick={() => (setTab(t.key), setSheetExpanded(true))}>
+          <button key={t.key} type="button" role="tab" aria-selected={tab === t.key} className={tab === t.key ? "on" : ""} onClick={() => setTab(t.key)}>
             {t.label}
           </button>
         ))}
       </div>
-      <div
-        className="panel-body scroll"
-        onScroll={(e) => {
-          const scrolled = e.currentTarget.scrollTop > 8;
-          setBodyScrolled(scrolled);
-          if (!scrolled) setStepsPin(null);
-        }}
-      >
+      <div className="panel-body scroll">
         {tab === "news" && <NewsTab companyId={companyId} onPickCompany={onPickCompany} />}
         {tab === "price" && c && <PriceTab companyId={companyId} market={c.market} marketCap={c.marketCap ?? null} listedShares={c.listedShares ?? null} />}
         {tab === "board" && c && <BoardTab companyId={companyId} companyName={c.name} />}
       </div>
+      {/* 화면을 막지 않는 팝업 — 배경 스크림 없이 화면 하단 쪽에 뜨고, 5초 뒤 저절로 사라진다(useEffect 타이머).
+          그 사이에도 뒤의 은하·패널은 그대로 조작할 수 있다 */}
       {justWatched && (
-        <div className="scrim" onMouseDown={(e) => e.target === e.currentTarget && setJustWatched(false)} role="presentation">
-          <div className="card" style={{ padding: 20, maxWidth: 320, display: "grid", gap: 12 }} role="dialog" aria-modal="true" aria-label="관심 기업 등록 완료">
-            <div className="kick">관심 기업 등록</div>
-            <p style={{ margin: 0, lineHeight: 1.6 }}>
+        <div className="watch-popup" role="status" aria-live="polite">
+          <div className="watch-popup-body">
+            <Icon.Star filled />
+            <p>
               {c?.name ?? "이 기업"}
               {josa(c?.name ?? "이 기업", "을", "를")} 관심 기업으로 등록했습니다. 내 은하에서 관심 기업만 모아 볼 수 있습니다.
             </p>
-            <div className="row" style={{ gap: 8, justifyContent: "flex-end" }}>
-              <button type="button" className="btn btn-g btn-sm" onClick={() => setJustWatched(false)}>
-                닫기
-              </button>
-              <button
-                type="button"
-                className="btn btn-p btn-sm"
-                onClick={() => {
-                  setJustWatched(false);
-                  navigate("/?scope=mine");
-                }}
-              >
-                <Icon.Galaxy /> 내 은하로 이동
-              </button>
-            </div>
+            <button type="button" className="icon-btn watch-popup-close" onClick={() => setJustWatched(false)} aria-label="닫기">
+              <Icon.Close />
+            </button>
           </div>
+          <button
+            type="button"
+            className="btn btn-p btn-sm watch-popup-cta"
+            onClick={() => {
+              setJustWatched(false);
+              navigate("/?scope=mine");
+            }}
+          >
+            <Icon.Galaxy /> 내 은하로 이동
+          </button>
         </div>
       )}
     </aside>
@@ -509,7 +502,7 @@ function CommentItem({ comment, mine }: { comment: CompanyComment; mine: boolean
 /**
  * 연결 단계 — 미리보기 패널 맨 위. 1홉 이웃을 역할(공급사·고객·투자자…)별로 묶고 2홉까지 몇 기업이 닿는지 센다.
  * 이웃 이름을 누르면 그 기업이 미리보기로 바뀐다(워프 아님). 다른 행성에 커서를 올리면 이 기업에서 가는 경로가 상단 스트립에 뜬다.
- * 머리줄('연결 단계')을 누르면 접히고, 아래 본문을 내려도 알아서 접혀 한 줄만 남는다 (열림 여부는 패널이 정해 준다)
+ * 기본값은 접힘 — 머리줄('연결 단계')을 사용자가 직접 눌러야만 펼쳐진다(열림 여부는 패널이 정해 준다)
  */
 function ConnectionSteps({ model, companyId, onPick, open, onToggle }: { model: SceneModel; companyId: string; onPick: (id: string) => void; open: boolean; onToggle: (open: boolean) => void }) {
   const minScore = useGalaxy((s) => s.minScore);

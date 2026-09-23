@@ -29,6 +29,14 @@ export interface EmphasisInput {
   path?: PathResult | null;
   /** 기업 중심 뷰 1홉 요약에서 고른 역할 — 중심의 그 역할 이웃·간선만 남긴다 (centerId 가 있을 때만 의미) */
   roleFilter?: RoleKey | null;
+  /**
+   * 관계 경로 화면(PathGalaxyPage) 전용 — 켜면 두 가지가 달라진다.
+   * (1) 아무것도 호버·선택하지 않은 기본 상태에서 모든 노드를 pinned·badges 에 넣어, 모든 행성에 이름표·로고가 항상 보이게 한다.
+   * (2) 무언가를 호버·선택하면, 그 밖의 배경 노드·간선을 옅게 남기는 대신(기본값 0.16/0.12/0.08 등) 완전히 0(숨김)으로 만든다 —
+   * "호버·클릭한 대상만 보이고 나머지는 숨는다" 는 이 화면 전용 요구라, 은하·기업 중심 뷰(이 플래그를 안 켜는 곳)의 기존
+   * "옅게 남기기" 동작은 그대로 유지된다.
+   */
+  isolate?: boolean;
 }
 
 const DEPTH_DIM = [1, 1, 0.74, 0.56];
@@ -92,8 +100,8 @@ export function computeEmphasis(model: SceneModel, input: EmphasisInput): Emphas
     const onPath = new Set(path.nodes);
     const onEdges = new Set(path.edges);
     const nb = input.hoveredId ? (model.neighbors.get(input.hoveredId) ?? new Set<string>()) : new Set<string>();
-    model.nodes.forEach((n) => node.set(n.id, onPath.has(n.id) ? 1 : nb.has(n.id) ? 0.45 : 0.12));
-    model.edges.forEach((e) => edge.set(e.id, onEdges.has(e.id) ? (visible.has(e.id) ? 1 : 0) : shown.has(e.id) ? 0.05 : 0));
+    model.nodes.forEach((n) => node.set(n.id, onPath.has(n.id) ? 1 : nb.has(n.id) ? 0.45 : input.isolate ? 0 : 0.12));
+    model.edges.forEach((e) => edge.set(e.id, onEdges.has(e.id) ? (visible.has(e.id) ? 1 : 0) : input.isolate ? 0 : shown.has(e.id) ? 0.05 : 0));
     onPath.forEach((id) => pinned.add(id));
     badges.add(path.nodes[0]);
     badges.add(path.nodes[path.nodes.length - 1]);
@@ -103,9 +111,9 @@ export function computeEmphasis(model: SceneModel, input: EmphasisInput): Emphas
   if (input.hoveredId && model.nodeById.has(input.hoveredId)) {
     const h = input.hoveredId;
     const nb = model.neighbors.get(h) ?? new Set();
-    model.nodes.forEach((n) => node.set(n.id, n.id === h ? 1 : nb.has(n.id) ? 0.95 : 0.16));
+    model.nodes.forEach((n) => node.set(n.id, n.id === h ? 1 : nb.has(n.id) ? 0.95 : input.isolate ? 0 : 0.16));
     // 호버 노드의 간선은 예산과 무관하게 모두 나타난다
-    model.edges.forEach((e) => edge.set(e.id, !visible.has(e.id) ? 0 : e.source === h || e.target === h ? 1 : shown.has(e.id) ? 0.08 : 0));
+    model.edges.forEach((e) => edge.set(e.id, !visible.has(e.id) ? 0 : e.source === h || e.target === h ? 1 : input.isolate ? 0 : shown.has(e.id) ? 0.08 : 0));
     pinned.add(h);
     nb.forEach((id) => pinned.add(id));
     badges.add(h);
@@ -117,8 +125,8 @@ export function computeEmphasis(model: SceneModel, input: EmphasisInput): Emphas
     const sel = model.edgeById.get(edgeFocus);
     if (sel) {
       const strong = input.selectedEdgeId ? 0.14 : 0.35;
-      model.nodes.forEach((n) => node.set(n.id, n.id === sel.source || n.id === sel.target ? 1 : strong));
-      model.edges.forEach((e) => edge.set(e.id, !visible.has(e.id) ? 0 : e.id === sel.id ? 1 : shown.has(e.id) ? strong * 0.6 : 0));
+      model.nodes.forEach((n) => node.set(n.id, n.id === sel.source || n.id === sel.target ? 1 : input.isolate ? 0 : strong));
+      model.edges.forEach((e) => edge.set(e.id, !visible.has(e.id) ? 0 : e.id === sel.id ? 1 : input.isolate ? 0 : shown.has(e.id) ? strong * 0.6 : 0));
       pinned.add(sel.source);
       pinned.add(sel.target);
       badges.add(sel.source);
@@ -138,8 +146,8 @@ export function computeEmphasis(model: SceneModel, input: EmphasisInput): Emphas
       keepEdges.add(e.id);
       keepNodes.add(e.source === c ? e.target : e.source);
     });
-    model.nodes.forEach((n) => node.set(n.id, keepNodes.has(n.id) ? 1 : 0.2));
-    model.edges.forEach((e) => edge.set(e.id, keepEdges.has(e.id) ? 1 : shown.has(e.id) ? 0.05 : 0));
+    model.nodes.forEach((n) => node.set(n.id, keepNodes.has(n.id) ? 1 : input.isolate ? 0 : 0.2));
+    model.edges.forEach((e) => edge.set(e.id, keepEdges.has(e.id) ? 1 : input.isolate ? 0 : shown.has(e.id) ? 0.05 : 0));
     keepNodes.forEach((id) => pinned.add(id));
     badges.add(c);
     return { node, edge, pinned, badges };
@@ -150,6 +158,13 @@ export function computeEmphasis(model: SceneModel, input: EmphasisInput): Emphas
   if (model.centerId) {
     pinned.add(model.centerId);
     badges.add(model.centerId);
+  }
+  // PathGalaxyPage 기본 상태: 아무것도 호버·선택하지 않았을 때 모든 행성에 이름표·로고를 상시 노출한다
+  if (input.isolate) {
+    model.nodes.forEach((n) => {
+      pinned.add(n.id);
+      badges.add(n.id);
+    });
   }
   return { node, edge, pinned, badges };
 }

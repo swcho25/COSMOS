@@ -19,6 +19,12 @@ interface Props {
   emphasis: Emphasis;
   /** Special Link 간선 id (lib/surprise 의 surpriseSet) — 앞에 SURPRISE_UI.mark 를 붙인다 */
   surprise: Set<string>;
+  /**
+   * PathGalaxyPage 전용 — 켜면 "호버 중인 간선 하나"가 아니라 emphasis 로 보이는(숨지 않은) 모든 간선에
+   * 관계 종류 라벨을 상시 띄운다. 은하처럼 간선이 많은 화면은 글자로 뒤덮이지만, 경로 화면은 간선 수가
+   * 적어(한 줄 경로) 항상 보여도 된다는 요구(모든 관계에 협력·경쟁·공급 등 정보가 기본값) 때문이다.
+   */
+  allEdges?: boolean;
 }
 
 /** 한 번에 그릴 라벨 상한 — 예산(점수 상위) 이후 겹침 제거로 실제 표시 수는 이보다 늘 적거나 같다 */
@@ -85,7 +91,7 @@ function labelsOpen() {
  * 글자는 기업명 칩과 같은 이름 아틀라스(nameAtlas)를 구워 InstancedMesh 1개 + 셰이더로 그린다.
  * 색은 유형색이 아니라 무채색 — "색 = 영향 방향" 원칙을 지키기 위해 라벨은 항상 같은 회백색이다.
  */
-export default function EdgeLabels({ model, emphasis, surprise }: Props) {
+export default function EdgeLabels({ model, emphasis, surprise, allEdges = false }: Props) {
   const mesh = useRef<THREE.InstancedMesh>(null);
   const clear = CHORD_CLEAR[model.kind];
   const live = liveFor(model);
@@ -141,45 +147,54 @@ export default function EdgeLabels({ model, emphasis, surprise }: Props) {
     if (doRecompute) {
       ready.current = true;
       const candidates: Rect[] = [];
-      // 라벨은 이제 "그 선 위에 마우스가 있을 때"만 뜬다 — 상시 노출은 화면이 글자로 뒤덮여 보기 불편하다는
+      // 라벨은 기본적으로 "그 선 위에 마우스가 있을 때"만 뜬다 — 상시 노출은 화면이 글자로 뒤덮여 보기 불편하다는
       // 피드백에 따른 변경이다. 그래서 전체 간선을 후보로 모으지 않고, 지금 호버 중인 간선 하나만 검사한다
       // (RelationLines 의 onHover → useGalaxy.hoveredEdgeId, Scene.tsx 가 이어 준다)
+      // — 단, allEdges(PathGalaxyPage)면 간선 수가 적어 emphasis 로 보이는 모든 간선을 후보로 모은다
       const hoveredEdgeId = useGalaxy.getState().hoveredEdgeId;
-      const hovered = hoveredEdgeId ? model.edgeById.get(hoveredEdgeId) : undefined;
-      if (hovered) {
-        const e = hovered;
+      const pool = allEdges ? model.edges : hoveredEdgeId ? [model.edgeById.get(hoveredEdgeId)].filter((e): e is (typeof model.edges)[number] => !!e) : [];
+      pool.forEach((e) => {
         const emph = emphasis.edge.get(e.id) ?? 1;
         const si = nodeIndex.get(e.source);
         const ti = nodeIndex.get(e.target);
-        if (emph >= MIN_EMPH && si !== undefined && ti !== undefined) {
-          PA.fromArray(live.pos, si * 3).project(camera);
-          PB.fromArray(live.pos, ti * 3).project(camera);
-          const ax = ((PA.x + 1) / 2) * W;
-          const ay = ((1 - PA.y) / 2) * H;
-          const bx = ((PB.x + 1) / 2) * W;
-          const by = ((1 - PB.y) / 2) * H;
-          if (Math.hypot(bx - ax, by - ay) >= MIN_SPAN_PX) {
-            controlPoint(live.pos, live.pos, CTRL, si * 3, ti * 3, clear);
-            bezier(live.pos, live.pos, CTRL, 0.5, MID, si * 3, ti * 3);
-            MID.addScaledVector(UPV, radiusOf(e.score / 100) * 3 + 0.6);
-            PL.copy(MID).project(camera);
-            if (PL.z < 1) {
-              const isSurprise = surprise.has(e.id);
-              const cell = ensureNameCell(labelText(e.type, isSurprise));
-              if (cell) {
-                const aspect = cell.aspect / (1 - 2 * PAD);
-                const lx = ((PL.x + 1) / 2) * W;
-                const ly = ((1 - PL.y) / 2) * H;
-                const halfW = (LABEL_PX * aspect) / 2 + GAP_PX;
-                const halfH = LABEL_PX / 2 + GAP_PX;
-                candidates.push({ edgeId: e.id, score: e.score, cell, aspect, rect: [lx - halfW, ly - halfH, lx + halfW, ly + halfH] });
-              }
-            }
-          }
-        }
-      }
+        if (emph < MIN_EMPH || si === undefined || ti === undefined) return;
+        PA.fromArray(live.pos, si * 3).project(camera);
+        PB.fromArray(live.pos, ti * 3).project(camera);
+        const ax = ((PA.x + 1) / 2) * W;
+        const ay = ((1 - PA.y) / 2) * H;
+        const bx = ((PB.x + 1) / 2) * W;
+        const by = ((1 - PB.y) / 2) * H;
+        if (Math.hypot(bx - ax, by - ay) < MIN_SPAN_PX) return;
+        controlPoint(live.pos, live.pos, CTRL, si * 3, ti * 3, clear);
+        bezier(live.pos, live.pos, CTRL, 0.5, MID, si * 3, ti * 3);
+        MID.addScaledVector(UPV, radiusOf(e.score / 100) * 3 + 0.6);
+        PL.copy(MID).project(camera);
+        if (PL.z >= 1) return;
+        const isSurprise = surprise.has(e.id);
+        const cell = ensureNameCell(labelText(e.type, isSurprise));
+        if (!cell) return;
+        const aspect = cell.aspect / (1 - 2 * PAD);
+        const lx = ((PL.x + 1) / 2) * W;
+        const ly = ((1 - PL.y) / 2) * H;
+        const halfW = (LABEL_PX * aspect) / 2 + GAP_PX;
+        const halfH = LABEL_PX / 2 + GAP_PX;
+        candidates.push({ edgeId: e.id, score: e.score, cell, aspect, rect: [lx - halfW, ly - halfH, lx + halfW, ly + halfH] });
+      });
 
-      selected.current = candidates.map((c) => ({ edgeId: c.edgeId, cell: c.cell, aspect: c.aspect }));
+      // allEdges 모드는 후보가 여럿일 수 있다 — 점수가 높은 것부터 채택하고, 이미 채택한 알약과 겹치면(잡아먹히면) 건너뛴다
+      if (allEdges && candidates.length > 1) {
+        candidates.sort((a, b) => b.score - a.score);
+        const accepted: Rect[] = [];
+        const overlaps = (a: Rect["rect"], b: Rect["rect"]) => a[0] < b[2] && a[2] > b[0] && a[1] < b[3] && a[3] > b[1];
+        candidates.forEach((c) => {
+          if (accepted.length >= MAX) return;
+          if (accepted.some((a) => overlaps(a.rect, c.rect))) return;
+          accepted.push(c);
+        });
+        selected.current = accepted.map((c) => ({ edgeId: c.edgeId, cell: c.cell, aspect: c.aspect }));
+      } else {
+        selected.current = candidates.map((c) => ({ edgeId: c.edgeId, cell: c.cell, aspect: c.aspect }));
+      }
     }
 
     const cellArr = built.cell.array as Float32Array;
