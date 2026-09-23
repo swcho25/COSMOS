@@ -13,7 +13,15 @@ ExecStart=/usr/bin/bash /opt/cosmos/news-enrich/current/deploy/news-enrich/run-s
 StateDirectory=cosmos-sentiment-loader
 StateDirectoryMode=0750
 UMask=0027
-TimeoutStartSec=8min
+# A pass loads every batch that is pending, so its length is set by the
+# backlog, not by the steady state. Eight minutes fitted the ten or twenty
+# batches a timer tick leaves behind and killed every pass once a GPU backfill
+# put thousands there: 2026-09-23, six consecutive runs SIGTERMed mid-batch,
+# the unit left `failed`, throughput pinned at what fits in eight minutes.
+# State is written after each batch, so a killed pass kept its work and the
+# backlog drained at the rate of the axe rather than the machine. The cost of
+# the longer limit is that a genuinely hung pass takes this long to show up.
+TimeoutStartSec=45min
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectHome=true

@@ -18,11 +18,11 @@ import io
 import json
 import os
 from pathlib import Path
-import subprocess
 import sys
 
 import pyarrow.parquet as pq
 
+from ..hdfs_reader import discover_batches, open_reader
 from .postgres import load_relations
 
 COLUMNS = ["url_hash", "title", "content", "language", "companies"]
@@ -32,30 +32,10 @@ class RunnerError(RuntimeError):
     pass
 
 
-def hdfs_call(hdfs_bin: str, *args: str, binary: bool = False, timeout: int = 300):
-    result = subprocess.run([hdfs_bin, "dfs", *args], capture_output=True, timeout=timeout)
-    if result.returncode != 0:
-        raise RunnerError(f"hdfs {' '.join(args)} failed: "
-                          f"{result.stderr.decode('utf-8', 'replace').strip()[:400]}")
-    return result.stdout if binary else result.stdout.decode("utf-8", "replace")
-
-
-def discover_batches(hdfs_bin: str, root: str) -> list[str]:
-    listing = hdfs_call(hdfs_bin, "-ls", "-R", root)
-    batches, succeeded = set(), set()
-    for line in listing.splitlines():
-        path = line.rsplit(" ", 1)[-1].strip()
-        if path.endswith("/data.parquet"):
-            batches.add(path[: -len("/data.parquet")])
-        elif path.endswith("/_SUCCESS"):
-            succeeded.add(path[: -len("/_SUCCESS")])
-    return sorted(batches & succeeded)
-
-
-def read_batch(hdfs_bin: str, batch: str) -> list[dict]:
+def read_batch(reader, batch: str) -> list[dict]:
     from relations import article_relations
 
-    blob = hdfs_call(hdfs_bin, "-cat", f"{batch}/data.parquet", binary=True, timeout=600)
+    blob = reader.read(f"{batch}/data.parquet")
     table = pq.read_table(io.BytesIO(blob), columns=COLUMNS)
     rows = []
     for record in table.to_pylist():
@@ -86,14 +66,15 @@ def run(connection, *, root: str, state_path: Path, hdfs_bin: str,
         commit: bool, max_batches: int, drop_enumerations: bool) -> dict:
     state = read_state(state_path)
     done = set(state["completed"])
-    pending = [b for b in discover_batches(hdfs_bin, root) if b not in done]
+    reader = open_reader(root, hdfs_bin)
+    pending = [b for b in discover_batches(reader, root) if b not in done]
     if max_batches:
         pending = pending[:max_batches]
 
     totals = {"batches": 0, "incoming": 0, "resolved": 0, "relations_added": 0,
               "sentences_added": 0, "evidence_added": 0, "scores_added": 0, "unmatched": 0}
     for batch in pending:
-        rows = read_batch(hdfs_bin, batch)
+        rows = read_batch(reader, batch)
         if drop_enumerations:
             rows = [r for r in rows if not r.get("enumeration")]
         report = load_relations(connection, rows, commit=commit)
@@ -107,7 +88,7 @@ def run(connection, *, root: str, state_path: Path, hdfs_bin: str,
             done.add(batch)
             write_state(state_path, {"completed": sorted(done)})
     return {**totals, "pending_at_start": len(pending),
-            "mode": "commit" if commit else "dry-run"}
+            "transport": reader.kind, "mode": "commit" if commit else "dry-run"}
 
 
 def main(argv=None):
