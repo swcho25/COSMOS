@@ -8,7 +8,9 @@ Description=Add news-derived relations to the published graph
 #
 # 03:20 and 15:20 KST, away from the enrichment and loader ticks so three jobs
 # do not contend for the two cores this server has.
-OnCalendar=*-*-* 06:20,18:20:00
+# systemd 의 시각 목록은 시 자리에 온다: 06,18:20:00. 06:20,18:20:00 은 잘못된 문법이라
+# 유닛 자체가 로드되지 않았다 (2026-09-23, 'bad unit file setting').
+OnCalendar=*-*-* 06,18:20:00
 Persistent=true
 AccuracySec=1min
 Unit=cosmos-relation-loader.service
