@@ -1379,14 +1379,17 @@
 }
 
 /* ------------------------------ HUD 사이의 자리 다툼 ------------------------------ */
-/* 기업 중심 뷰의 1홉 요약 스트립(top 74px) 아래로 Special Link 카드를 내린다 */
-.galaxy:has(.hud-hop) .hud-surprise {
+/* 조절판(ControlDock)이 이제 왼쪽 열(구 hud-surprise 자리)을 쓴다 — 같은 왼쪽 열 위에 뜨는 다른 HUD(1홉 요약
+   스트립·뉴스 복귀 팝업) 아래로 비켜서는 규칙도 그대로 옮겨 온다(예전엔 .hud-surprise 가 이 규칙을 썼다).
+   Special Link 는 하단 중앙으로 옮겨 갔으므로 이 자리 다툼과 더 이상 관계없다. */
+/* 기업 중심 뷰의 1홉 요약 스트립(top 74px) 아래로 조절판을 내린다 */
+.galaxy:has(.hud-hop) .hud-dock {
   top: 130px;
 }
 /* 뉴스 복귀 팝업(.hud-crumb-below-search, top 92px)도 같은 왼쪽 열(left 24px)을 쓴다 — 팝업 높이(약 48px) +
-   여백만큼 Special Link 카드를 더 내려 겹치지 않게 한다. 팝업은 X 로 직접 닫기 전까지 계속 떠 있으므로
+   여백만큼 조절판을 더 내려 겹치지 않게 한다. 팝업은 X 로 직접 닫기 전까지 계속 떠 있으므로
    고정폭 계산으로도 안전하다(내용이 늘어나는 카드가 아니다) */
-.galaxy:has(.hud-crumb-below-search) .hud-surprise {
+.galaxy:has(.hud-crumb-below-search) .hud-dock {
   top: 152px;
 }
 

@@ -149,14 +149,15 @@ export const useGalaxy = create<GalaxyState>((set, get) => ({
   pricePeriod: "1M",
   searchOpen: false,
   panelOpen: true,
-  // 도크는 펼친 채로 시작한다 — 조절 수단(관계 종류·뉴스·공시 비율·최소 점수·주가 고도)이 첫 화면에 모두 보여야 한다.
-  // 접으면 하단 중앙 '^' 버튼만 남는다. 열리면 고급 영역까지 항상 함께 보인다(예전의 '>' 토글은 없앴다)
+  // 조절판(도크)은 펼친 채로 시작한다 — 조절 수단(관계 종류·뉴스·공시 비율·최소 점수·주가 고도)이 첫 화면에 모두 보여야 한다.
+  // 접으면 왼쪽 알약 버튼만 남는다. 열리면 고급 영역까지 항상 함께 보인다(예전의 '>' 토글은 없앴다)
   dockOpen: true,
   industryOpen: false,
   cameraPreset: "orbit",
   cameraPresetNonce: 0,
   showEdgeLabels: true,
-  surpriseOpen: true,
+  // Special Link 는 접힌 채로 시작한다 — 하단 중앙 꼬리표 하나만 보이고, 사용자가 직접 펼쳐야 카드가 뜬다
+  surpriseOpen: false,
 
   warpTo(companyId) {
     const s = get();
