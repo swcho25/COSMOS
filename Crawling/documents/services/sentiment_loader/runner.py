@@ -69,6 +69,40 @@ def read_batch(hdfs_bin: str, batch: str) -> list[dict]:
     return rows
 
 
+CONNECT_ATTEMPTS = 4
+CONNECT_BACKOFF_SECONDS = 15
+
+
+def connect_when_free(dsn: str, *, attempts: int = CONNECT_ATTEMPTS,
+                      backoff: float = CONNECT_BACKOFF_SECONDS):
+    """Connect, waiting out a busy role rather than losing the whole tick.
+
+    The loader shares a connection-limited role with the document loader, which
+    runs every two minutes; when the two overlap Postgres answers "too many
+    connections for role" and the run dies. Measured 8 of 64 runs. Nothing is
+    lost - the state file only records finished batches, so the next tick
+    retries - but the batches sit unloaded for another ten minutes.
+
+    A few seconds of waiting covers the overlap, because the other loader's
+    connection is short-lived. This is a courtesy, not a fix: the role's limit
+    is deliberately 1 and the real answer is a dedicated cosmos_sentiment_loader
+    role, which is written up in deploy/news-enrich/README.md.
+    """
+    import time
+
+    import psycopg
+
+    for attempt in range(1, attempts + 1):
+        try:
+            return psycopg.connect(dsn)
+        except psycopg.OperationalError as error:
+            if "too many connections" not in str(error) or attempt == attempts:
+                raise
+            print(json.dumps({"event": "waiting_for_connection", "attempt": attempt,
+                              "sleep_seconds": backoff}, ensure_ascii=False), flush=True)
+            time.sleep(backoff)
+
+
 def read_state(path: Path) -> dict:
     if not path.exists():
         return {"completed": []}
@@ -127,7 +161,7 @@ def main(argv=None):
         parser.error("--dsn or COSMOS_DSN is required")
 
     import psycopg
-    with psycopg.connect(args.dsn) as connection:
+    with connect_when_free(args.dsn) as connection:
         connection.autocommit = True
         summary = run(connection, root=args.root, state_path=args.state_file,
                       hdfs_bin=args.hdfs_bin, commit=args.commit,
