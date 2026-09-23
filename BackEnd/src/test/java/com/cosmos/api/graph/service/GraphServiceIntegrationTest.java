@@ -34,6 +34,9 @@ class GraphServiceIntegrationTest {
     private static final UUID NEWS_2 = UUID.fromString("50000000-0000-0000-0000-000000000042");
     private static final UUID DISCLOSURE = UUID.fromString("50000000-0000-0000-0000-000000000043");
     private static final UUID SOURCE_ID = UUID.fromString("50000000-0000-0000-0000-000000000050");
+    /** 뉴스 근거 문장은 기사에서 오려낸 인용문이고 공시 근거 문장은 공시 내용을 요약해 만든 생성문이다 — 화면은 이 모델 버전으로 둘을 구분한다 */
+    private static final String NEWS_MODEL = "dict-v1.3+finbert-evidence-v1";
+    private static final String DISCLOSURE_MODEL = "disclosure-summary-v1";
 
     @Autowired
     private GraphService graphService;
@@ -78,14 +81,11 @@ class GraphServiceIntegrationTest {
         insertNews(NEWS_1, "최근 뉴스", "2026-09-07T02:00:00Z");
         insertNews(NEWS_2, "이전 뉴스", "2026-09-06T02:00:00Z");
         insertDisclosure(DISCLOSURE);
-        insertEvidence(NEWS_1, "최근 근거 문장", "0.760000", "0.910000");
-        insertAdditionalEvidence(NEWS_1, "보조 근거 문장", "0.300000", "0.700000");
-        insertEvidence(NEWS_2, "이전 근거 문장", "0.650000", "0.850000");
-        jdbcTemplate.update("""
-                INSERT INTO relationship_evidence
-                    (relationship_id, document_id, contribution_score, model_version, formula_version)
-                VALUES (?, ?, 0.5, 'model-v1', 'formula-v1')
-                """, RELATIONSHIP_AB, DISCLOSURE);
+        insertEvidence(NEWS_1, "최근 근거 문장", NEWS_MODEL, "0.760000", "0.910000");
+        insertAdditionalEvidence(NEWS_1, "보조 근거 문장", NEWS_MODEL, "0.300000", "0.700000");
+        insertEvidence(NEWS_2, "이전 근거 문장", NEWS_MODEL, "0.650000", "0.850000");
+        // 공시도 관계 근거가 된다 — 근거 조회는 뉴스와 공시를 한 목록에 최신순으로 섞어 낸다
+        insertEvidence(DISCLOSURE, "공시 요약 근거 문장", DISCLOSURE_MODEL, "0.500000", "0.800000");
     }
 
     @Test
@@ -180,23 +180,42 @@ class GraphServiceIntegrationTest {
     }
 
     @Test
-    void pagesOnlyNewsEvidenceInNewestFirstOrder() {
+    void pagesNewsAndDisclosureEvidenceTogetherInNewestFirstOrder() {
         CursorPageResponse<RelationshipEvidenceResponse> first =
                 graphService.findRelationshipEvidence(RELATIONSHIP_AB, null, 1);
 
+        // 공시(9/8)가 두 뉴스(9/7, 9/6)보다 최신이라 첫 장에 온다. 발행처 자리에는 접수 시스템(DART)이 들어가고,
+        // 문장은 인용이 아닌 요약 생성문이므로 종류와 모델 버전으로 뉴스와 구분된다
         assertThat(first.items()).singleElement()
                 .satisfies(item -> {
-                    assertThat(item.newsId()).isEqualTo(NEWS_1);
-                    assertThat(item.evidenceSentence()).isEqualTo("최근 근거 문장");
+                    assertThat(item.newsId()).isEqualTo(DISCLOSURE);
+                    assertThat(item.documentType()).isEqualTo("DISCLOSURE");
+                    assertThat(item.publisher()).isEqualTo("DART");
+                    assertThat(item.publishedAt()).hasToString("2026-09-08T00:00:00Z");
+                    assertThat(item.evidenceSentence()).isEqualTo("공시 요약 근거 문장");
+                    assertThat(item.modelVersion()).isEqualTo(DISCLOSURE_MODEL);
                 });
         assertThat(first.hasNext()).isTrue();
         assertThat(first.nextCursor()).isNotBlank();
 
+        // 같은 기사에 근거 문장이 둘이면 기여도가 큰 문장 하나만 대표로 나온다
         CursorPageResponse<RelationshipEvidenceResponse> second =
                 graphService.findRelationshipEvidence(RELATIONSHIP_AB, first.nextCursor(), 1);
-        assertThat(second.items()).extracting(RelationshipEvidenceResponse::newsId)
+        assertThat(second.items()).singleElement()
+                .satisfies(item -> {
+                    assertThat(item.newsId()).isEqualTo(NEWS_1);
+                    assertThat(item.documentType()).isEqualTo("NEWS");
+                    assertThat(item.publisher()).isEqualTo("예시경제");
+                    assertThat(item.evidenceSentence()).isEqualTo("최근 근거 문장");
+                    assertThat(item.modelVersion()).isEqualTo(NEWS_MODEL);
+                });
+        assertThat(second.hasNext()).isTrue();
+
+        CursorPageResponse<RelationshipEvidenceResponse> third =
+                graphService.findRelationshipEvidence(RELATIONSHIP_AB, second.nextCursor(), 1);
+        assertThat(third.items()).extracting(RelationshipEvidenceResponse::newsId)
                 .containsExactly(NEWS_2);
-        assertThat(second.hasNext()).isFalse();
+        assertThat(third.hasNext()).isFalse();
     }
 
     @Test
@@ -337,6 +356,7 @@ class GraphServiceIntegrationTest {
     private void insertEvidence(
             UUID documentId,
             String sentence,
+            String modelVersion,
             String contribution,
             String confidence
     ) {
@@ -348,9 +368,10 @@ class GraphServiceIntegrationTest {
                 """, documentId, COMPANY_A);
         jdbcTemplate.update("""
                 INSERT INTO document_evidence
-                    (evidence_id, document_id, company_id, sentence_text, sentence_order, confidence)
-                VALUES (?, ?, ?, ?, 0, CAST(? AS NUMERIC))
-                """, evidenceId, documentId, COMPANY_A, sentence, confidence);
+                    (evidence_id, document_id, company_id, sentence_text, sentence_order, confidence,
+                     model_version)
+                VALUES (?, ?, ?, ?, 0, CAST(? AS NUMERIC), ?)
+                """, evidenceId, documentId, COMPANY_A, sentence, confidence, modelVersion);
         jdbcTemplate.update("""
                 INSERT INTO relationship_evidence
                     (relationship_id, document_id, evidence_id, contribution_score,
@@ -362,6 +383,7 @@ class GraphServiceIntegrationTest {
     private void insertAdditionalEvidence(
             UUID documentId,
             String sentence,
+            String modelVersion,
             String contribution,
             String confidence
     ) {
@@ -369,9 +391,10 @@ class GraphServiceIntegrationTest {
                 (documentId + "-additional").getBytes(java.nio.charset.StandardCharsets.UTF_8));
         jdbcTemplate.update("""
                 INSERT INTO document_evidence
-                    (evidence_id, document_id, company_id, sentence_text, sentence_order, confidence)
-                VALUES (?, ?, ?, ?, 1, CAST(? AS NUMERIC))
-                """, evidenceId, documentId, COMPANY_A, sentence, confidence);
+                    (evidence_id, document_id, company_id, sentence_text, sentence_order, confidence,
+                     model_version)
+                VALUES (?, ?, ?, ?, 1, CAST(? AS NUMERIC), ?)
+                """, evidenceId, documentId, COMPANY_A, sentence, confidence, modelVersion);
         jdbcTemplate.update("""
                 INSERT INTO relationship_evidence
                     (relationship_id, document_id, evidence_id, contribution_score,
