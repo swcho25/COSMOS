@@ -242,22 +242,27 @@ public class GraphQueryRepository {
                 WITH representative_evidence AS (
                     SELECT DISTINCT ON (sd.document_id)
                            sd.document_id AS news_id, sd.title, sd.summary,
-                           na.publisher, sd.original_url, sd.published_at,
+                           COALESCE(na.publisher, dc.filing_system) AS publisher,
+                           sd.original_url,
+                           COALESCE(sd.published_at, dc.filing_date::TIMESTAMPTZ) AS published_at,
+                           sd.document_type,
                            de.sentence_text AS evidence_sentence,
+                           de.model_version,
                            re.contribution_score, de.confidence
                     FROM relationship_evidence re
                     JOIN source_document sd ON sd.document_id = re.document_id
-                    JOIN news_article na ON na.document_id = sd.document_id
+                    LEFT JOIN news_article na ON na.document_id = sd.document_id
+                    LEFT JOIN disclosure dc ON dc.document_id = sd.document_id
                     LEFT JOIN document_evidence de ON de.evidence_id = re.evidence_id
                     WHERE re.relationship_id = :relationshipId
-                      AND sd.document_type = 'NEWS'
-                      AND sd.published_at IS NOT NULL
+                      AND COALESCE(sd.published_at, dc.filing_date::TIMESTAMPTZ) IS NOT NULL
                     ORDER BY sd.document_id,
                              re.contribution_score DESC NULLS LAST,
                              re.relationship_evidence_id
                 )
                 SELECT news_id, title, summary, publisher, original_url, published_at,
-                       evidence_sentence, contribution_score, confidence
+                       document_type, evidence_sentence, model_version,
+                       contribution_score, confidence
                 FROM representative_evidence
                 WHERE CAST(:cursorPublishedAt AS TIMESTAMPTZ) IS NULL OR
                       (published_at, news_id) <
@@ -277,7 +282,9 @@ public class GraphQueryRepository {
                 rs.getString("publisher"),
                 rs.getString("original_url"),
                 rs.getTimestamp("published_at").toInstant(),
+                rs.getString("document_type"),
                 rs.getString("evidence_sentence"),
+                rs.getString("model_version"),
                 rs.getBigDecimal("contribution_score"),
                 rs.getBigDecimal("confidence")));
     }
@@ -335,7 +342,9 @@ public class GraphQueryRepository {
             String publisher,
             String originalUrl,
             Instant publishedAt,
+            String documentType,
             String evidenceSentence,
+            String modelVersion,
             BigDecimal contributionScore,
             BigDecimal confidence
     ) {

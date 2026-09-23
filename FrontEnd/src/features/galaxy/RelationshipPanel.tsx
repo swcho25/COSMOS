@@ -208,10 +208,14 @@ export default function RelationshipPanel({ relationshipId, onClose, onPickCompa
               {!evidence.isLoading && !sortedItems.length && (
                 <div>
                   <Empty>{EVIDENCE_UI.noEvidence}</Empty>
-                  <div className="meta mt-8">{EVIDENCE_UI.disclosure}</div>
+                  <div className="meta mt-8">{EVIDENCE_UI.noEvidenceHint}</div>
                 </div>
               )}
-              {sortedItems.map((e) => (
+              {sortedItems.map((e) => {
+                // 공시 근거는 기사 인용이 아니라 공시를 요약해 만든 문장이다. 같은 모양으로
+                // 그리면 사용자가 둘을 구분하지 못하므로, 따옴표를 빼고 배지를 붙인다.
+                const isDisclosure = e.documentType === "DISCLOSURE";
+                return (
                 <div key={e.newsId} className="ev-item" style={{ opacity: ageOpacityOf(e.publishedAt) }}>
                   <div className="ev-item-rail" aria-hidden="true">
                     <i className="ev-item-dot" />
@@ -226,10 +230,14 @@ export default function RelationshipPanel({ relationshipId, onClose, onPickCompa
                     <span className="bar ev-item-bar">
                       <i style={{ width: `${pct01(e.contributionScore)}%`, background: meta.color }} />
                     </span>
-                    {e.newsId === representativeId && <span className="badge ev-rep-badge">{EVIDENCE_UI.representative}</span>}
+                    <span className="row" style={{ gap: 6, flexWrap: "wrap" }}>
+                      <span className="badge ev-kind-badge">{isDisclosure ? EVIDENCE_UI.disclosureBadge : EVIDENCE_UI.newsBadge}</span>
+                      {e.newsId === representativeId && <span className="badge ev-rep-badge">{EVIDENCE_UI.representative}</span>}
+                    </span>
                     <div className="ev-item-quote">
-                      <q>{e.evidenceSentence}</q>
+                      {isDisclosure ? <span>{e.evidenceSentence}</span> : <q>{e.evidenceSentence}</q>}
                     </div>
+                    {isDisclosure && <div className="meta ev-item-note">{EVIDENCE_UI.disclosureNote}</div>}
                     <div className="ev-item-actions">
                       <button type="button" className="link-btn" onClick={() => void copyEvidenceSentence(e)}>
                         {EVIDENCE_UI.copy}
@@ -240,7 +248,8 @@ export default function RelationshipPanel({ relationshipId, onClose, onPickCompa
                     </div>
                   </div>
                 </div>
-              ))}
+                );
+              })}
             </div>
             {evidence.hasNextPage && (
               <button type="button" className="more-btn" onClick={() => evidence.fetchNextPage()} disabled={evidence.isFetchingNextPage}>
