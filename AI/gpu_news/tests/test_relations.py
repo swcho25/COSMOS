@@ -263,6 +263,34 @@ class PrecisionRuleTest(unittest.TestCase):
         self.assertTrue(result)
         self.assertIsNone(result[0]["reject"])
 
+    def test_a_list_that_runs_on_past_the_pair_before_등_is_a_roster(self):
+        """'미래에셋증권과 한국투자증권, 신한투자증권 등도 … 관련 기업과 협력' - 과 joins the
+        first two, but the list keeps going and 등 closes it. Accepted on the live pass."""
+        cos = [company("006800", "미래에셋증권"), company("071050", "한국금융지주", "한국투자증권")]
+        result = article_relations(
+            "토큰증권", "미래에셋증권과 한국투자증권, 신한투자증권 등도 블록체인·토큰증권 관련 "
+                      "기업과 협력하거나 자체 플랫폼 구축을 추진하고 있다.", cos, "ko")
+        self.assertTrue(result)
+        self.assertTrue(all(row["reject"] == "co_listed" for row in result))
+
+    def test_a_list_mark_between_the_names_makes_a_roster_unless_the_first_is_the_subject(self):
+        cos = [company("055550", "신한지주", "신한은행"), company("035720", "카카오")]
+        result = article_relations(
+            "협약", "도는 이날 오전 신한은행·강원신용보증재단과 특별 금융지원 협약을, 오후에는 "
+                    "카카오·우아한형제들과 상생협력 협약을 맺었다.", cos, "ko")
+        self.assertTrue(result)
+        self.assertTrue(all(row["reject"] == "co_listed" for row in result))
+
+    def test_a_subject_whose_counterparties_are_a_list_keeps_the_pair(self):
+        """'HD현대는 … 테라파워·현대건설과 협력을 넓힐 계획' - the roster is who HD현대 works
+        with; HD현대↔현대건설 is stated."""
+        cos = [company("267250", "HD현대"), company("000720", "현대건설")]
+        result = article_relations(
+            "원전", "HD현대는 설비의 적기 공급을 추진하고, 테라파워·현대건설과 향후 원전 설계와 "
+                    "건설 분야에서 협력을 넓힐 계획이다.", cos, "ko")
+        self.assertTrue(result)
+        self.assertIsNone(result[0]["reject"])
+
     def test_a_grammatical_pair_with_등_is_not_co_listed(self):
         """'A와 B 등이 공동 개발' - 와 makes them parties; 등 only says there were more."""
         result = article_relations(

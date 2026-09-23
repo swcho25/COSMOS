@@ -61,7 +61,18 @@ MAX_PARTIES = 2
 # roster, and whoever they contracted with is a third party outside it. This is
 # not the grammatical "A와 B 등이 공동 개발", where 와 makes them parties.
 LIST_CONNECTOR = re.compile(r"^\s*[·ㆍ,]\s*$")
-LIST_TAIL = re.compile(r"^\s*등(?=[\s은는이가의과와을를,.]|$)")
+# "A·B 등", and also "A와 B, C 등도" - the list may run on past the second name
+# before 등 closes it. Up to four more items, joined by , or ·.
+LIST_TAIL = re.compile(r"^(?:\s*[,·ㆍ]\s*[^\s,·ㆍ()]{1,25}){0,4}\s*등(?=[\s은는이가의과와을를도,.]|$)")
+# For a 와/과 pair the list has to visibly continue ("A와 B, C 등도") - a bare
+# "A와 B 등이 공동 개발" still names two parties, 등 only says there were more.
+LIST_CONTINUES = re.compile(r"^(?:\s*[,·ㆍ]\s*[^\s,·ㆍ()]{1,25}){1,4}\s*등(?=[\s은는이가의과와을를도,.]|$)")
+# A list mark between the two names means one of them sits inside a roster:
+# "신한은행·강원신용보증재단·…와 협약을, 오후에는 카카오·우아한형제들과". Unless the
+# first name is the sentence's subject ("HD현대는 … 테라파워·현대건설과 협력") - then
+# the roster is its counterparty and the pair is real.
+SUBJECT_AFTER = re.compile(r"^(?:은|는|이|가)(?![가-힣])")
+LIST_MARK = re.compile(r"[·ㆍ]")
 
 # The classifier's "enum+kw" covers every connector alike. They are not alike.
 # "한화에어로스페이스와 KAI는 … MOU를 체결" is the canonical statement of a pair -
@@ -114,11 +125,18 @@ def _spans_in_order(a: tuple, b: tuple) -> tuple:
 
 
 def _co_listed(text: str, a: tuple, b: tuple) -> bool:
-    """True when the pair is joined only by a list mark and closed by 등."""
+    """True when the pair reads as two items of a roster rather than two parties.
+
+    Either the names are joined only by a list mark and the list is closed by
+    등, or a list mark sits between them while the first is not the subject.
+    """
     first, second = _spans_in_order(a, b)
-    if not LIST_CONNECTOR.match(text[first[1]:second[0]]):
-        return False
-    return bool(LIST_TAIL.match(text[second[1]:]))
+    mid = text[first[1]:second[0]]
+    if LIST_CONNECTOR.match(mid) and LIST_TAIL.match(text[second[1]:]):
+        return True
+    if GRAMMATICAL_CONNECTOR.match(mid) and LIST_CONTINUES.match(text[second[1]:]):
+        return True                                     # "A와 B, C 등도 …"
+    return bool(LIST_MARK.search(mid)) and not SUBJECT_AFTER.match(text[first[1]:])
 
 
 def _third_party_after(text: str, a: tuple, b: tuple, aliases: tuple) -> bool:
