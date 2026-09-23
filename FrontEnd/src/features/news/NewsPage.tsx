@@ -3,7 +3,7 @@ import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import type { GraphEdge, LatestGraph, LatestGraphNode, NewsDetail, NewsRelatedCompany, RelationshipType, Sentiment } from "@/api/types";
 import { fmtDateTime, fmtRelative, josa, newsSummaryOrFallback, sortNewsByLatest } from "@/lib/format";
 import { SENTIMENTS, SENTIMENT_META, UNCLASSIFIED_INDUSTRY, marketLabel, relationshipMeta } from "@/lib/meta";
-import { useCompany, useIndustries, useLatestGraph, useNewsDetail, useNewsFeed, useToggleScrap, useToggleWatch, useWatchedSet } from "@/lib/queries";
+import { useCompany, useIndustries, useLatestGraph, useNewsDetail, useNewsFeed, useToggleScrap } from "@/lib/queries";
 import { useSession } from "@/store/session";
 import { useUi } from "@/store/ui";
 import { CompanyAvatar, Empty, ErrorNotice, Icon, Kpi, ScoreBar, SentimentBadge, Skeleton } from "@/components/ui";
@@ -64,10 +64,6 @@ export default function NewsPage() {
 
   const detail = useNewsDetail(activeId);
   const toggleScrap = useToggleScrap();
-  const toggleWatch = useToggleWatch();
-  const watchedSet = useWatchedSet();
-  // 백엔드 기업 상세의 watched 가 아직 항상 false 라 내 관심 목록과 합쳐 판단한다 (queries.useWatchedSet)
-  const companyWatched = Boolean(company.data?.watched) || (companyId ? watchedSet.has(companyId) : false);
 
   const setCompany = (id: string | null) => {
     const next = new URLSearchParams(params);
@@ -259,7 +255,14 @@ export default function NewsPage() {
                     <div className="kick" style={{ color: "var(--primary-2)" }}>
                       focused company
                     </div>
-                    <div className="ttl">{company.data.name}</div>
+                    <div className="row" style={{ gap: 8, alignItems: "baseline" }}>
+                      <div className="ttl">{company.data.name}</div>
+                      {/* 기업 상세 이동은 스크랩/산업·관계 분포/원문 보기와 성격이 달라(뉴스가 아니라 기업 자체로 이동)
+                          공용 버튼 줄에서 빼고, 어떤 기업이 focused 됐는지 보여주는 이름 바로 옆에 둔다 */}
+                      <button type="button" className="btn btn-g btn-xs" onClick={() => navigate(`/?company=${companyId}`)}>
+                        기업 상세 ↗
+                      </button>
+                    </div>
                     <div className="meta">선택 뉴스 「{detail.isError ? "불러오기 실패" : detail.data?.title.slice(0, 26) ?? "…"}…」 기준 관계망</div>
                   </div>
                 </div>
@@ -279,56 +282,27 @@ export default function NewsPage() {
                   )}
                 </div>
               )}
+              {/* 기업으로 필터링해서 볼 때도(관계도의 기업 노드·랭킹 클릭 등) 이 버튼 줄은 항상 "지금 보고 있는
+                  뉴스" 기준으로 스크랩/산업·관계 분포/원문 보기를 일관되게 제공한다 — 기업 자체로 이동하는
+                  기업 상세는 성격이 달라 위 focused company 이름 옆으로 옮겼다(companyId 분기 없음) */}
               <div className="row" style={{ gap: 8, flex: "none" }}>
-                {companyId && company.data ? (
+                {detail.data && (
                   <>
                     <button
                       type="button"
-                      className={`btn btn-g btn-sm ${companyWatched ? "on" : ""}`}
-                      onClick={() =>
-                        authed
-                          ? toggleWatch.mutate(
-                              { companyId: company.data!.companyId, watched: companyWatched },
-                              { onSuccess: (now) => toast(now ? "관심 기업으로 등록했습니다." : "관심 기업에서 해제했습니다.", "success") },
-                            )
-                          : openAuth("login")
-                      }
-                      style={{ color: companyWatched ? "var(--primary-2)" : undefined }}
+                      className="btn btn-g btn-sm"
+                      onClick={() => (authed ? toggleScrap.mutate({ newsId: detail.data!.newsId, scrapped: detail.data!.scrapped }, { onSuccess: (now) => toast(now ? "스크랩했습니다." : "스크랩을 해제했습니다.", "success") }) : openAuth("login"))}
+                      style={{ color: detail.data.scrapped ? "var(--primary-2)" : undefined }}
                     >
-                      <Icon.Star filled={companyWatched} /> {companyWatched ? "관심 기업" : "관심 기업 +"}
+                      <Icon.Bookmark filled={detail.data.scrapped} /> {detail.data.scrapped ? "스크랩됨" : "스크랩"}
                     </button>
                     <button type="button" className="btn btn-g btn-sm" onClick={() => setShowDist(true)}>
                       산업·관계 분포
                     </button>
-                    <button type="button" className="btn btn-p btn-sm" onClick={() => navigate(`/?company=${companyId}`)}>
-                      기업 상세 ↗
-                    </button>
+                    <a className="btn btn-p btn-sm" href={detail.data.originalUrl} target="_blank" rel="noreferrer" style={{ flex: "none" }}>
+                      원문 보기 <Icon.External />
+                    </a>
                   </>
-                ) : (
-                  detail.data && (
-                    <>
-                      <button
-                        type="button"
-                        className="btn btn-g btn-sm"
-                        onClick={() => (authed ? toggleScrap.mutate({ newsId: detail.data!.newsId, scrapped: detail.data!.scrapped }, { onSuccess: (now) => toast(now ? "스크랩했습니다." : "스크랩을 해제했습니다.", "success") }) : openAuth("login"))}
-                        style={{ color: detail.data.scrapped ? "var(--primary-2)" : undefined }}
-                      >
-                        <Icon.Bookmark filled={detail.data.scrapped} /> {detail.data.scrapped ? "스크랩됨" : "스크랩"}
-                      </button>
-                      <button type="button" className="btn btn-g btn-sm" onClick={() => setShowDist(true)}>
-                        산업·관계 분포
-                      </button>
-                      <a
-                        className="btn btn-p btn-sm"
-                        href={detail.data.originalUrl}
-                        target="_blank"
-                        rel="noreferrer"
-                        style={{ flex: "none" }}
-                      >
-                        원문 보기 <Icon.External />
-                      </a>
-                    </>
-                  )
                 )}
               </div>
             </div>

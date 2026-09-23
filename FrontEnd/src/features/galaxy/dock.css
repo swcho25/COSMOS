@@ -1,12 +1,12 @@
-/* 하단 중앙 조절 도크 — Human Atlas 의 하단 explode 카드와 같은 자리 (구 hud-readbar 를 대신한다) */
+/* 좌측 세로 조절판 — 예전엔 하단 중앙 가로 카드였지만(구 hud-readbar 를 대신하던 자리), Special Link 카드와
+   자리를 맞바꾸며 이제 왼쪽 열(구 hud-surprise 자리)에 세로로 길게 선다. 상단 HUD(검색줄·1홉 요약·뉴스 복귀
+   팝업)와 같은 왼쪽 열을 쓰므로, 그 줄들이 있을 때 아래로 비켜서는 규칙은 galaxy.css 의
+   "HUD 사이의 자리 다툼" 절에서 .hud-dock 을 대상으로 함께 관리한다(예전엔 .hud-surprise 가 그 자리를 썼다). */
 .hud-dock {
-  left: 0;
-  right: 0;
-  bottom: 22px;
-  display: flex;
-  justify-content: center;
+  left: 24px;
+  top: 92px;
 }
-/* 접힌 상태: '^' 알약 버튼 하나만 — .readbar 와 같은 결의 은은한 배경 */
+/* 접힌 상태: '^' 알약 버튼 하나만 — .hud-surprise 의 hud-tag 와 같은 결의 은은한 배경 */
 .dock-open {
   display: inline-flex;
   align-items: center;
@@ -24,45 +24,71 @@
   border-color: var(--border-strong);
   color: var(--text-2);
 }
-/* Chevron 은 기본이 아래쪽을 향한다 — 열기 버튼은 위로 뒤집는다 */
+/* Chevron 은 기본이 아래쪽을 향한다 — 왼쪽 열에서 펼치면 카드가 오른쪽(화면 안쪽)으로 드러나므로 오른쪽을 가리키게 돌린다 */
 .dock-open svg {
-  transform: rotate(180deg);
+  transform: rotate(-90deg);
 }
 
 .dock-card {
   position: relative;
   display: flex;
+  flex-direction: column;
   align-items: stretch;
-  gap: 14px;
-  padding: 12px 16px;
-  border-radius: 18px;
-  width: auto;
+  gap: 12px;
+  width: 268px;
   max-width: calc(100vw - 48px);
+  /* 실제 내용은 이보다 훨씬 낮다(약 300~440px) — 이 값은 작은 뷰포트에서 하단 Special Link 바와 겹치지
+     않도록 거는 안전 상한일 뿐이다 */
+  max-height: min(60vh, 560px);
+  overflow-y: auto;
+  padding: 14px 14px 12px;
+  border-radius: 18px;
   animation: dock-in 0.2s ease-out;
-  /* 상단 손잡이(.dock-close)가 카드 밖으로 나가야 한다 */
-  overflow: visible;
 }
 @keyframes dock-in {
   from {
-    transform: translateY(12px);
+    transform: translateX(-10px);
     opacity: 0;
   }
   to {
-    transform: translateY(0);
+    transform: none;
     opacity: 1;
   }
+}
+@media (prefers-reduced-motion: reduce) {
+  .dock-card {
+    animation: none;
+  }
+}
+
+/* 머리줄 — kick 라벨(왼쪽) + 초기화·접기 아이콘(오른쪽). Special Link 카드의 .surprise-head 와 같은 자리 구조 */
+.dock-head {
+  gap: 8px;
+}
+.dock-kick {
+  color: var(--primary-2);
+}
+.dock-head-actions {
+  gap: 6px;
+  flex: none;
+}
+.dock-head .toggle {
+  padding: 5px 7px;
+  border-radius: 8px;
+}
+.dock-head .toggle svg {
+  display: block;
 }
 
 .dock-col {
   display: flex;
   flex-direction: column;
-  justify-content: center;
   gap: 6px;
 }
-/* 세로 구분선 — 카드 안 세로 폭(가장 큰 열)만큼 늘어난다 */
+/* 가로 구분선 — 세로로 쌓인 절(펼치기 / 관계 종류 / 고급) 사이 */
 .dock-div {
-  width: 1px;
-  align-self: stretch;
+  height: 1px;
+  width: 100%;
   background: var(--border);
   flex: none;
 }
@@ -71,7 +97,7 @@
   accent-color: var(--primary);
 }
 
-/* A. 펼치기 — 은하/평면/정렬 세 버튼 (0~100% 슬라이더에서 버튼식으로 바뀌었다) */
+/* A. 펼치기 — 은하/평면/정렬 세 버튼 */
 .dock-row-head {
   display: flex;
   align-items: center;
@@ -81,20 +107,18 @@
 .dock-stages-btn {
   display: flex;
 }
+.dock-stages-btn button {
+  flex: 1;
+}
 
-/* B. 관계 종류 — 글리프·설명 없이 칩 4개만 */
+/* B. 관계 종류 — 글리프·설명 없이 칩 4개, 폭이 좁으면 두 줄로 */
 .dock-types {
   flex-direction: row;
+  flex-wrap: wrap;
   align-items: center;
-}
-
-/* C·D. 세로 아이콘 열 — 위 초기화, 아래 고급 '>' */
-.dock-side {
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
   gap: 6px;
 }
+
 .dock-icon {
   display: inline-flex;
   align-items: center;
@@ -114,10 +138,9 @@
 .dock-icon svg {
   display: block;
 }
-/* 고급 그룹 — 뉴스·공시 비율 · 최소 점수 · 주가 고도, 세 줄을 세로로. 예전엔 '>' 로 접고 펼 수 있었지만
-   이제 항상 보이므로 그 토글 스타일은 더 필요하지 않다 */
+/* C. 고급 그룹 — 뉴스·공시 비율 · 최소 점수 · 주가 고도 · 관계선 기준, 네 줄을 세로로 */
 .dock-advanced {
-  gap: 8px;
+  gap: 10px;
 }
 .dock-row {
   display: flex;
@@ -128,7 +151,9 @@
   white-space: nowrap;
 }
 .dock-row input[type="range"] {
-  width: 130px;
+  flex: 1;
+  min-width: 0;
+  width: auto;
 }
 .dock-mix-val {
   white-space: nowrap;
@@ -152,6 +177,9 @@
   opacity: 0.45;
   cursor: not-allowed;
 }
+.dock-altitude {
+  flex-wrap: wrap;
+}
 .dock-altitude .seg {
   padding: 3px;
 }
@@ -160,6 +188,9 @@
   font-size: 11px;
 }
 /* 관계선 기준 기간 — 주가 고도의 세그 버튼과 같은 결로 맞춘다 */
+.dock-edge-window {
+  flex-wrap: wrap;
+}
 .dock-edge-window .seg {
   padding: 3px;
 }
@@ -167,45 +198,3 @@
   padding: 4px 8px;
   font-size: 11px;
 }
-
-/* E. 접기 — 카드 위 가장자리 가운데에서 볼록 튀어나온 손잡이 (카드와 같은 재질, 아래 테두리는 카드에 잇는다) */
-.dock-close {
-  position: absolute;
-  top: -17px;
-  left: 50%;
-  transform: translateX(-50%);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 46px;
-  height: 18px;
-  padding-bottom: 1px;
-  border-radius: 12px 12px 0 0;
-  border: 1px solid var(--border);
-  border-bottom: 0;
-  background: var(--panel);
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
-  color: var(--text-3);
-  transition: color 0.15s, border-color 0.15s;
-}
-.dock-close::after {
-  /* 카드 상단 테두리를 손잡이 폭만큼 지워 하나의 실루엣으로 보이게 */
-  content: "";
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: -1px;
-  height: 2px;
-  background: var(--panel);
-}
-.dock-close:hover {
-  color: var(--text);
-  border-color: var(--border-strong);
-}
-.dock-close svg {
-  display: block;
-  width: 14px;
-  height: 14px;
-}
-
