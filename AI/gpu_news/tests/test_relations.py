@@ -153,5 +153,124 @@ class MatchConfidenceTest(unittest.TestCase):
         self.assertTrue(all(row["enumeration"] for row in result))
 
 
+class PrecisionRuleTest(unittest.TestCase):
+    """Rows the first live pass (2026-09-23) got wrong, with the reason each now carries.
+
+    The classifier is validated on two-company sentences and never looks past the
+    pair; these are the shapes that slipped through the realtime path.
+    """
+
+    KAKAO = [company("035720", "카카오"), company("377300", "카카오페이"),
+             company("323410", "카카오뱅크")]
+
+    def test_a_sentence_naming_three_companies_is_crowded(self):
+        """'카카오·카카오뱅크·카카오페이 등 카카오그룹은 … 파이어블록스와 협약' - a
+        roster, and the counterparty is outside it. Read as 카카오↔카카오페이 PARTNER."""
+        result = article_relations(
+            "협약", "카카오·카카오뱅크·카카오페이 등 카카오그룹은 전날 글로벌 블록체인 "
+                    "인프라 기업 파이어블록스와 협약을 체결했다.", self.KAKAO, "ko")
+        self.assertTrue(result, "분류기는 여전히 후보를 내야 한다 - 버리는 건 이유와 함께")
+        self.assertTrue(all(row["reject"] == "crowded" for row in result))
+        self.assertTrue(all(row["enumeration"] for row in result))
+
+    def test_a_survey_roster_is_crowded(self):
+        """'삼성·SK·현대자동차·LG·…·HD현대 등 조사에 응한' with 협력 in 협력센터."""
+        cos = [company("005380", "현대차", "현대자동차"), company("267250", "HD현대"),
+               company("005930", "삼성전자")]
+        result = article_relations(
+            "조사", "한경협중소기업협력센터에 따르면 삼성전자·현대자동차·HD현대 등 조사에 "
+                    "응한 기업의 70%가 상생 협력을 늘렸다.", cos, "ko")
+        self.assertTrue(all(row["reject"] == "crowded" for row in result))
+
+    def test_two_companies_in_a_typographic_list_closed_by_등_are_co_listed(self):
+        result = article_relations(
+            "협약", "카카오·카카오페이 등은 파이어블록스와 협약을 체결했다.",
+            self.KAKAO[:2], "ko")
+        self.assertTrue(result)
+        self.assertTrue(all(row["reject"] in ("co_listed", "enumeration") for row in result))
+        self.assertTrue(all(row["enumeration"] for row in result))
+
+    def test_unlike_is_not_a_partnership(self):
+        """'쇼피파이는 아마존과 달리 …' came back PARTNER from the first pass."""
+        cos = [company("SHOP", "Shopify", "쇼피파이", market="NASDAQ"),
+               company("AMZN", "Amazon", "아마존", market="NASDAQ")]
+        result = article_relations(
+            "전략", "쇼피파이는 아마존과 달리 판매자와 협력하는 모델을 택했다.", cos, "ko")
+        self.assertTrue(result)
+        self.assertTrue(all(row["reject"] == "contrast" for row in result))
+        self.assertFalse(any(row["enumeration"] for row in result), "대비는 나열이 아니다")
+
+    def test_a_plain_two_company_partnership_carries_no_reason(self):
+        result = article_relations(
+            "제목", "삼성전자가 SK하이닉스와 협력을 강화하기로 했다.", KR, "ko")
+        self.assertTrue(result)
+        self.assertTrue(all(row["reject"] is None for row in result))
+
+    def test_a_pair_joined_by_와_is_the_canonical_statement_and_passes(self):
+        """'한화에어로스페이스와 KAI는 … MOU를 체결' - enum+kw with a grammatical
+        conjunction. The old blanket flag threw these away: 3 of 4 were correct."""
+        cos = [company("012450", "한화에어로스페이스"), company("047810", "한국항공우주", "KAI")]
+        result = article_relations(
+            "협약", "한화에어로스페이스와 KAI는 장거리 공대공 유도탄 체계개발 사업 성공을 "
+                    "위한 상호협력 양해각서(MOU)를 체결했다고 23일 밝혔다.", cos, "ko")
+        self.assertTrue(result)
+        self.assertEqual(result[0]["pattern"], "enum+kw")
+        self.assertIsNone(result[0]["reject"])
+        self.assertEqual(result[0]["confidence"], 0.8)
+
+    def test_a_pair_joined_by_a_comma_is_a_roster(self):
+        """'Npay 비상장은 한국투자증권, 키움증권과 … 각각 체결' - both contracted
+        with Npay, not with each other."""
+        cos = [company("071050", "한국금융지주", "한국투자증권"), company("039490", "키움증권")]
+        result = article_relations(
+            "협약", "Npay 비상장은 한국투자증권, 키움증권과 비상장주식 장외거래 시장 활성화를 "
+                    "위한 업무협약(MOU)을 각각 체결했다.", cos, "ko")
+        self.assertTrue(result)
+        self.assertTrue(all(row["reject"] == "co_listed" for row in result))
+
+    def test_a_pair_that_contracts_with_a_third_name_is_not_a_pair(self):
+        """'카카오페이와 카카오뱅크가 파이어블록스와 업무협약(MOU)을 체결' - both signed
+        with 파이어블록스, which is outside the universe and right after the pair."""
+        result = article_relations(
+            "협약", "카카오페이와 카카오뱅크가 파이어블록스와 업무협약(MOU)을 체결하고 국내 "
+                    "디지털자산 인프라 구축에 나선다.", self.KAKAO[1:], "ko")
+        self.assertTrue(result)
+        self.assertTrue(all(row["reject"] == "third_party" for row in result))
+
+    def test_등_followed_by_a_word_for_companies_is_a_roster(self):
+        """'삼성전자와 SK하이닉스 등 국내 기업들에 악재' - 국내 sits between 등 and 기업,
+        past the classifier's own roster rule."""
+        result = article_relations(
+            "분석", "중국 메모리 업체의 추격이 가속화하며 삼성전자와 SK하이닉스 등 국내 기업들에 "
+                    "악재로 작용할 수 있다는 분석이 나온다.", KR, "ko")
+        self.assertTrue(result)
+        self.assertTrue(all(row["reject"] == "co_listed" for row in result))
+
+    def test_the_canonical_pair_still_passes_after_the_new_rules(self):
+        cos = [company("012450", "한화에어로스페이스"), company("047810", "한국항공우주", "KAI")]
+        result = article_relations(
+            "협약", "한화에어로스페이스와 KAI는 상호협력 양해각서(MOU)를 체결했다고 밝혔다.", cos, "ko")
+        self.assertTrue(result)
+        self.assertIsNone(result[0]["reject"])
+
+    def test_a_name_that_continues_the_second_company_is_not_a_third_party(self):
+        """'현대차그룹은 … 구글 딥마인드와 협력해' - 딥마인드 is the rest of Google's
+        name, not a counterparty. Read as third_party on the 400-batch sample."""
+        cos = [company("005380", "현대차", "현대차그룹"), company("GOOGL", "Alphabet", "구글", market="NASDAQ")]
+        result = article_relations(
+            "로봇", "현대차그룹은 2026년 1월 구글 딥마인드와 협력해 아틀라스에 제미나이 로보틱스를 "
+                    "적용하는 개발 체계를 구축했다.", cos, "ko")
+        self.assertTrue(result)
+        self.assertIsNone(result[0]["reject"])
+
+    def test_a_grammatical_pair_with_등_is_not_co_listed(self):
+        """'A와 B 등이 공동 개발' - 와 makes them parties; 등 only says there were more."""
+        result = article_relations(
+            "제목", "삼성전자와 SK하이닉스 등이 차세대 메모리를 공동 개발한다.", KR, "ko")
+        self.assertTrue(result)
+        self.assertFalse(any(row["reject"] == "co_listed" for row in result))
+
+
 if __name__ == "__main__":
     unittest.main()
+
