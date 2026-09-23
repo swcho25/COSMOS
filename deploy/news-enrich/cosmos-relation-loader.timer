@@ -1,0 +1,17 @@
+[Unit]
+Description=Add news-derived relations to the published graph
+
+[Timer]
+# Twice a day, not every ten minutes. "삼성전자가 SK하이닉스와 경쟁한다" does not
+# change between passes, and each pass rewrites relationship_score_current for
+# every relation it touches - rows the site is serving. Rare and deliberate.
+#
+# 03:20 and 15:20 KST, away from the enrichment and loader ticks so three jobs
+# do not contend for the two cores this server has.
+OnCalendar=*-*-* 06:20,18:20:00
+Persistent=true
+AccuracySec=1min
+Unit=cosmos-relation-loader.service
+
+[Install]
+WantedBy=timers.target

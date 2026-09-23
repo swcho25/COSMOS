@@ -16,11 +16,11 @@ import io
 import json
 import os
 from pathlib import Path
-import subprocess
 import sys
 
 import pyarrow.parquet as pq
 
+from ..hdfs_reader import discover_batches, open_reader
 from .postgres import load_sentiment
 from .weighting import company_rows
 
@@ -32,27 +32,6 @@ class RunnerError(RuntimeError):
     pass
 
 
-def hdfs_call(hdfs_bin: str, *args: str, binary: bool = False, timeout: int = 300):
-    result = subprocess.run([hdfs_bin, "dfs", *args], capture_output=True, timeout=timeout)
-    if result.returncode != 0:
-        raise RunnerError(f"hdfs {' '.join(args)} failed: "
-                          f"{result.stderr.decode('utf-8', 'replace').strip()[:400]}")
-    return result.stdout if binary else result.stdout.decode("utf-8", "replace")
-
-
-def discover_batches(hdfs_bin: str, root: str) -> list[str]:
-    """Return every batch directory under root that carries a _SUCCESS marker."""
-    listing = hdfs_call(hdfs_bin, "-ls", "-R", root)
-    batches, succeeded = set(), set()
-    for line in listing.splitlines():
-        path = line.rsplit(" ", 1)[-1].strip()
-        if path.endswith("/data.parquet"):
-            batches.add(path[: -len("/data.parquet")])
-        elif path.endswith("/_SUCCESS"):
-            succeeded.add(path[: -len("/_SUCCESS")])
-    return sorted(batches & succeeded)
-
-
 def model_version_of(root: str) -> str:
     for part in root.rstrip("/").split("/"):
         if part.startswith(MODEL_VERSION_PREFIX):
@@ -60,8 +39,8 @@ def model_version_of(root: str) -> str:
     raise RunnerError(f"root does not name a model_version partition: {root}")
 
 
-def read_batch(hdfs_bin: str, batch: str) -> list[dict]:
-    blob = hdfs_call(hdfs_bin, "-cat", f"{batch}/data.parquet", binary=True, timeout=600)
+def read_batch(reader, batch: str) -> list[dict]:
+    blob = reader.read(f"{batch}/data.parquet")
     table = pq.read_table(io.BytesIO(blob), columns=COLUMNS)
     rows = []
     for record in table.to_pylist():
@@ -124,14 +103,15 @@ def run(connection, *, root: str, state_path: Path, hdfs_bin: str,
     model_version = model_version_of(root)
     state = read_state(state_path)
     done = set(state["completed"])
-    pending = [batch for batch in discover_batches(hdfs_bin, root) if batch not in done]
+    reader = open_reader(root, hdfs_bin)
+    pending = [batch for batch in discover_batches(reader, root) if batch not in done]
     if max_batches:
         pending = pending[:max_batches]
 
     totals = {"batches": 0, "incoming": 0, "resolved": 0, "updated": 0,
               "unchanged": 0, "unmatched": 0, "missing_link": 0}
     for batch in pending:
-        report = load_sentiment(connection, read_batch(hdfs_bin, batch),
+        report = load_sentiment(connection, read_batch(reader, batch),
                                 model_version=model_version, commit=commit)
         totals["batches"] += 1
         for key in ("incoming", "resolved", "updated", "unchanged", "unmatched", "missing_link"):
@@ -142,7 +122,7 @@ def run(connection, *, root: str, state_path: Path, hdfs_bin: str,
             done.add(batch)
             write_state(state_path, {"completed": sorted(done)})
     return {**totals, "model_version": model_version, "pending_at_start": len(pending),
-            "mode": "commit" if commit else "dry-run"}
+            "transport": reader.kind, "mode": "commit" if commit else "dry-run"}
 
 
 def main(argv=None):
