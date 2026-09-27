@@ -191,7 +191,16 @@ function finish(kind: SceneModel["kind"], centerId: string | null, nodes: SceneN
   const neighbors = new Map<string, Set<string>>();
   const incident = new Map<string, Set<string>>();
   const sceneEdges: SceneEdge[] = [];
+  // 같은 두 기업(방향 무관) 사이 관계가 여럿이면 점수가 가장 높은 것 하나만 그린다 — 뷰마다 다른 관계(협력/경쟁)가 보이지 않게 경로 뷰와 같은 규칙
+  const strongest = new Map<string, GraphEdge>();
   edges.forEach((e) => {
+    const a = e.sourceCompanyId;
+    const b = e.targetCompanyId;
+    const key = a < b ? `${a}:${b}` : `${b}:${a}`;
+    const cur = strongest.get(key);
+    if (!cur || e.score > cur.score) strongest.set(key, e);
+  });
+  strongest.forEach((e) => {
     const a = nodeById.get(e.sourceCompanyId);
     const b = nodeById.get(e.targetCompanyId);
     if (!a || !b) return;
