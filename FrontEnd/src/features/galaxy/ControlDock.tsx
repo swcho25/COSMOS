@@ -18,8 +18,8 @@ import "./dock.css";
  * 왼쪽 열은 다른 HUD(뉴스 복귀 팝업·1홉 요약 스트립)도 같이 쓰므로, 그 줄들이 있을 때 아래로 비켜서는 값은
  * galaxy.css 의 "HUD 사이의 자리 다툼" 절에서 관리한다.
  *
- * 관계선 기준 기간(edgeWindow, 주가 고도 바로 아래): 주가 고도처럼 은하 뷰(inGalaxyView)에서만 보이지만, 고르는 값은
- * store/galaxy 의 전역 상태라 여기서 나가도(기업 중심 뷰·관계 경로 화면으로 이동해도) 그대로 유지되어 그 화면들이
+ * 관계선 기준 기간(edgeWindow, 주가 고도 바로 아래): 은하 뷰와 기업 중심 뷰 모두에서 보인다(주가 고도는 은하 뷰만). 고르는 값은
+ * store/galaxy 의 전역 상태라 화면을 옮겨도(은하 ↔ 기업 중심 뷰 ↔ 관계 경로 화면) 그대로 유지되어 그 화면들이
  * 요청하는 그래프에도 같이 적용된다(lib/queries 의 useLatestGraph·useCompanyGraph 가 window 쿼리로 넘긴다) —
  * "이미 고른 관계 하나의 지표를 보는 기간"(CompanyPanel/RelationshipPanel 의 window)과는 달리, 이 값은
  * 관계선 자체(간선의 존재·점수)를 다시 계산하는 기준이다.
@@ -229,7 +229,7 @@ export default function ControlDock() {
           {mixRow}
           {minScoreRow}
           {inGalaxyView && altitudeRow}
-          {inGalaxyView && edgeWindowRow}
+          {edgeWindowRow}
         </div>
       </div>
     </div>
