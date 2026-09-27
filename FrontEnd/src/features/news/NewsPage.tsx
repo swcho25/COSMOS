@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import type { GraphEdge, LatestGraph, LatestGraphNode, NewsDetail, NewsRelatedCompany, RelationshipType, Sentiment } from "@/api/types";
-import { fmtDateTime, fmtRelative, josa, newsSummaryOrFallback, sortNewsByLatest } from "@/lib/format";
+import { cleanNewsSummary, fmtDateTime, fmtRelative, josa, sortNewsByLatest } from "@/lib/format";
 import { SENTIMENTS, SENTIMENT_META, UNCLASSIFIED_INDUSTRY, marketLabel, relationshipMeta } from "@/lib/meta";
 import { useCompany, useIndustries, useLatestGraph, useNewsDetail, useNewsFeed, useToggleScrap } from "@/lib/queries";
 import { useSession } from "@/store/session";
@@ -221,7 +221,7 @@ export default function NewsPage() {
                   <span className="meta num">{[n.publisher, fmtRelative(n.publishedAt)].filter(Boolean).join(" · ")}</span>
                 </div>
                 <div className="title clamp-2">{n.title}</div>
-                <div className="summary clamp-2">{newsSummaryOrFallback(n.summary)}</div>
+                {cleanNewsSummary(n.summary) && <div className="summary clamp-2">{cleanNewsSummary(n.summary)}</div>}
               </article>
             ))}
             {feed.hasNextPage && (
@@ -277,7 +277,7 @@ export default function NewsPage() {
                     <>
                       <div className="ttl">{detail.data?.title ?? <Skeleton h={22} w={360} />}</div>
                       <div className="meta num mt-8">{detail.data ? [detail.data.publisher, fmtDateTime(detail.data.publishedAt), detail.data.author].filter(Boolean).join(" · ") : ""}</div>
-                      {detail.data?.summary && <p className="map-summary">{newsSummaryOrFallback(detail.data.summary)}</p>}
+                      {cleanNewsSummary(detail.data?.summary) && <p className="map-summary">{cleanNewsSummary(detail.data?.summary)}</p>}
                     </>
                   )}
                 </div>
