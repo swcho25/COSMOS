@@ -133,10 +133,12 @@ export const CAMERA_UI = {
   reapply: "다시 누르면 이 시점으로 되돌립니다",
 };
 
-/* ---- 하단 중앙 조절 도크 (Human Atlas 의 하단 explode 카드와 같은 자리) — 글자는 최소로, 설명은 title 에만 ---- */
+/* ---- 좌측 세로 조절판 (구 하단 중앙 도크 — Special Link 카드와 자리를 맞바꿨다) — 글자는 최소로, 설명은 title 에만 ---- */
 export const DOCK_UI = {
   open: "조절판 열기",
   close: "조절판 닫기",
+  /** 카드 머리줄 라벨 — Special Link 카드(SURPRISE_UI.kicker)와 같은 자리 구조를 쓰므로 같은 형식(짧은 kick)을 맞췄다 */
+  kick: "조절판",
   spread: "펼치기",
   spreadTitle: "은하를 평면으로 펼치고, 끝까지 밀면 행성 크기(시가총액·연결 가중치) 순으로 정렬합니다",
   /** 슬라이더 아래 세 단계 라벨 — lib/spread 의 SpreadStage 와 같은 키 */

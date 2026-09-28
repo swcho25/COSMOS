@@ -185,14 +185,39 @@ class EngineRuleTest(unittest.TestCase):
         self.assertEqual(verdict["status"], "analyzed")
         self.assertEqual(verdict["label"], "POSITIVE")
 
-    def test_average_can_outvote_a_majority_of_argmaxes(self):
-        """Equal weight over probabilities, not a count of argmax winners: two
-        barely-positive sentences lose to one firmly neutral one."""
+    def test_a_firm_neutral_does_not_outvote_weak_directional_sentences(self):
+        """Neutral abstains rather than votes.
+
+        FinBERT puts a high neutral probability on most sentences, so averaging
+        every sentence together buries the direction: these two barely-positive
+        sentences used to lose to the one firmly neutral one. In production
+        that showed up as the neutral share *rising* with evidence - 37.3% at
+        one sentence, 53.8% at four - which is backwards.
+        """
         verdict = self.aggregate(["a", "b", "c"],
                                  [[0.0, 0.45, 0.55], [0.0, 0.45, 0.55], [0.0, 0.95, 0.05]])
         self.assertEqual([item["label"] for item in verdict["evidence"]],
                          ["POSITIVE", "POSITIVE", "NEUTRAL"])
+        self.assertEqual(verdict["label"], "POSITIVE")
+        self.assertEqual(verdict["status"], "analyzed")
+        self.assertEqual(verdict["n_sentences"], 3, "중립도 근거로는 남는다")
+
+    def test_the_neutral_sentence_is_kept_out_of_the_mean(self):
+        """The score reports the directional sentences, not a diluted average."""
+        verdict = self.aggregate(["a", "b"], [[0.0, 0.40, 0.60], [0.0, 0.90, 0.10]])
+        self.assertAlmostEqual(verdict["probabilities"][2], 0.60)
+        self.assertAlmostEqual(verdict["score"], 0.60)
+
+    def test_all_neutral_stays_neutral(self):
+        """With nothing directional to fall back on, the neutrals are the answer."""
+        verdict = self.aggregate(["a", "b"], [[0.1, 0.8, 0.1], [0.2, 0.7, 0.1]])
         self.assertEqual(verdict["label"], "NEUTRAL")
+        self.assertEqual(verdict["status"], "analyzed")
+
+    def test_a_negative_among_neutrals_still_decides(self):
+        verdict = self.aggregate(["a", "b", "c"],
+                                 [[0.0, 0.95, 0.05], [0.0, 0.95, 0.05], [0.7, 0.2, 0.1]])
+        self.assertEqual(verdict["label"], "NEGATIVE")
 
     def test_a_tied_sentence_makes_the_company_null(self):
         verdict = self.aggregate(["a"], [[0.5, 0.0, 0.5]])

@@ -16,8 +16,14 @@ interface Props {
 const SEGMENTS = 96;
 /** 0선·기업 중심 궤도는 같은 옅은 청회색을 쓴다 — 색이 아니라 자리가 읽어야 하는 요소라서 */
 const RING_COLOR = "#8FA6C8";
-/** 허브(연결 랭크) 링은 따로 — 관계선 색(파랑·보라·빨강 계열)과 헷갈리지 않도록 옅은 금색으로 구분한다 */
-const HUB_RING_COLOR = "#D9B36C";
+/**
+ * 허브(연결 랭크) 링은 따로 — 관계선 색(파랑·보라·빨강 계열)과 헷갈리지 않도록 금색 계열로 구분한다.
+ * RINGS_UI.hubPercents([10, 30, 60])와 순서를 맞춘 단일 색상(금색) 램프 — 순위(ordinal) 값이라
+ * 밝기만 단조롭게 바뀐다: 상위 10%(가장 배타적)가 가장 밝고, 60%로 갈수록 어두워진다.
+ * 이렇게 하면 사용자가 두 링(예: 10%와 30%) 사이에 있는 기업을 보고 "이 기업은 상위 10~30%구나"를
+ * 색 띠(band)로 바로 읽을 수 있다 — 예전처럼 라벨 글자 색만 다르고 링 자체는 같은 색이면 안 된다.
+ */
+const HUB_RING_COLORS = ["#F4D9A0", "#D9B36C", "#A9824C"];
 const HUB_OPACITY = 0.07;
 const ZERO_OPACITY = 0.05;
 const SYSTEM_OPACITY = 0.08;
@@ -145,9 +151,9 @@ export default function ReferenceRings({ model }: Props) {
               else delete mats.current[key];
             }}
           >
-            <lineBasicMaterial color={HUB_RING_COLOR} transparent opacity={HUB_OPACITY} depthWrite={false} />
+            <lineBasicMaterial color={HUB_RING_COLORS[i]} transparent opacity={HUB_OPACITY} depthWrite={false} />
           </lineLoop>
-          <Html position={[Math.cos(HUB_LABEL_ANGLE) * r, 0, Math.sin(HUB_LABEL_ANGLE) * r * GALAXY_ELLIPSE_SQUASH]} pointerEvents="none" zIndexRange={[3, 0]} className="ring-label ring-label-hub">
+          <Html position={[Math.cos(HUB_LABEL_ANGLE) * r, 0, Math.sin(HUB_LABEL_ANGLE) * r * GALAXY_ELLIPSE_SQUASH]} pointerEvents="none" zIndexRange={[3, 0]} className={`ring-label ring-label-hub ring-label-hub-${i}`}>
             <div
               ref={(el) => {
                 const key = `hub${i}`;

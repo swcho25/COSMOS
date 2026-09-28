@@ -68,6 +68,32 @@ def _source_texts(row):
     return {source: row[source] for source in SOURCES}
 
 
+def _ascii_token_before(text, index):
+    """The letters-and-dots token ending right before ``index``, or None.
+
+    Equivalent to ``re.search(r"([A-Za-z]+(?:\.[A-Za-z]+)*)$", text[:index])``,
+    which is what this used to be. That form copies the whole prefix and lets
+    the regex try every start position on every period in the text, so a long
+    article costs O(n^2): a 49,000-character stock table took 8.8 seconds of
+    the 2-core server, and the relation pass over the enriched tree slowed from
+    240 batches a minute to 3. The match can only ever lie inside the run of
+    ASCII letters and dots that touches ``index`` - anything else breaks the
+    pattern - so that run is all that needs searching.
+    """
+    # ``$`` also matches just before a string-final newline, so the old search
+    # on ``text[:index]`` read a token followed by newline-then-period as ending
+    # right before the period. Keep that: a single trailing newline is stepped
+    # over before the run is collected.
+    end = index
+    if end and text[end - 1] == chr(10):
+        end -= 1
+    start = end
+    while start and (text[start - 1] == "." or (text[start - 1].isascii() and text[start - 1].isalpha())):
+        start -= 1
+    match = re.search(r"([A-Za-z]+(?:\.[A-Za-z]+)*)$", text[start:end])
+    return match.group(1) if match else None
+
+
 def _abbreviation_dot(text, index):
     if text[index] != ".":
         return False
@@ -79,10 +105,9 @@ def _abbreviation_dot(text, index):
     # alphanumeric token. These are conservative source spans, not NLP claims.
     if before.isascii() and after.isascii() and before.isalnum() and after.isalpha():
         return True
-    match = re.search(r"([A-Za-z]+(?:\.[A-Za-z]+)*)$", text[:index])
-    if not match:
+    token = _ascii_token_before(text, index)
+    if token is None:
         return False
-    token = match.group(1)
     if token.lower() in ABBREVIATIONS:
         return True
     if re.fullmatch(r"[A-Z](?:\.[A-Z])+", token):

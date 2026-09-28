@@ -1,5 +1,6 @@
 import type { SceneEdge, SceneModel } from "./graph";
 import { RELATIONSHIP_META, UNCLASSIFIED_INDUSTRY } from "./meta";
+import { CURATED_SPECIAL_LINKS, type CuratedSpecialLink } from "./surprise-curated";
 
 /**
  * Special Link 점수 — 화면에서는 "Special Link" 라는 이름으로만 부른다(lib/guide SURPRISE_UI).
@@ -111,9 +112,41 @@ function contextOf(model: SceneModel): Ctx {
   return ctx;
 }
 
+/* --------------------------- 고정 목록(시연용) --------------------------- */
+/**
+ * lib/surprise-curated 에 쌍이 적혀 있으면 자동 점수 대신 그 목록만 쓴다.
+ * 쌍 키 → 항목. 같은 쌍의 관계선이 여러 개면 점수가 가장 높은 선 하나를 그 쌍의 Special Link 로 본다.
+ */
+const CURATED_BY_PAIR = new Map<string, CuratedSpecialLink>(CURATED_SPECIAL_LINKS.map((c) => [pairKey(c.a, c.b), c]));
+const CURATED_EDGE = new WeakMap<SceneModel, Map<string, SceneEdge>>();
+
+/** 모델 안에서 고정 목록 각 쌍을 대표하는 간선 (쌍 키 → 간선). 스냅샷에 없는 쌍은 빠진다 */
+function curatedEdges(model: SceneModel): Map<string, SceneEdge> {
+  const hit = CURATED_EDGE.get(model);
+  if (hit) return hit;
+  const best = new Map<string, SceneEdge>();
+  model.edges.forEach((e) => {
+    const pk = pairKey(e.source, e.target);
+    if (!CURATED_BY_PAIR.has(pk)) return;
+    const prev = best.get(pk);
+    if (!prev || e.score > prev.score) best.set(pk, e);
+  });
+  CURATED_EDGE.set(model, best);
+  return best;
+}
+
+function curatedSurprise(model: SceneModel, edge: SceneEdge): Surprise | null {
+  const pk = pairKey(edge.source, edge.target);
+  const entry = CURATED_BY_PAIR.get(pk);
+  if (!entry || curatedEdges(model).get(pk)?.id !== edge.id) return null;
+  return { edgeId: edge.id, score: 1, reasons: [{ key: "rare", label: entry.label, detail: entry.detail, weight: 1 }] };
+}
+
 /** 간선 하나의 Special Link 점수와 이유. 관계 점수가 낮으면 이유가 있어도 0 이다 */
 export function surpriseFor(model: SceneModel, edge: SceneEdge): Surprise {
   const none: Surprise = { edgeId: edge.id, score: 0, reasons: [] };
+  // 고정 목록이 있으면 그 목록에 든 간선만 Special Link 다 — 나머지는 이유가 있어도 0
+  if (CURATED_BY_PAIR.size) return curatedSurprise(model, edge) ?? none;
   if (edge.score < MIN_EDGE_SCORE) return none;
   const a = model.nodeById.get(edge.source);
   const b = model.nodeById.get(edge.target);
@@ -190,6 +223,22 @@ export function rankSurprises(model: SceneModel, opts: RankOptions = {}): Surpri
   }
   const hit = cache.get(key);
   if (hit) return hit;
+
+  // 고정 목록이 있으면 배열 순서 그대로, 기업당 등장 수 제한 없이 — 기업 중심 뷰에서는 그 기업이 낀 쌍만
+  if (CURATED_BY_PAIR.size) {
+    const edges = curatedEdges(model);
+    const fixed: Surprise[] = [];
+    for (const c of CURATED_SPECIAL_LINKS) {
+      const e = edges.get(pairKey(c.a, c.b));
+      if (!e) continue;
+      if (incidentTo && e.source !== incidentTo && e.target !== incidentTo) continue;
+      const s = curatedSurprise(model, e);
+      if (s) fixed.push(s);
+      if (fixed.length >= limit) break;
+    }
+    cache.set(key, fixed);
+    return fixed;
+  }
 
   const pool = incidentTo ? model.edges.filter((e) => e.source === incidentTo || e.target === incidentTo) : model.edges;
   const scored = pool

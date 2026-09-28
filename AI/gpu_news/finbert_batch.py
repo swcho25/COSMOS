@@ -301,7 +301,21 @@ class FinbertEngine:
         if {"POSITIVE", "NEGATIVE"} <= labels:
             verdict["status"] = STATUS_CONFLICT
             return verdict
-        mean = [sum(values[position] for values in contexts) / len(contexts)
+        # Neutral abstains. FinBERT puts a high neutral probability on most
+        # sentences, so averaging every sentence together buries the direction
+        # the article actually carries: one neutral [0.10, 0.75, 0.15] and one
+        # positive [0.05, 0.40, 0.55] average to [0.08, 0.58, 0.35], which is
+        # neutral. The more evidence a pair has, the more certainly it washes
+        # out - measured in production 2026-09-23, the neutral share *rose*
+        # with evidence, 37.3% at one sentence to 53.8% at four.
+        #
+        # So the directional sentences decide alone. Conflict is already gone
+        # by here, so they all agree, and "삼성전자가 SK하이닉스에 HBM을
+        # 공급한다" sitting beside "3분기 영업이익 기대치 상회" is not two
+        # readings in tension - the first simply says nothing about direction.
+        pool = [values for values, item in zip(contexts, evidence)
+                if item["label"] != "NEUTRAL"] or contexts
+        mean = [sum(values[position] for values in pool) / len(pool)
                 for position in range(3)]
         label = _label(mean)
         if label is None:

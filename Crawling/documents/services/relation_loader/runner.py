@@ -14,15 +14,16 @@ which is all relation extraction needs - no model, no second pass over HDFS.
 from __future__ import annotations
 
 import argparse
+from collections import Counter
 import io
 import json
 import os
 from pathlib import Path
-import subprocess
 import sys
 
 import pyarrow.parquet as pq
 
+from ..hdfs_reader import discover_batches, open_reader
 from .postgres import load_relations
 
 COLUMNS = ["url_hash", "title", "content", "language", "companies"]
@@ -32,30 +33,10 @@ class RunnerError(RuntimeError):
     pass
 
 
-def hdfs_call(hdfs_bin: str, *args: str, binary: bool = False, timeout: int = 300):
-    result = subprocess.run([hdfs_bin, "dfs", *args], capture_output=True, timeout=timeout)
-    if result.returncode != 0:
-        raise RunnerError(f"hdfs {' '.join(args)} failed: "
-                          f"{result.stderr.decode('utf-8', 'replace').strip()[:400]}")
-    return result.stdout if binary else result.stdout.decode("utf-8", "replace")
-
-
-def discover_batches(hdfs_bin: str, root: str) -> list[str]:
-    listing = hdfs_call(hdfs_bin, "-ls", "-R", root)
-    batches, succeeded = set(), set()
-    for line in listing.splitlines():
-        path = line.rsplit(" ", 1)[-1].strip()
-        if path.endswith("/data.parquet"):
-            batches.add(path[: -len("/data.parquet")])
-        elif path.endswith("/_SUCCESS"):
-            succeeded.add(path[: -len("/_SUCCESS")])
-    return sorted(batches & succeeded)
-
-
-def read_batch(hdfs_bin: str, batch: str) -> list[dict]:
+def read_batch(reader, batch: str) -> list[dict]:
     from relations import article_relations
 
-    blob = hdfs_call(hdfs_bin, "-cat", f"{batch}/data.parquet", binary=True, timeout=600)
+    blob = reader.read(f"{batch}/data.parquet")
     table = pq.read_table(io.BytesIO(blob), columns=COLUMNS)
     rows = []
     for record in table.to_pylist():
@@ -83,31 +64,38 @@ def write_state(path: Path, state: dict) -> None:
 
 
 def run(connection, *, root: str, state_path: Path, hdfs_bin: str,
-        commit: bool, max_batches: int, drop_enumerations: bool) -> dict:
+        commit: bool, max_batches: int, drop_rejected: bool) -> dict:
     state = read_state(state_path)
     done = set(state["completed"])
-    pending = [b for b in discover_batches(hdfs_bin, root) if b not in done]
+    reader = open_reader(root, hdfs_bin)
+    pending = [b for b in discover_batches(reader, root) if b not in done]
     if max_batches:
         pending = pending[:max_batches]
 
     totals = {"batches": 0, "incoming": 0, "resolved": 0, "relations_added": 0,
               "sentences_added": 0, "evidence_added": 0, "scores_added": 0, "unmatched": 0}
+    rejected_total: Counter = Counter()
     for batch in pending:
-        rows = read_batch(hdfs_bin, batch)
-        if drop_enumerations:
-            rows = [r for r in rows if not r.get("enumeration")]
+        rows = read_batch(reader, batch)
+        # relations.py labels every row it doubts with a reason - a roster of
+        # three companies, "A·B 등", "A는 B와 달리". Those rows are not relations;
+        # they are kept in the report so a pass says what it threw away.
+        rejected = Counter(r.get("reject") for r in rows if r.get("reject"))
+        if drop_rejected:
+            rows = [r for r in rows if not r.get("reject")]
         report = load_relations(connection, rows, commit=commit)
         totals["batches"] += 1
         for key in totals:
             if key != "batches":
                 totals[key] += report.get(key, 0)
-        print(json.dumps({"batch": batch.rsplit("/", 1)[-1], **report},
-                         ensure_ascii=False), flush=True)
+        rejected_total.update(rejected)
+        print(json.dumps({"batch": batch.rsplit("/", 1)[-1], **report,
+                          "rejected": dict(rejected)}, ensure_ascii=False), flush=True)
         if commit:
             done.add(batch)
             write_state(state_path, {"completed": sorted(done)})
-    return {**totals, "pending_at_start": len(pending),
-            "mode": "commit" if commit else "dry-run"}
+    return {**totals, "pending_at_start": len(pending), "rejected": dict(rejected_total),
+            "transport": reader.kind, "mode": "commit" if commit else "dry-run"}
 
 
 def main(argv=None):
@@ -117,9 +105,10 @@ def main(argv=None):
     parser.add_argument("--dsn", default=os.environ.get("COSMOS_DSN"))
     parser.add_argument("--hdfs-bin", default=os.environ.get("HDFS_BIN", "/opt/hadoop/bin/hdfs"))
     parser.add_argument("--max-batches", type=int, default=0, help="0 reads every pending batch")
-    parser.add_argument("--keep-enumerations", action="store_true",
-                        help="Keep 'A·B·C 와 협약' rows, where the parties contracted "
-                             "with a fourth party rather than with each other")
+    parser.add_argument("--keep-rejected", "--keep-enumerations", dest="keep_rejected",
+                        action="store_true",
+                        help="Load rows relations.py marked with a reject reason too - "
+                             "rosters of 3+ companies, 'A·B 등', 'A는 B와 달리'")
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument("--commit", action="store_true")
     mode.add_argument("--dry-run", action="store_true",
@@ -135,7 +124,7 @@ def main(argv=None):
         summary = run(connection, root=args.root, state_path=args.state_file,
                       hdfs_bin=args.hdfs_bin, commit=args.commit,
                       max_batches=args.max_batches,
-                      drop_enumerations=not args.keep_enumerations)
+                      drop_rejected=not args.keep_rejected)
     print(json.dumps(summary, ensure_ascii=False), flush=True)
     return 0
 

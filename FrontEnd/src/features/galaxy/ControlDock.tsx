@@ -9,16 +9,17 @@ import { pct, useWeight } from "@/store/weight";
 import "./dock.css";
 
 /**
- * 하단 중앙 조절 도크 — Human Atlas 의 "Explode anatomy" 카드와 같은 자리.
- * 넓은 화면: 기본은 펼친 상태이고, 접으면 '^' 알약 버튼 하나만 남는다. 펼치기·관계 종류·뉴스·공시 비율·최소 점수·주가 고도·
- * 관계선 기준 기간이 한 카드에 가로로 이어지고, 맨 오른쪽 끝에 초기화 버튼을 둔다.
- * 모바일(900px 이하, lib/viewport): 같은 조절 수단을 한 장에 세로로 쌓는다 — 펼치기 슬라이더 · 관계 종류 2×2 · 뉴스·공시 비율 ·
- * 최소 점수 · 주가 고도 · 관계선 기준 기간 순. 예전에는 이 중 뒤쪽(고급) 줄들을 '>' 로 접어 별도 장으로 감췄지만, 뉴스·공시
- * 비율·최소 점수는 늘 눈에 보여야 한다는 결정에 따라 그 좌우 접고 펼치기 토글은 없앴다 — 도크를 열면 처음부터 전부 보인다.
- * 열림 여부는 로컬 상태 없이 store/galaxy 의 dockOpen 을 그대로 쓴다.
+ * 좌측 세로 조절판 — 예전엔 하단 중앙 가로 도크였지만, Special Link(SurpriseRail) 카드와 자리를 맞바꿔
+ * 이제 왼쪽 열(구 hud-surprise 자리)에 세로로 길게 선다.
+ * 기본은 펼친 상태이고, 접으면 왼쪽 알약 버튼 하나만 남는다(store/galaxy 의 dockOpen). 펼치면 머리줄(라벨 +
+ * 초기화·접기) 아래로 펼치기 · 관계 종류 · 뉴스·공시 비율 · 최소 점수 · 주가 고도 · 관계선 기준 기간이 세로로 쌓인다.
+ * 예전에는 이 중 뒤쪽(고급) 줄들을 '>' 로 접어 별도 장으로 감췄지만, 뉴스·공시 비율·최소 점수는 늘 눈에 보여야
+ * 한다는 결정에 따라 그 토글은 없앴다 — 조절판을 열면 처음부터 전부 보인다.
+ * 왼쪽 열은 다른 HUD(뉴스 복귀 팝업·1홉 요약 스트립)도 같이 쓰므로, 그 줄들이 있을 때 아래로 비켜서는 값은
+ * galaxy.css 의 "HUD 사이의 자리 다툼" 절에서 관리한다.
  *
- * 관계선 기준 기간(edgeWindow, 주가 고도 바로 옆): 주가 고도처럼 은하 뷰(inGalaxyView)에서만 보이지만, 고르는 값은
- * store/galaxy 의 전역 상태라 여기서 나가도(기업 중심 뷰·관계 경로 화면으로 이동해도) 그대로 유지되어 그 화면들이
+ * 관계선 기준 기간(edgeWindow, 주가 고도 바로 아래): 은하 뷰와 기업 중심 뷰 모두에서 보인다(주가 고도는 은하 뷰만). 고르는 값은
+ * store/galaxy 의 전역 상태라 화면을 옮겨도(은하 ↔ 기업 중심 뷰 ↔ 관계 경로 화면) 그대로 유지되어 그 화면들이
  * 요청하는 그래프에도 같이 적용된다(lib/queries 의 useLatestGraph·useCompanyGraph 가 window 쿼리로 넘긴다) —
  * "이미 고른 관계 하나의 지표를 보는 기간"(CompanyPanel/RelationshipPanel 의 window)과는 달리, 이 값은
  * 관계선 자체(간선의 존재·점수)를 다시 계산하는 기준이다.
@@ -190,27 +191,28 @@ export default function ControlDock() {
     </div>
   );
 
-  /* 초기화 — 카드 맨 오른쪽 끝. 글자 없이 아이콘만, 설명은 title.
-     예전엔 그 아래에 고급('>')을 접고 펼치는 버튼이 있었지만, 뉴스·공시 비율·최소 점수·주가 고도는 항상 보여야 한다는
-     결정에 따라 그 토글은 없앴다 — 도크가 열려 있으면 이 조절 수단들도 항상 함께 보인다 */
-  const tail = (
-    <div className="dock-side dock-tail">
-      <button type="button" className="dock-icon dock-reset" onClick={handleReset} title={DOCK_UI.resetTitle} aria-label={DOCK_UI.reset}>
-        <Icon.Refresh />
-      </button>
+  /* 머리줄 — Special Link 카드(surprise-head)와 같은 구조: 왼쪽 kick 라벨, 오른쪽에 초기화·접기를 아이콘 버튼으로 묶는다.
+     예전(하단 가로 도크)에는 초기화가 카드 맨 끝 아이콘, 접기는 카드 위로 튀어나온 손잡이였는데, 좌측 세로 카드로
+     바뀌며 그 자리들이 어색해져 Special Link 와 같은 머리줄 패턴으로 통일했다 */
+  const head = (
+    <div className="row between dock-head">
+      <span className="kick dock-kick">{DOCK_UI.kick}</span>
+      <span className="row dock-head-actions">
+        <button type="button" className="dock-icon dock-reset" onClick={handleReset} title={DOCK_UI.resetTitle} aria-label={DOCK_UI.reset}>
+          <Icon.Refresh />
+        </button>
+        <button type="button" className="toggle" onClick={() => setDockOpen(false)} title={DOCK_UI.close} aria-label={DOCK_UI.close}>
+          <Icon.Close />
+        </button>
+      </span>
     </div>
-  );
-
-  /* 접기 — 카드 위 가장자리 가운데로 볼록 튀어나온 손잡이 */
-  const closeHandle = (
-    <button type="button" className="dock-close" onClick={() => setDockOpen(false)} title={DOCK_UI.close} aria-label={DOCK_UI.close}>
-      <Icon.Chevron />
-    </button>
   );
 
   return (
     <div className="hud hud-dock">
       <div className="card dock-card">
+        {head}
+
         {inGalaxyView && (
           <>
             {spreadCol}
@@ -227,12 +229,8 @@ export default function ControlDock() {
           {mixRow}
           {minScoreRow}
           {inGalaxyView && altitudeRow}
-          {inGalaxyView && edgeWindowRow}
+          {edgeWindowRow}
         </div>
-
-        <span className="dock-div" aria-hidden="true" />
-        {tail}
-        {closeHandle}
       </div>
     </div>
   );
