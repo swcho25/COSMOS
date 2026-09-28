@@ -23,8 +23,7 @@ from __future__ import annotations
 
 import collections
 
-from evidence import sentence_view, usable_sentences
-from kg_target_sentiment import _name_pattern
+from evidence import _name_pattern, sentence_view, usable_sentences
 
 RELATION_TYPES = ("SUPPLY", "PARTNER", "COMPETE")
 VERSION = "news-relations-1.0"
