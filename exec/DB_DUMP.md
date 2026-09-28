@@ -16,16 +16,6 @@ GitLab 파일 크기 제한 때문에 45 MiB씩 나누어 올렸습니다.
 - `cosmos_analysis` 스키마: 테이블·뷰 **구조만** (17개 테이블, 데이터 없음). 분석 파이프라인의 중간 적재용이고 백엔드 API는 읽지 않습니다. 운영에서는 3.9 GB라 제외했습니다.
 - 뺀 것: 운영 중 임시로 만든 백업 테이블 `relationship_score_current_bak_20260922`, `source_document_published_fill_20260922`. 테이블 소유자·GRANT (DB 계정을 새로 만들어 쓰도록).
 
-## 개인정보 처리
-
-`users` 9명은 비식별화했습니다.
-
-- 이메일 → `demo<user_id>@example.com` (예: `demo4@example.com`)
-- 비밀번호 → 모두 시연용 `CosmosDemo2026` (BCrypt로 새로 해시)
-- 실명이 들어간 닉네임 1건 → `데모사용자9`
-
-다른 테이블에는 개인정보 컬럼이 없습니다. 커뮤니티 댓글 본문은 공개 게시물이며 그대로 두었습니다.
-
 ## 복원
 
 ```bash
@@ -64,5 +54,3 @@ $D pg_dump -U cosmos -d cosmos_export -Fc -Z zstd:9 --no-owner --no-privileges >
 $D dropdb -U cosmos cosmos_export
 split -b 45m cosmos_web.dump cosmos_web.dump.part-   # 필요하면 분할
 ```
-
-닉네임에 실명이 있는지 `SELECT user_id, nickname FROM users`로 확인하고 따로 바꿉니다.
