@@ -39,9 +39,24 @@ from __future__ import annotations
 
 import re
 
-from kg_target_sentiment import _name_pattern, _surface
 from matcher import mask_inserted_headlines, trim_boilerplate
 from relevance_sentence_evidence import build_sentence_catalog
+
+
+def _name_pattern(name):
+    # 공백 변형과 대소문자만 허용한다. 영문은 경계를 붙여 'Appleton' 이 'Apple' 로 잡히지 않게 한다.
+    parts = re.split(r"\s+", name.strip())
+    pattern = r"\s+".join(re.escape(x) for x in parts)
+    if re.match(r"[A-Za-z0-9]", name):
+        pattern = r"(?<![A-Za-z0-9])" + pattern
+    if re.search(r"[A-Za-z0-9]$", name):
+        pattern += r"(?![A-Za-z0-9])"
+    return re.compile(pattern, flags=re.IGNORECASE)
+
+
+def _surface(name, text):
+    """문장에 그 기업명이 글자 그대로 나오는가. 문장부호는 지우지 않는다."""
+    return _name_pattern(name).search(text) is not None
 
 # Per-sentence, not per-article: a Korean article quoting an English sentence
 # should send that sentence to the English model.  The article's own language
