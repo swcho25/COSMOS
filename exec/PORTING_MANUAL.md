@@ -180,7 +180,7 @@ sudo bash deploy/scripts/enable-https.sh         # deploy/nginx/cosmos.conf 적�
 - **시간대**: DB·백엔드는 UTC, Jenkins는 Asia/Seoul이다.
 - **Hadoop 복제 계수 2**, HDFS 용량 587 GiB 중 278 GiB 사용 (2026-09-28). Worker 데이터 EBS는 `DeleteOnTermination=false`라 인스턴스를 종료해도 남아 비용이 나온다.
 - **AWS 비용**: Worker 3대 기준 월 약 $332 (크레딧 차감 전). 운영 종료 시 인스턴스와 데이터 EBS를 함께 정리한다.
-- **수집 파이프라인 상태 (2026-09-28)**: 발표 기간 동안 수집기와 주기 timer를 모두 멈추고 disable했다. HDFS·YARN·Kafka만 실행 중이다. 재개하려면 수집기 unit과 timer를 `sudo systemctl enable --now`로 다시 켠다. `cosmos-news-analysis`, `cosmos-document-loader`는 2026-09-25 마지막 실행이 실패 상태로 남아 있어 재개 전 로그(`journalctl -u <unit>`)를 확인한다.
+- **수집 파이프라인 상태 (2026-09-28)**: 수집기 unit과 주기 timer가 모두 멈춰 있고 disabled 상태다. HDFS·YARN·Kafka만 실행 중이다. 재개하려면 수집기 unit과 timer를 `sudo systemctl enable --now`로 다시 켠다. `cosmos-news-analysis`, `cosmos-document-loader`는 2026-09-25 마지막 실행이 실패 상태로 남아 있어 재개 전 로그(`journalctl -u <unit>`)를 확인한다.
 
 ## 7. DB 접속 정보와 설정 파일 목록 (ERD 관련)
 
