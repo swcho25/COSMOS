@@ -1,7 +1,7 @@
 # 포팅 매뉴얼
 
-> 기준: `dev` 브랜치 `3953408` 코드와 운영 서버 실측값 (2026-09-28 확인). 운영 중인 이미지 태그는 `395340848c9a-92`로 이 커밋과 같다.
-> 비밀번호·API 키·토큰 값은 이 문서에 적지 않는다. 변수 이름과 파일 위치만 기록한다.
+> 기준: `dev` 브랜치 `3953408` 코드와 운영 서버 실측값 (2026-09-28 확인). 운영 중인 이미지 태그는 `395340848c9a-92`로 이 커밋과 같습니다.
+> 비밀번호·API 키·토큰 값은 이 문서에 적지 않습니다. 변수 이름과 파일 위치만 기록합니다.
 
 ## 1. 시스템 구성
 
@@ -11,8 +11,8 @@
 | 데이터 Master EC2 (SSAFY 추가) | `j15c205a.p.ssafy.io` | HDFS NameNode·SecondaryNameNode, YARN ResourceManager, Spark Driver, Kafka, 뉴스·공시·주가 수집기, AI 분석·RDB Loader (systemd) |
 | AWS Worker 1~3 | Tailscale `100.104.188.115`, `100.68.206.1`, `100.124.47.107` | HDFS DataNode, YARN NodeManager (`m7i-flex.large`, 데이터 EBS 200 GiB × 3) |
 
-- 두 SSAFY EC2 모두 Ubuntu 24.04.4 LTS, 4 vCPU, 16 GiB RAM이다.
-- 서버 사이는 Tailscale 사설망으로 연결한다. 웹 EC2 `100.69.73.112`, Master `100.117.115.44`.
+- 두 SSAFY EC2 모두 Ubuntu 24.04.4 LTS, 4 vCPU, 16 GiB RAM입니다.
+- 서버 사이는 Tailscale 사설망으로 연결합니다. 웹 EC2 `100.69.73.112`, Master `100.117.115.44`.
 - 데이터 흐름: 수집기 → Kafka `news.raw` → HDFS Parquet → AI 분석(Spark/Python) → RDB Loader → PostgreSQL → Spring Boot API → 웹 화면.
 - 상세: [`docs/architecture.md`](../docs/architecture.md), [`docs/infrastructure-design.md`](../docs/infrastructure-design.md), [`docs/HADOOP_CLUSTER.md`](../docs/HADOOP_CLUSTER.md).
 
@@ -69,7 +69,7 @@ Python 모듈별 주요 의존성 (버전은 각 `requirements*.txt`에 고정):
 | Visual Studio Code | 1.134.0 (프론트엔드·Python) |
 | Git | 2.55.0 |
 | 로컬 Node.js / npm | 24.18.0 / 11.16.0 |
-| 로컬 JDK | 백엔드 빌드에는 JDK 21 필요 (Gradle toolchain이 21을 요구한다) |
+| 로컬 JDK | 백엔드 빌드에는 JDK 21 필요 (Gradle toolchain이 21을 요구합니다) |
 
 ## 3. 클론 후 빌드
 
@@ -91,9 +91,9 @@ cd FrontEnd && cp .env.example .env
 npm ci && npm run dev                    # http://localhost:5173
 ```
 
-- 로컬 기본값은 `application.yml`에 있다 (DB `jdbc:postgresql://localhost:5432/cosmos`, 계정 `cosmos`, Redis `localhost:6379`, CORS `http://localhost:5173`).
-- `application.yml`에는 `server.port`가 없어 `SERVER_PORT`를 주지 않으면 8080으로 뜬다. 이때는 `FrontEnd/.env`의 `VITE_API_PROXY`를 `http://localhost:8080`으로 바꾼다.
-- 로컬 DB는 비어 있으므로 화면에 데이터를 보려면 [DB 덤프](DB_DUMP.md)를 복원한다.
+- 로컬 기본값은 `application.yml`에 있습니다 (DB `jdbc:postgresql://localhost:5432/cosmos`, 계정 `cosmos`, Redis `localhost:6379`, CORS `http://localhost:5173`).
+- `application.yml`에는 `server.port`가 없어 `SERVER_PORT`를 주지 않으면 8080으로 뜹니다. 이때는 `FrontEnd/.env`의 `VITE_API_PROXY`를 `http://localhost:8080`으로 바꿉니다.
+- 로컬 DB는 비어 있으므로 화면에 데이터를 보려면 [DB 덤프](DB_DUMP.md)를 복원합니다.
 
 ### 3.2 운영 이미지 빌드 (CI와 동일)
 
@@ -123,9 +123,9 @@ Compose가 백엔드 컨테이너에 고정으로 넣는 값: `SPRING_PROFILES_A
 
 백엔드 선택 변수 (기본값 있음): `MAIL_HOST`(smtp.gmail.com), `MAIL_PORT`(587), `JWT_ACCESS_TOKEN_VALIDITY`(PT30M), `JWT_REFRESH_TOKEN_VALIDITY`(P14D), `COOKIE_SECURE`, `COOKIE_SAME_SITE`.
 
-프론트 빌드 변수: `VITE_API_BASE=/api` (`FrontEnd/Dockerfile`에 고정, 코드 기본값도 `/api`), 개발 서버 전용 `VITE_API_PROXY`. Vite가 번들에 값을 넣으므로 바꾸면 이미지를 다시 빌드한다. `docs/CICD.md`에 나오는 `VITE_API_MODE`는 현재 코드에서 쓰지 않는다.
+프론트 빌드 변수: `VITE_API_BASE=/api` (`FrontEnd/Dockerfile`에 고정, 코드 기본값도 `/api`), 개발 서버 전용 `VITE_API_PROXY`. Vite가 번들에 값을 넣으므로 바꾸면 이미지를 다시 빌드합니다. `docs/CICD.md`에 나오는 `VITE_API_MODE`는 현재 코드에서 쓰지 않습니다.
 
-Jenkins 비밀값: `/etc/cosmos/jenkins/` (`admin-user`, `admin-password`, `webhook-token`), 에이전트 비밀 `/etc/cosmos/agent.secret`. GitLab Deploy Token은 Jenkins Credentials `cosmos-git-read`에 저장한다.
+Jenkins 비밀값: `/etc/cosmos/jenkins/` (`admin-user`, `admin-password`, `webhook-token`), 에이전트 비밀 `/etc/cosmos/agent.secret`. GitLab Deploy Token은 Jenkins Credentials `cosmos-git-read`에 저장합니다.
 
 ### 4.2 데이터 파이프라인 — Master `/etc/cosmos/*.env`
 
@@ -141,13 +141,13 @@ Jenkins 비밀값: `/etc/cosmos/jenkins/` (`admin-user`, `admin-password`, `webh
 | `document-loader/common.env`, `document-loader/pgpass` | 뉴스·공시 문서 Loader | `deploy/document-loader/common.env.example` 참고 |
 | (공통) | Hadoop 클라이언트 | `HADOOP_HOME`, `HADOOP_CONF_DIR`, `HDFS_BIN`, `JAVA_HOME`, `HADOOP_USER_NAME`, `ARROW_LIBHDFS_DIR` |
 
-OpenDART 키는 DART 수집기 자체 설정 파일로 제공한다 ([`Crawling/disclosures/dart/README.md`](../Crawling/disclosures/dart/README.md)). 각 모듈의 예시 파일은 `deploy/*/…env.example`, `Crawling/news/deployment/*.env.example`에 있다.
+OpenDART 키는 DART 수집기 자체 설정 파일로 제공합니다 ([`Crawling/disclosures/dart/README.md`](../Crawling/disclosures/dart/README.md)). 각 모듈의 예시 파일은 `deploy/*/…env.example`, `Crawling/news/deployment/*.env.example`에 있습니다.
 
 ## 5. 배포
 
 ### 5.1 웹 서비스 (자동)
 
-1. `dev` 브랜치에 push(MR 병합)하면 GitLab Webhook이 Jenkins `cosmos-web` Job을 실행한다 (`https://j15c205.p.ssafy.io/jenkins/project/cosmos-web`).
+1. `dev` 브랜치에 push(MR 병합)하면 GitLab Webhook이 Jenkins `cosmos-web` Job을 실행합니다 (`https://j15c205.p.ssafy.io/jenkins/project/cosmos-web`).
 2. 파이프라인: 체크아웃 → 프론트 build·ESLint → 백엔드 jar → 임시 PostgreSQL·Redis로 테스트 → 이미지 태그(`<커밋 12자리>-<빌드 번호>`) → `deploy/scripts/deploy.sh` → 헬스체크.
 3. 수동 배포·롤백: `sudo -u cosmos-ci bash deploy/scripts/deploy.sh <image-tag>`.
 4. 확인: `https://j15c205.p.ssafy.io/healthz`, 백엔드 `/actuator/health` (`127.0.0.1:18081`).
@@ -161,7 +161,7 @@ sudo bash deploy/scripts/start-jenkins.sh
 sudo bash deploy/scripts/enable-https.sh         # deploy/nginx/cosmos.conf 적용
 ```
 
-이후 `/etc/cosmos/app.env`를 만들고 Jenkins에 Deploy Token·Webhook을 등록한다 ([`docs/CICD.md`](../docs/CICD.md)의 "Jenkins에 GitLab 연결").
+이후 `/etc/cosmos/app.env`를 만들고 Jenkins에 Deploy Token·Webhook을 등록합니다 ([`docs/CICD.md`](../docs/CICD.md)의 "Jenkins에 GitLab 연결").
 
 ### 5.3 데이터 클러스터
 
@@ -171,16 +171,16 @@ sudo bash deploy/scripts/enable-https.sh         # deploy/nginx/cosmos.conf 적�
 
 ## 6. 배포 시 특이사항
 
-- **포트**: 외부에는 22/80/443만 연다. Spring Boot `127.0.0.1:18081`, 프론트 Nginx `127.0.0.1:18080`, Jenkins `127.0.0.1:18090`은 호스트 Nginx 뒤에만 둔다. Nginx가 `/api` → 18081, `/jenkins/` → 18090, 나머지 → 18080으로 보낸다.
-- **Redis 포트**는 기본 6379가 아니라 `16379`다 (운영 Compose).
-- **PostgreSQL**은 Docker 내부망에만 있고, Master의 Loader용으로 Tailscale 주소 `100.69.73.112:5432`만 연다. UFW도 Master(`100.117.115.44`)에서 오는 5432만 허용한다.
-- **Flyway**가 앱 시작 시 스키마를 바꾼다 (현재 V9). 이미지 롤백으로 스키마는 되돌아가지 않으므로 파괴적 변경 전에 DB를 백업한다.
-- **릴리스 위치**: `/opt/cosmos/releases/<IMAGE_TAG>/compose.yml`, 현재 `current`, 직전 `.previous`. 헬스체크 실패 시 직전 릴리스로 자동 복구하고, 이미지는 현재·직전 두 개만 남긴다.
-- **Docker 볼륨**: `cosmos_postgres_data`, `cosmos_redis_data`, `cosmos_jenkins_home`. 앱 재배포와 무관하게 유지된다.
-- **시간대**: DB·백엔드는 UTC, Jenkins는 Asia/Seoul이다.
-- **Hadoop 복제 계수 2**, HDFS 용량 587 GiB 중 278 GiB 사용 (2026-09-28). Worker 데이터 EBS는 `DeleteOnTermination=false`라 인스턴스를 종료해도 남아 비용이 나온다.
-- **AWS 비용**: Worker 3대 기준 월 약 $332 (크레딧 차감 전). 운영 종료 시 인스턴스와 데이터 EBS를 함께 정리한다.
-- **수집 파이프라인 상태 (2026-09-28)**: 수집기 unit과 주기 timer가 모두 멈춰 있고 disabled 상태다. HDFS·YARN·Kafka만 실행 중이다. 재개하려면 수집기 unit과 timer를 `sudo systemctl enable --now`로 다시 켠다. `cosmos-news-analysis`, `cosmos-document-loader`는 2026-09-25 마지막 실행이 실패 상태로 남아 있어 재개 전 로그(`journalctl -u <unit>`)를 확인한다.
+- **포트**: 외부에는 22/80/443만 엽니다. Spring Boot `127.0.0.1:18081`, 프론트 Nginx `127.0.0.1:18080`, Jenkins `127.0.0.1:18090`은 호스트 Nginx 뒤에만 둡니다. Nginx가 `/api` → 18081, `/jenkins/` → 18090, 나머지 → 18080으로 보냅니다.
+- **Redis 포트**는 기본 6379가 아니라 `16379`입니다 (운영 Compose).
+- **PostgreSQL**은 Docker 내부망에만 있고, Master의 Loader용으로 Tailscale 주소 `100.69.73.112:5432`만 엽니다. UFW도 Master(`100.117.115.44`)에서 오는 5432만 허용합니다.
+- **Flyway**가 앱 시작 시 스키마를 바꿉니다 (현재 V9). 이미지 롤백으로 스키마는 되돌아가지 않으므로 파괴적 변경 전에 DB를 백업합니다.
+- **릴리스 위치**: `/opt/cosmos/releases/<IMAGE_TAG>/compose.yml`, 현재 `current`, 직전 `.previous`. 헬스체크 실패 시 직전 릴리스로 자동 복구하고, 이미지는 현재·직전 두 개만 남깁니다.
+- **Docker 볼륨**: `cosmos_postgres_data`, `cosmos_redis_data`, `cosmos_jenkins_home`. 앱 재배포와 무관하게 유지됩니다.
+- **시간대**: DB·백엔드는 UTC, Jenkins는 Asia/Seoul입니다.
+- **Hadoop 복제 계수 2**, HDFS 용량 587 GiB 중 278 GiB 사용 (2026-09-28). Worker 데이터 EBS는 `DeleteOnTermination=false`라 인스턴스를 종료해도 남아 비용이 나옵니다.
+- **AWS 비용**: Worker 3대 기준 월 약 $332 (크레딧 차감 전). 운영 종료 시 인스턴스와 데이터 EBS를 함께 정리합니다.
+- **수집 파이프라인 상태 (2026-09-28)**: 수집기 unit과 주기 timer가 모두 멈춰 있고 disabled 상태입니다. HDFS·YARN·Kafka만 실행 중입니다. 재개하려면 수집기 unit과 timer를 `sudo systemctl enable --now`로 다시 켭니다. `cosmos-news-analysis`, `cosmos-document-loader`는 2026-09-25 마지막 실행이 실패 상태로 남아 있어 재개 전 로그(`journalctl -u <unit>`)를 확인합니다.
 
 ## 7. DB 접속 정보와 설정 파일 목록 (ERD 관련)
 
