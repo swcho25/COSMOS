@@ -93,7 +93,7 @@ def main() -> None:
 
     import csv as _csv
     import pandas as pd
-    from kg_target_sentiment import _surface
+    from infer_missing_sentiment import _surface
 
     df = load_frames(args.src, args.mentions, args.limit)
     if df.empty:

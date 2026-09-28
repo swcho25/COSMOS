@@ -47,6 +47,22 @@ BATCH = 64
 HANGUL = re.compile(r"[가-힣]")
 
 
+def _name_pattern(name):
+    # 공백 변형과 대소문자만 허용한다. 영문은 경계를 붙여 'Appleton' 이 'Apple' 로 잡히지 않게 한다.
+    parts = re.split(r"\s+", name.strip())
+    pattern = r"\s+".join(re.escape(x) for x in parts)
+    if re.match(r"[A-Za-z0-9]", name):
+        pattern = r"(?<![A-Za-z0-9])" + pattern
+    if re.search(r"[A-Za-z0-9]$", name):
+        pattern += r"(?![A-Za-z0-9])"
+    return re.compile(pattern, flags=re.IGNORECASE)
+
+
+def _surface(name, text):
+    """문장에 그 기업명이 글자 그대로 나오는가. 문장부호는 지우지 않는다."""
+    return _name_pattern(name).search(text) is not None
+
+
 def norm(s: str) -> str:
     return re.sub(r"[()（）\[\]주식회사㈜\s\.,'\"-]", "", s or "").lower()
 
@@ -117,7 +133,7 @@ def main() -> None:
 
     # 가드는 kg_target_sentiment 의 것을 그대로 쓴다. 직접 만들면 공백을 지워
     # '삼성' 이 '삼성전자' 안에서 걸리고 '반도체' 같은 별칭까지 매칭돼 97% 가 버려진다.
-    from kg_target_sentiment import _surface
+
 
     alias = load_alias_by_name()
     names_of = lambda n: alias.get(n, {n} if n else set())
