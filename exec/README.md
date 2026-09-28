@@ -1,18 +1,15 @@
 # exec 제출 자료
 
-이 폴더는 프로젝트를 인계받은 사람이 소스 코드를 클론한 뒤 빌드·배포하고 서비스를 시연할 수 있도록 필요한 자료를 모으는 곳입니다. 현재 문서는 저장소에 확인되는 설정을 바탕으로 작성한 초안입니다. 실제 운영 값과 시연 동선은 팀이 최종 검증해야 합니다.
+프로젝트를 넘겨받은 사람이 GitLab에서 클론한 뒤 빌드·배포하고 서비스를 시연할 수 있도록 모은 자료다. 버전과 설정은 `dev` `3953408`의 코드와 운영 서버 실측값(2026-09-28)을 기준으로 적었다.
 
-| 항목 | 파일 | 상태 |
+| 번호 | 항목 | 파일 |
 | --- | --- | --- |
-| 포팅 매뉴얼 | `PORTING_MANUAL.md` | 초안 |
-| 외부 서비스 정보 | `EXTERNAL_SERVICES.md` | 초안 |
-| DB 덤프 최신본 | 미첨부 | 운영 DB에서 생성 및 복원 검증 필요 |
-| 시연 시나리오 | `DEMO_SCENARIO.md` | 초안 |
+| 1 | 포팅 매뉴얼: 빌드·배포 문서 (JVM·웹서버·WAS·IDE 버전, 환경 변수, 배포 특이사항, DB 계정·속성 파일 목록) | [`PORTING_MANUAL.md`](PORTING_MANUAL.md) |
+| 2 | 외부 서비스 정보 (가입·키 발급·설정 위치) | [`EXTERNAL_SERVICES.md`](EXTERNAL_SERVICES.md) |
+| 3 | DB 덤프 최신본 (비식별화, 분할 파일) | [`DB_DUMP.md`](DB_DUMP.md), `db/cosmos_web.dump.part-*` |
+| 4 | 시연 시나리오 | [`DEMO_SCENARIO.md`](DEMO_SCENARIO.md) |
 
-## 제출 전 확인
+- 비밀번호, API 키, 토큰, 실제 `.env` 파일은 넣지 않았다. 변수 이름, 보관 위치, 발급 방법만 적었다.
+- DB 덤프는 개인정보(이메일·비밀번호 해시)를 비식별화했고, 빈 DB에 복원되는 것을 확인했다.
 
-- 실제 DB 덤프 파일을 생성하고 복원 가능 여부를 확인한 뒤 이 폴더에 추가합니다. 덤프에 개인정보·비밀값이 포함되는지 검토합니다.
-- 팀 담당자가 문서의 버전·환경 변수·외부 서비스 목록과 시연 순서를 실제 운영 환경과 대조합니다.
-- 비밀번호, API 키, 토큰, 실제 `.env` 파일은 커밋하지 않습니다. 필요한 변수명과 발급·설정 방법을 문서화합니다.
-
-기존 상세 문서: [`docs/CICD.md`](../docs/CICD.md), [`docs/HADOOP_CLUSTER.md`](../docs/HADOOP_CLUSTER.md), [`docs/infrastructure-design.md`](../docs/infrastructure-design.md), [`deploy/.env.example`](../deploy/.env.example).
+관련 상세 문서: [`docs/CICD.md`](../docs/CICD.md), [`docs/HADOOP_CLUSTER.md`](../docs/HADOOP_CLUSTER.md), [`docs/infrastructure-design.md`](../docs/infrastructure-design.md), [`docs/database-design.md`](../docs/database-design.md), [`deploy/.env.example`](../deploy/.env.example).
